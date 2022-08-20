@@ -1,0 +1,611 @@
+g++ -std=c++20 -Wl,-z,stack-size=0  -I./util -Wall -Wextra -O0 -g3 -ggdb3 main.cpp -MM -MT main.o -MF main.d
+g++ -std=c++20 -Wl,-z,stack-size=0  -I./util -Wall -Wextra -O0 -g3 -ggdb3 -Wall -Wextra -c  -o main.o main.cpp
+main.cpp:2:9: warning: #pragma once in main file
+    2 | #pragma once
+      |         ^~~~
+main.cpp: In function ‘void optimize_expressions(LitOptimizer*, PCGenericArray<LitExpression*>*)’:
+main.cpp:5283:39: error: request for member ‘m_count’ in ‘expressions’, which is of pointer type ‘PCGenericArray<LitExpression*>*’ (maybe you meant to use ‘->’ ?)
+ 5283 |     for(size_t i = 0; i < expressions.m_count; i++)
+      |                                       ^~~~~~~
+main.cpp:5285:54: error: ‘class PCGenericArray<LitExpression*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5285 |         optimize_expression(optimizer, &expressions->values[i]);
+      |                                                      ^~~~~~
+      |                                                      m_values
+main.cpp: In function ‘void optimize_statement(LitOptimizer*, LitStatement**)’:
+main.cpp:5379:67: error: request for member ‘m_count’ in ‘stmt->LitIfStatement::elseif_conditions’, which is of pointer type ‘PCGenericArray<LitExpression*>*’ (maybe you meant to use ‘->’ ?)
+ 5379 |                     for(size_t i = 0; i < stmt->elseif_conditions.m_count; i++)
+      |                                                                   ^~~~~~~
+main.cpp:5381:69: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5381 |                         if(empty && is_empty(stmt->elseif_branches->values[i]))
+      |                                                                     ^~~~~~
+      |                                                                     m_values
+main.cpp:5383:81: error: ‘class PCGenericArray<LitExpression*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5383 |                             lit_free_expression(state, stmt->elseif_conditions->values[i]);
+      |                                                                                 ^~~~~~
+      |                                                                                 m_values
+main.cpp:5384:54: error: ‘class PCGenericArray<LitExpression*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5384 |                             stmt->elseif_conditions->values[i] = NULL;
+      |                                                      ^~~~~~
+      |                                                      m_values
+main.cpp:5386:78: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5386 |                             lit_free_statement(state, stmt->elseif_branches->values[i]);
+      |                                                                              ^~~~~~
+      |                                                                              m_values
+main.cpp:5387:52: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5387 |                             stmt->elseif_branches->values[i] = NULL;
+      |                                                    ^~~~~~
+      |                                                    m_values
+main.cpp:5394:102: error: ‘class PCGenericArray<LitExpression*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5394 |                             LitValue value = evaluate_expression(optimizer, stmt->elseif_conditions->values[i]);
+      |                                                                                                      ^~~~~~
+      |                                                                                                      m_values
+main.cpp:5398:85: error: ‘class PCGenericArray<LitExpression*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5398 |                                 lit_free_expression(state, stmt->elseif_conditions->values[i]);
+      |                                                                                     ^~~~~~
+      |                                                                                     m_values
+main.cpp:5399:58: error: ‘class PCGenericArray<LitExpression*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5399 |                                 stmt->elseif_conditions->values[i] = NULL;
+      |                                                          ^~~~~~
+      |                                                          m_values
+main.cpp:5401:82: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5401 |                                 lit_free_statement(state, stmt->elseif_branches->values[i]);
+      |                                                                                  ^~~~~~
+      |                                                                                  m_values
+main.cpp:5402:56: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5402 |                                 stmt->elseif_branches->values[i] = NULL;
+      |                                                        ^~~~~~
+      |                                                        m_values
+main.cpp: In function ‘void optimize_statements(LitOptimizer*, PCGenericArray<LitStatement*>*)’:
+main.cpp:5572:31: error: request for member ‘m_count’ in ‘statements’, which is of pointer type ‘PCGenericArray<LitStatement*>*’ (maybe you meant to use ‘->’ ?)
+ 5572 |     for(i = 0; i < statements.m_count; i++)
+      |                               ^~~~~~~
+main.cpp:5574:52: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+ 5574 |         optimize_statement(optimizer, &statements->values[i]);
+      |                                                    ^~~~~~
+      |                                                    m_values
+main.cpp: In function ‘void lit_optimize(LitOptimizer*, PCGenericArray<LitStatement*>*)’:
+main.cpp:5591:34: error: ‘optimiter’ was not declared in this scope; did you mean ‘optimizer’?
+ 5591 |     optimizer->variables.release(optimiter->state);
+      |                                  ^~~~~~~~~
+      |                                  optimizer
+main.cpp: In function ‘void parse_parameters(LitParser*, PCGenericArray<LitParameter>*)’:
+main.cpp:6169:24: error: request for member ‘push’ in ‘parameters’, which is of pointer type ‘PCGenericArray<LitParameter>*’ (maybe you meant to use ‘->’ ?)
+ 6169 |             parameters.push((LitParameter){ "...", 3, NULL });
+      |                        ^~~~
+main.cpp:6185:20: error: request for member ‘push’ in ‘parameters’, which is of pointer type ‘PCGenericArray<LitParameter>*’ (maybe you meant to use ‘->’ ?)
+ 6185 |         parameters.push((LitParameter){ arg_name, arg_length, default_value });
+      |                    ^~~~
+main.cpp: In function ‘LitStatement* parse_if(LitParser*)’:
+main.cpp:6867:31: error: request for member ‘push’ in ‘elseif_conditions’, which is of pointer type ‘PCGenericArray<LitExpression*>*’ (maybe you meant to use ‘->’ ?)
+ 6867 |             elseif_conditions.push(e);
+      |                               ^~~~
+main.cpp:6868:29: error: request for member ‘push’ in ‘elseif_branches’, which is of pointer type ‘PCGenericArray<LitStatement*>*’ (maybe you meant to use ‘->’ ?)
+ 6868 |             elseif_branches.push(parse_statement(parser));
+      |                             ^~~~
+main.cpp: In function ‘bool lit_parse(LitParser*, const char*, const char*, PCGenericArray<LitStatement*>*)’:
+main.cpp:7309:28: error: request for member ‘push’ in ‘statements’, which is of pointer type ‘PCGenericArray<LitStatement*>*’ (maybe you meant to use ‘->’ ?)
+ 7309 |                 statements.push(statement);
+      |                            ^~~~
+main.cpp: In function ‘LitCallFrame* setup_call(LitState*, LitFunction*, LitValue*, uint8_t, bool)’:
+main.cpp:8603:13: error: ‘lit_values_ensure_size’ was not declared in this scope
+ 8603 |             lit_values_ensure_size(vm->state, &array->values, varargc);
+      |             ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:8621:9: error: ‘lit_values_write’ was not declared in this scope
+ 8621 |         lit_values_write(vm->state, &array->values, *(fiber->stack_top - 1));
+      |         ^~~~~~~~~~~~~~~~
+main.cpp: In function ‘LitString* lit_to_string(LitState*, LitValue)’:
+main.cpp:8891:15: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 8891 |         chunk.m_count = 0;
+      |               ^~~~~~~
+main.cpp: In function ‘void lit_init_chunk(LitChunk*)’:
+main.cpp:8937:11: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 8937 |     chunk.m_count = 0;
+      |           ^~~~~~~
+main.cpp:8946:5: error: ‘lit_init_values’ was not declared in this scope; did you mean ‘lit_init_parser’?
+ 8946 |     lit_init_values(&chunk->constants);
+      |     ^~~~~~~~~~~~~~~
+      |     lit_init_parser
+main.cpp: In function ‘void lit_write_chunk(LitState*, LitChunk*, uint8_t, uint16_t)’:
+main.cpp:8960:32: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 8960 |     if(chunk->capacity < chunk.m_count + 1)
+      |                                ^~~~~~~
+main.cpp:8968:23: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 8968 |     chunk->code[chunk.m_count] = byte;
+      |                       ^~~~~~~
+main.cpp:8969:11: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 8969 |     chunk.m_count++;
+      |           ^~~~~~~
+main.cpp: In function ‘void lit_shrink_chunk(LitState*, LitChunk*)’:
+main.cpp:9057:32: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 9057 |     if(chunk->capacity > chunk.m_count)
+      |                                ^~~~~~~
+main.cpp:9061:33: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 9061 |         chunk->capacity = chunk.m_count;
+      |                                 ^~~~~~~
+main.cpp: In function ‘void lit_disassemble_chunk(LitState*, LitChunk*, const char*, const char*)’:
+main.cpp:9104:27: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+ 9104 |     for(i = 0; i < values.m_count; i++)
+      |                           ^~~~~~~
+main.cpp:9106:25: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+ 9106 |         value = values->values[i];
+      |                         ^~~~~~
+      |                         m_values
+main.cpp:9114:36: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 9114 |     for(offset = 0; offset < chunk.m_count;)
+      |                                    ^~~~~~~
+main.cpp: In function ‘void save_chunk(FILE*, LitChunk*)’:
+main.cpp:9814:36: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 9814 |     lit_write_uint32_t(file, chunk.m_count);
+      |                                    ^~~~~~~
+main.cpp:9816:33: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 9816 |     for(size_t i = 0; i < chunk.m_count; i++)
+      |                                 ^~~~~~~
+main.cpp: In function ‘void load_chunk(LitState*, LitEmulatedFile*, LitModule*, LitChunk*)’:
+main.cpp:9884:11: error: request for member ‘m_count’ in ‘chunk’, which is of pointer type ‘LitChunk*’ (maybe you meant to use ‘->’ ?)
+ 9884 |     chunk.m_count = count;
+      |           ^~~~~~~
+main.cpp:9908:22: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = long unsigned int; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+ 9908 |     chunk->constants.capacity = count;
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~
+      |                              ()
+main.cpp: In function ‘void lit_save_module(LitModule*, FILE*)’:
+main.cpp:9955:26: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+ 9955 |             if(privates->entries[i].key != NULL)
+      |                          ^~~~~~~
+main.cpp:9957:50: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+ 9957 |                 lit_write_string(file, privates->entries[i].key);
+      |                                                  ^~~~~~~
+main.cpp:9958:82: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+ 9958 |                 lit_write_uint16_t(file, (uint16_t)lit_value_to_number(privates->entries[i].value));
+      |                                                                                  ^~~~~~~
+main.cpp: In function ‘void mark_array(LitVM*, PCGenericArray<long unsigned int>*)’:
+main.cpp:10282:26: error: request for member ‘m_count’ in ‘array’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+10282 |     for(i = 0; i < array.m_count; i++)
+      |                          ^~~~~~~
+main.cpp:10284:35: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+10284 |         lit_mark_value(vm, array->values[i]);
+      |                                   ^~~~~~
+      |                                   m_values
+main.cpp: In function ‘void lit_map_add_all(LitState*, LitMap*, LitMap*)’:
+main.cpp:10878:34: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+10878 |     for(i = 0; i <= from->values.capacity; i++)
+      |                     ~~~~~~~~~~~~~^~~~~~~~
+      |                                          ()
+main.cpp:10880:31: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+10880 |         entry = &from->values.entries[i];
+      |                               ^~~~~~~
+main.cpp: In function ‘void free_statements(LitState*, PCGenericArray<LitStatement*>*)’:
+main.cpp:11156:31: error: request for member ‘m_count’ in ‘statements’, which is of pointer type ‘PCGenericArray<LitStatement*>*’ (maybe you meant to use ‘->’ ?)
+11156 |     for(i = 0; i < statements.m_count; i++)
+      |                               ^~~~~~~
+main.cpp:11158:47: error: ‘class PCGenericArray<LitStatement*>’ has no member named ‘values’; did you mean ‘m_values’?
+11158 |         lit_free_statement(state, statements->values[i]);
+      |                                               ^~~~~~
+      |                                               m_values
+main.cpp: In function ‘void adjust_capacity(LitState*, LitTable*, int)’:
+main.cpp:11504:11: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11504 |     table.m_count = 0;
+      |           ^~~~~~~
+main.cpp:11505:28: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11505 |     for(i = 0; i <= table->capacity; i++)
+      |                     ~~~~~~~^~~~~~~~
+      |                                    ()
+main.cpp:11507:25: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11507 |         entry = &table->entries[i];
+      |                         ^~~~~~~
+main.cpp:11515:15: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11515 |         table.m_count++;
+      |               ^~~~~~~
+main.cpp:11517:49: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11517 |     LIT_FREE_ARRAY(state, LitTableEntry, table->entries, table->capacity + 1);
+      |                                                 ^~~~~~~
+main.cpp:169:27: note: in definition of macro ‘LIT_FREE_ARRAY’
+  169 |     lit_reallocate(state, pointer, sizeof(type) * (old_count), 0)
+      |                           ^~~~~~~
+main.cpp:11517:65: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11517 |     LIT_FREE_ARRAY(state, LitTableEntry, table->entries, table->capacity + 1);
+      |                                                          ~~~~~~~^~~~~~~~
+main.cpp:169:52: note: in definition of macro ‘LIT_FREE_ARRAY’
+  169 |     lit_reallocate(state, pointer, sizeof(type) * (old_count), 0)
+      |                                                    ^~~~~~~~~
+main.cpp:11518:12: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11518 |     table->capacity = capacity;
+      |     ~~~~~~~^~~~~~~~
+      |                    ()
+main.cpp:11519:12: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11519 |     table->entries = entries;
+      |            ^~~~~~~
+main.cpp: In function ‘bool lit_table_set(LitState*, LitTable*, LitString*, LitValue)’:
+main.cpp:11527:14: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11527 |     if(table.m_count + 1 > (table->capacity + 1) * TABLE_MAX_LOAD)
+      |              ^~~~~~~
+main.cpp:11527:36: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11527 |     if(table.m_count + 1 > (table->capacity + 1) * TABLE_MAX_LOAD)
+      |                             ~~~~~~~^~~~~~~~
+      |                                            ()
+main.cpp:11529:45: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11529 |         capacity = LIT_GROW_CAPACITY(table->capacity + 1) - 1;
+      |                                      ~~~~~~~^~~~~~~~
+main.cpp:163:7: note: in definition of macro ‘LIT_GROW_CAPACITY’
+  163 |     ((capacity) < 8 ? 8 : (capacity)*2)
+      |       ^~~~~~~~
+main.cpp:11529:45: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11529 |         capacity = LIT_GROW_CAPACITY(table->capacity + 1) - 1;
+      |                                      ~~~~~~~^~~~~~~~
+main.cpp:163:28: note: in definition of macro ‘LIT_GROW_CAPACITY’
+  163 |     ((capacity) < 8 ? 8 : (capacity)*2)
+      |                            ^~~~~~~~
+main.cpp:11532:31: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11532 |     entry = find_entry(table->entries, table->capacity, key);
+      |                               ^~~~~~~
+main.cpp:11536:15: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11536 |         table.m_count++;
+      |               ^~~~~~~
+main.cpp: In function ‘bool lit_table_get(LitTable*, LitString*, LitValue*)’:
+main.cpp:11546:14: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11546 |     if(table.m_count == 0)
+      |              ^~~~~~~
+main.cpp:11550:31: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11550 |     entry = find_entry(table->entries, table->capacity, key);
+      |                               ^~~~~~~
+main.cpp: In function ‘bool lit_table_get_slot(LitTable*, LitString*, LitValue**)’:
+main.cpp:11562:14: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11562 |     if(table.m_count == 0)
+      |              ^~~~~~~
+main.cpp:11566:31: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11566 |     entry = find_entry(table->entries, table->capacity, key);
+      |                               ^~~~~~~
+main.cpp: In function ‘bool lit_table_delete(LitTable*, LitString*)’:
+main.cpp:11578:14: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11578 |     if(table.m_count == 0)
+      |              ^~~~~~~
+main.cpp:11582:31: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11582 |     entry = find_entry(table->entries, table->capacity, key);
+      |                               ^~~~~~~
+main.cpp: In function ‘LitString* lit_table_find_string(LitTable*, const char*, size_t, uint32_t)’:
+main.cpp:11596:14: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+11596 |     if(table.m_count == 0)
+      |              ^~~~~~~
+main.cpp:11600:27: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11600 |     index = hash % table->capacity;
+      |                    ~~~~~~~^~~~~~~~
+      |                                   ()
+main.cpp:11603:25: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11603 |         entry = &table->entries[index];
+      |                         ^~~~~~~
+main.cpp:11615:38: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11615 |         index = (index + 1) % table->capacity;
+      |                               ~~~~~~~^~~~~~~~
+      |                                              ()
+main.cpp: In function ‘void lit_table_add_all(LitState*, LitTable*, LitTable*)’:
+main.cpp:11623:27: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11623 |     for(i = 0; i <= from->capacity; i++)
+      |                     ~~~~~~^~~~~~~~
+      |                                   ()
+main.cpp:11625:24: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11625 |         entry = &from->entries[i];
+      |                        ^~~~~~~
+main.cpp: In function ‘void lit_table_remove_white(LitTable*)’:
+main.cpp:11637:28: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11637 |     for(i = 0; i <= table->capacity; i++)
+      |                     ~~~~~~~^~~~~~~~
+      |                                    ()
+main.cpp:11639:25: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11639 |         entry = &table->entries[i];
+      |                         ^~~~~~~
+main.cpp: In function ‘void lit_mark_table(LitVM*, LitTable*)’:
+main.cpp:11651:28: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+11651 |     for(i = 0; i <= table->capacity; i++)
+      |                     ~~~~~~~^~~~~~~~
+      |                                    ()
+main.cpp:11653:25: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+11653 |         entry = &table->entries[i];
+      |                         ^~~~~~~
+main.cpp: In function ‘void print_map(LitState*, LitWriter*, LitMap*, size_t)’:
+main.cpp:12034:44: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+12034 |         for(i = 0; i < (size_t)map->values.capacity; i++)
+      |                                ~~~~~~~~~~~~^~~~~~~~
+      |                                                    ()
+main.cpp:12036:34: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+12036 |             entry = &map->values.entries[i];
+      |                                  ^~~~~~~
+main.cpp: In function ‘bool call(LitVM*, LitFunction*, LitClosure*, uint8_t)’:
+main.cpp:12815:13: error: ‘lit_values_ensure_size’ was not declared in this scope
+12815 |             lit_values_ensure_size(vm->state, &array->values, vararg_count);
+      |             ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:12834:9: error: ‘lit_values_write’ was not declared in this scope
+12834 |         lit_values_write(vm->state, &array->values, *(fiber->stack_top - 1));
+      |         ^~~~~~~~~~~~~~~~
+main.cpp: In function ‘LitInterpretResult lit_interpret_fiber(LitState*, LitFiber*)’:
+main.cpp:13845:34: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+13845 |                 arindex = values.m_count;
+      |                                  ^~~~~~~
+main.cpp:13846:17: error: ‘lit_values_ensure_size’ was not declared in this scope
+13846 |                 lit_values_ensure_size(state, values, arindex + 1);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:13847:25: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+13847 |                 values->values[arindex] = vm_peek(fiber, 0);
+      |                         ^~~~~~
+      |                         m_values
+main.cpp:13997:61: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+13997 |                 lit_ensure_fiber_stack(state, fiber, values.m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
+      |                                                             ^~~~~~~
+main.cpp:13998:39: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+13998 |                 for(i = 0; i < values.m_count; i++)
+      |                                       ^~~~~~~
+main.cpp:14000:44: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14000 |                     vm_push(fiber, values->values[i]);
+      |                                            ^~~~~~
+main.cpp:12349:28: note: in definition of macro ‘vm_push’
+12349 |     (*fiber->stack_top++ = value)
+      |                            ^~~~~
+main.cpp:14003:40: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14003 |                 ip[1] = ip[1] + values.m_count - 1;
+      |                                        ^~~~~~~
+main.cpp: In function ‘LitValue lit_array_removeat(LitArray*, size_t)’:
+main.cpp:14141:20: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14141 |     count = values.m_count;
+      |                    ^~~~~~~
+main.cpp:14146:21: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14146 |     value = values->values[index];
+      |                     ^~~~~~
+      |                     m_values
+main.cpp:14149:17: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14149 |         values->values[index] = NULL_VALUE;
+      |                 ^~~~~~
+      |                 m_values
+main.cpp:14153:35: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14153 |         for(i = index; i < values.m_count - 1; i++)
+      |                                   ^~~~~~~
+main.cpp:14155:21: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14155 |             values->values[i] = values->values[i + 1];
+      |                     ^~~~~~
+      |                     m_values
+main.cpp:14155:41: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14155 |             values->values[i] = values->values[i + 1];
+      |                                         ^~~~~~
+      |                                         m_values
+main.cpp:14157:17: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14157 |         values->values[count - 1] = NULL_VALUE;
+      |                 ^~~~~~
+      |                 m_values
+main.cpp:14159:12: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14159 |     values.m_count--;
+      |            ^~~~~~~
+main.cpp: In function ‘void lit_array_push(LitState*, LitArray*, LitValue)’:
+main.cpp:14163:31: warning: unused parameter ‘state’ [-Wunused-parameter]
+14163 | void lit_array_push(LitState* state, LitArray* array, LitValue val)
+      |                     ~~~~~~~~~~^~~~~
+main.cpp: In function ‘LitValue objfn_array_splice(LitVM*, LitArray*, int, int)’:
+main.cpp:14200:9: error: ‘lit_values_write’ was not declared in this scope
+14200 |         lit_values_write(vm->state, &new_array->values, array->values.m_values[from + i]);
+      |         ^~~~~~~~~~~~~~~~
+main.cpp: In function ‘LitValue objfn_array_subscript(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14229:36: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14229 |             index = fmax(0, values.m_count + index);
+      |                                    ^~~~~~~
+main.cpp:14231:9: error: ‘lit_values_ensure_size’ was not declared in this scope
+14231 |         lit_values_ensure_size(vm->state, values, index + 1);
+      |         ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:14232:24: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14232 |         return values->values[index] = argv[1];
+      |                        ^~~~~~
+      |                        m_values
+main.cpp:14248:32: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14248 |         index = fmax(0, values.m_count + index);
+      |                                ^~~~~~~
+main.cpp:14250:16: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = long unsigned int; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+14250 |     if(values->capacity <= (size_t)index)
+      |        ~~~~~~~~^~~~~~~~
+      |                        ()
+main.cpp:14254:20: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14254 |     return values->values[index];
+      |                    ^~~~~~
+      |                    m_values
+main.cpp: In function ‘LitValue objfn_array_insert(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14329:32: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14329 |         index = fmax(0, values.m_count + index);
+      |                                ^~~~~~~
+main.cpp:14332:20: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14332 |     if((int)values.m_count <= index)
+      |                    ^~~~~~~
+main.cpp:14334:9: error: ‘lit_values_ensure_size’ was not declared in this scope
+14334 |         lit_values_ensure_size(vm->state, values, index + 1);
+      |         ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:14338:58: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14338 |         lit_values_ensure_size(vm->state, values, values.m_count + 1);
+      |                                                          ^~~~~~~
+main.cpp:14338:9: error: ‘lit_values_ensure_size’ was not declared in this scope
+14338 |         lit_values_ensure_size(vm->state, values, values.m_count + 1);
+      |         ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:14339:24: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14339 |         for(i = values.m_count - 1; i > index; i--)
+      |                        ^~~~~~~
+main.cpp:14341:21: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14341 |             values->values[i] = values->values[i - 1];
+      |                     ^~~~~~
+      |                     m_values
+main.cpp:14341:41: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14341 |             values->values[i] = values->values[i - 1];
+      |                                         ^~~~~~
+      |                                         m_values
+main.cpp:14344:13: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14344 |     values->values[index] = value;
+      |             ^~~~~~
+      |             m_values
+main.cpp: In function ‘LitValue objfn_array_iteratorvalue(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14442:15: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14442 |     if(values.m_count <= index)
+      |               ^~~~~~~
+main.cpp:14446:20: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14446 |     return values->values[index];
+      |                    ^~~~~~
+      |                    m_values
+main.cpp: In function ‘LitValue objfn_array_join(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14470:58: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14470 |     strings = LIT_ALLOCATE(vm->state, LitString*, values.m_count+1);
+      |                                                          ^~~~~~~
+main.cpp:172:59: note: in definition of macro ‘LIT_ALLOCATE’
+  172 |     (type*)lit_reallocate(state, NULL, 0, sizeof(type) * (count))
+      |                                                           ^~~~~
+main.cpp:14471:27: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14471 |     for(i = 0; i < values.m_count; i++)
+      |                           ^~~~~~~
+main.cpp:14473:51: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14473 |         string = lit_to_string(vm->state, values->values[i]);
+      |                                                   ^~~~~~
+      |                                                   m_values
+main.cpp:14489:27: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14489 |     for(i = 0; i < values.m_count; i++)
+      |                           ^~~~~~~
+main.cpp: In function ‘LitValue objfn_array_sort(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14515:44: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14515 |         util_custom_quick_sort(vm, values->values, values.m_count, argv[0]);
+      |                                            ^~~~~~
+      |                                            m_values
+main.cpp:14515:59: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14515 |         util_custom_quick_sort(vm, values->values, values.m_count, argv[0]);
+      |                                                           ^~~~~~~
+main.cpp:14519:50: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14519 |         util_basic_quick_sort(vm->state, values->values, values.m_count);
+      |                                                  ^~~~~~
+      |                                                  m_values
+main.cpp:14519:65: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14519 |         util_basic_quick_sort(vm->state, values->values, values.m_count);
+      |                                                                 ^~~~~~~
+main.cpp: In function ‘LitValue objfn_array_clone(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14537:54: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14537 |     lit_values_ensure_size(state, new_values, values.m_count);
+      |                                                      ^~~~~~~
+main.cpp:14537:5: error: ‘lit_values_ensure_size’ was not declared in this scope
+14537 |     lit_values_ensure_size(state, new_values, values.m_count);
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp:14539:16: error: request for member ‘m_count’ in ‘new_values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14539 |     new_values.m_count = 0;
+      |                ^~~~~~~
+main.cpp:14540:27: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14540 |     for(i = 0; i < values.m_count; i++)
+      |                           ^~~~~~~
+main.cpp:14542:20: error: request for member ‘push’ in ‘new_values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14542 |         new_values.push(values->values[i]);
+      |                    ^~~~
+main.cpp:14542:33: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14542 |         new_values.push(values->values[i]);
+      |                                 ^~~~~~
+      |                                 m_values
+main.cpp: In function ‘LitValue objfn_array_tostring(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14568:15: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14568 |     if(values.m_count == 0)
+      |               ^~~~~~~
+main.cpp:14572:23: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14572 |     has_more = values.m_count > LIT_CONTAINER_OUTPUT_MAX;
+      |                       ^~~~~~~
+main.cpp:14573:65: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14573 |     value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values.m_count;
+      |                                                                 ^~~~~~~
+main.cpp:14586:23: error: ‘class PCGenericArray<long unsigned int>’ has no member named ‘values’; did you mean ‘m_values’?
+14586 |         val = values->values[(has_more && i == value_amount - 1) ? values.m_count - 1 : i];
+      |                       ^~~~~~
+      |                       m_values
+main.cpp:14586:75: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘PCGenericArray<long unsigned int>*’ (maybe you meant to use ‘->’ ?)
+14586 |         val = values->values[(has_more && i == value_amount - 1) ? values.m_count - 1 : i];
+      |                                                                           ^~~~~~~
+main.cpp: In function ‘LitValue objfn_class_iterator(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14678:34: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+14678 |     mthcap = (int)klass->methods.capacity;
+      |                   ~~~~~~~~~~~~~~~^~~~~~~~
+      |                                          ()
+main.cpp: In function ‘LitValue objfn_class_iteratorvalue(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:14708:29: error: cannot convert ‘PCGenericArray<LitTableEntry>::capacity’ from type ‘size_t (PCGenericArray<LitTableEntry>::)() const’ {aka ‘long unsigned int (PCGenericArray<LitTableEntry>::)() const’} to type ‘size_t’ {aka ‘long unsigned int’}
+14708 |     mthcap = klass->methods.capacity;
+      |                             ^~~~~~~~
+main.cpp: In function ‘void util_run_fiber(LitVM*, LitFiber*, LitValue*, size_t, bool)’:
+main.cpp:14953:17: error: ‘lit_values_ensure_size’ was not declared in this scope
+14953 |                 lit_values_ensure_size(vm->state, &array->values, vararg_count);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~
+main.cpp: In function ‘bool util_attempt_to_require(LitVM*, LitValue*, size_t, const char*, bool, bool)’:
+main.cpp:15080:33: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15080 |     memcpy((void*)modnamedotted + length, ".lit", 4);
+      |            ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
+main.cpp:15119:52: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15119 |                             memcpy((void*)dir_path + length + 1, name, name_length - 4);
+      |                                    ~~~~~~~~~~~~~~~~^~~~~~~~
+main.cpp:15119:61: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15119 |                             memcpy((void*)dir_path + length + 1, name, name_length - 4);
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~^~~
+main.cpp:15146:36: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15146 |             memcpy((void*)dir_name + length, ".init", 5);
+      |                    ~~~~~~~~~~~~~~~~^~~~~~~~
+main.cpp:15183:31: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15183 |         memcpy((void*)modname + length + 2, "bc", 2);
+      |                ~~~~~~~~~~~~~~~^~~~~~~~
+main.cpp:15183:40: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15183 |         memcpy((void*)modname + length + 2, "bc", 2);
+      |                ~~~~~~~~~~~~~~~~~~~~~~~~^~~
+main.cpp: In function ‘bool util_attempt_to_require_combined(LitVM*, LitValue*, size_t, const char*, const char*, bool)’:
+main.cpp:15215:24: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15215 |     memcpy((void*)path + a_length + 1, b, b_length);
+      |            ~~~~~~~~~~~~^~~~~~~~~~
+main.cpp:15215:35: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+15215 |     memcpy((void*)path + a_length + 1, b, b_length);
+      |            ~~~~~~~~~~~~~~~~~~~~~~~^~~
+main.cpp: In function ‘int util_table_iterator(LitTable*, int)’:
+main.cpp:16240:14: error: request for member ‘m_count’ in ‘table’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+16240 |     if(table.m_count == 0)
+      |              ^~~~~~~
+main.cpp:16244:30: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+16244 |     if(number >= (int)table->capacity)
+      |                       ~~~~~~~^~~~~~~~
+      |                                      ()
+main.cpp:16249:27: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+16249 |     for(; number < table->capacity; number++)
+      |                    ~~~~~~~^~~~~~~~
+      |                                   ()
+main.cpp:16251:19: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+16251 |         if(table->entries[number].key != NULL)
+      |                   ^~~~~~~
+main.cpp: In function ‘LitValue util_table_iterator_key(LitTable*, int)’:
+main.cpp:16262:15: error: invalid use of member function ‘constexpr size_t PCGenericArray<ElementT>::capacity() const [with ElementT = LitTableEntry; size_t = long unsigned int]’ (did you forget the ‘()’ ?)
+16262 |     if(table->capacity <= index)
+      |        ~~~~~~~^~~~~~~~
+      |                       ()
+main.cpp:16266:32: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+16266 |     return OBJECT_VALUE(table->entries[index].key);
+      |                                ^~~~~~~
+main.cpp:160:56: note: in definition of macro ‘OBJECT_VALUE’
+  160 |     (LitValue)(SIGN_BIT | QNAN | (uint64_t)(uintptr_t)(obj))
+      |                                                        ^~~
+main.cpp: In function ‘LitValue objfn_map_tostring(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:16386:15: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+16386 |     if(values.m_count == 0)
+      |               ^~~~~~~
+main.cpp:16391:23: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+16391 |     has_more = values.m_count > LIT_CONTAINER_OUTPUT_MAX;
+      |                       ^~~~~~~
+main.cpp:16392:65: error: request for member ‘m_count’ in ‘values’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+16392 |     value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values.m_count;
+      |                                                                 ^~~~~~~
+main.cpp:16404:26: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+16404 |         entry = &values->entries[index++];
+      |                          ^~~~~~~
+main.cpp: In function ‘LitValue random_pick(LitVM*, LitValue, size_t, LitValue*)’:
+main.cpp:16791:43: error: cannot convert ‘PCGenericArray<LitTableEntry>::capacity’ from type ‘size_t (PCGenericArray<LitTableEntry>::)() const’ {aka ‘long unsigned int (PCGenericArray<LitTableEntry>::)() const’} to type ‘size_t’ {aka ‘long unsigned int’}
+16791 |             size_t capacity = map->values.capacity;
+      |                                           ^~~~~~~~
+main.cpp:16803:32: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+16803 |                 if(map->values.entries[i].key != NULL)
+      |                                ^~~~~~~
+main.cpp:16807:44: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+16807 |                         return map->values.entries[i].value;
+      |                                            ^~~~~~~
+main.cpp: In function ‘void fillmap(LitState*, LitMap*, LitTable*, bool)’:
+main.cpp:17005:33: error: request for member ‘m_count’ in ‘fromtbl’, which is of pointer type ‘LitTable*’ {aka ‘PCGenericArray<LitTableEntry>*’} (maybe you meant to use ‘->’ ?)
+17005 |     for(i=0; i<(size_t)(fromtbl.m_count); i++)
+      |                                 ^~~~~~~
+main.cpp:17007:24: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+17007 |         key = fromtbl->entries[i].key;
+      |                        ^~~~~~~
+main.cpp:17010:28: error: ‘using LitTable = class PCGenericArray<LitTableEntry>’ {aka ‘class PCGenericArray<LitTableEntry>’} has no member named ‘entries’
+17010 |             val = fromtbl->entries[i].value;
+      |                            ^~~~~~~
+make: *** [Makefile:45: main.o] Error 1
