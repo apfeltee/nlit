@@ -23,6 +23,8 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+
+
 #include "sds.h"
 
 
@@ -818,96 +820,21 @@ struct LitFieldStatement
 
 */
 
-typedef enum /**/LitOpCode LitOpCode;
-typedef enum /**/LitExpressionType LitExpressionType;
-typedef enum /**/LitOptimizationLevel LitOptimizationLevel;
-typedef enum /**/LitOptimization LitOptimization;
-typedef enum /**/LitError LitError;
-typedef enum /**/LitPrecedence LitPrecedence;
-typedef enum /**/LitStatementType LitStatementType;
-typedef enum /**/LitTokenType LitTokenType;
-typedef enum /**/LitInterpretResultType LitInterpretResultType;
-typedef enum /**/LitErrorType LitErrorType;
-typedef enum /**/LitFunctionType LitFunctionType;
-typedef enum /**/LitObjectType LitObjectType;
-typedef struct /**/LitScanner LitScanner;
-typedef struct /**/LitPreprocessor LitPreprocessor;
-typedef struct /**/LitVM LitVM;
-typedef struct /**/LitParser LitParser;
-typedef struct /**/LitEmitter LitEmitter;
-typedef struct /**/LitOptimizer LitOptimizer;
-typedef struct /**/LitState LitState;
-typedef struct /**/LitInterpretResult LitInterpretResult;
-typedef struct /**/LitObject LitObject;
-typedef struct /**/LitMap LitMap;
-typedef struct /**/LitString LitString;
-typedef struct /**/LitModule LitModule;
-typedef struct /**/LitFiber LitFiber;
-typedef struct /**/LitUserdata LitUserdata;
-typedef struct /**/LitChunk LitChunk;
-typedef struct /**/LitTableEntry LitTableEntry;
-
-typedef struct /**/LitFunction LitFunction;
-typedef struct /**/LitUpvalue LitUpvalue;
-typedef struct /**/LitClosure LitClosure;
-typedef struct /**/LitNativeFunction LitNativeFunction;
-typedef struct /**/LitNativePrimFunction LitNativePrimFunction;
-typedef struct /**/LitNativeMethod LitNativeMethod;
-typedef struct /**/LitPrimitiveMethod LitPrimitiveMethod;
-typedef struct /**/LitCallFrame LitCallFrame;
-typedef struct /**/LitClass LitClass;
-typedef struct /**/LitInstance LitInstance;
-typedef struct /**/LitBoundMethod LitBoundMethod;
-typedef struct /**/LitArray LitArray;
-typedef struct /**/LitRange LitRange;
-typedef struct /**/LitField LitField;
-typedef struct /**/LitReference LitReference;
-typedef struct /**/LitToken LitToken;
-typedef struct /**/LitExpression LitExpression;
-typedef struct /**/LitStatement LitStatement;
-typedef struct /**/LitCompilerUpvalue LitCompilerUpvalue;
-typedef struct /**/LitCompiler LitCompiler;
-typedef struct /**/LitParseRule LitParseRule;
-typedef struct /**/LitEmulatedFile LitEmulatedFile;
-typedef struct /**/LitVariable LitVariable;
-typedef struct /**/LitWriter LitWriter;
-
-/* ARRAYTYPES */
-typedef struct /**/LitLocal LitLocal;
-
-typedef struct /**/LitLiteralExpr LitLiteralExpr;
-typedef struct /**/LitBinaryExpr LitBinaryExpr;
-typedef struct /**/LitUnaryExpr LitUnaryExpr;
-typedef struct /**/LitVarExpr LitVarExpr;
-typedef struct /**/LitAssignExpression LitAssignExpression;
-typedef struct /**/LitCallExpression LitCallExpression;
-typedef struct /**/LitGetExpression LitGetExpression;
-typedef struct /**/LitSetExpression LitSetExpression;
-typedef struct /**/LitParameter LitParameter;
-typedef struct /**/LitLambdaExpression LitLambdaExpression;
-typedef struct /**/LitArrayExpression LitArrayExpression;
-typedef struct /**/LitObjectExpression LitObjectExpression;
-typedef struct /**/LitSubscriptExpression LitSubscriptExpression;
-typedef struct /**/LitThisExpression LitThisExpression;
-typedef struct /**/LitSuperExpression LitSuperExpression;
-typedef struct /**/LitRangeExpression LitRangeExpression;
-typedef struct /**/LitIfExpression LitIfExpression;
-typedef struct /**/LitInterpolationExpression LitInterpolationExpression;
-typedef struct /**/LitReferenceExpression LitReferenceExpression;
-typedef struct /**/LitExpressionStatement LitExpressionStatement;
-typedef struct /**/LitBlockStatement LitBlockStatement;
-typedef struct /**/LitVarStatement LitVarStatement;
-typedef struct /**/LitIfStatement LitIfStatement;
-typedef struct /**/LitWhileStatement LitWhileStatement;
-typedef struct /**/LitForStatement LitForStatement;
-typedef struct /**/LitContinueStatement LitContinueStatement;
-typedef struct /**/LitBreakStatement LitBreakStatement;
-typedef struct /**/LitFunctionStatement LitFunctionStatement;
-typedef struct /**/LitReturnStatement LitReturnStatement;
-typedef struct /**/LitMethodStatement LitMethodStatement;
-typedef struct /**/LitClassStatement LitClassStatement;
-typedef struct /**/LitFieldStatement LitFieldStatement;
-typedef struct /**/LitPrivate LitPrivate;
+struct /**/LitParser;
+struct /**/LitExpression;
+struct /**/LitWriter;
+struct /**/LitState;
+struct /**/LitVM;
+struct /**/LitMap;
+struct /**/LitUserdata;
+struct /**/LitString;
+struct /**/LitModule;
+struct /**/LitFiber;
+struct /**/LitPreprocessor;
+struct /**/LitStatement;
+struct /**/LitScanner;
+struct /**/LitEmitter;
+struct /**/LitOptimizer;
 
 typedef LitExpression* (*LitPrefixParseFn)(LitParser*, bool);
 typedef LitExpression* (*LitInfixParseFn)(LitParser*, LitExpression*, bool);
@@ -946,13 +873,19 @@ class PCGenericArray
         ElementT* m_values = nullptr;
         size_t m_count = 0;
 
-    private:
         size_t m_capacity = 0;
         LitState* m_state = nullptr;
         //ElementT m_initialbuf[10];
 
     public:
-        inline void init(LitState* state)
+        PCGenericArray()
+        {
+        }
+
+        PCGenericArray(const PCGenericArray&) = delete;
+        PCGenericArray& operator=(const PCGenericArray&) = delete;
+
+        void init(LitState* state)
         {
             m_count = 0;
             m_capacity = 0;
@@ -960,40 +893,41 @@ class PCGenericArray
             m_state = state;
         }
 
-        inline constexpr size_t capacity() const
+        size_t capacity() const
         {
             return m_capacity;
         }
 
-        inline constexpr size_t size() const
+        size_t size() const
         {
             return m_count;
         }
 
-        inline constexpr ElementT& at(size_t idx)
+        ElementT& at(size_t idx)
         {
             return m_values[idx];
         }
 
-        inline constexpr void set(size_t idx, const ElementT& val)
+        void set(size_t idx, const ElementT& val)
         {
             m_values[idx] = val;
         }
 
-        inline void push(const ElementT& value)
+        void push(const ElementT& value)
         {
             size_t oldcap;
-            if(m_capacity < (m_count + 1))
+            if(m_capacity < m_count + 1)
             {
                 oldcap = m_capacity;
-                m_capacity = ((oldcap < 8) ? 8 : (Config::ResizeMultiplier * oldcap));
-                m_values = LIT_ALLOCATE(m_state, ElementT, sizeof(ElementT) * m_capacity);
+                m_capacity = LIT_GROW_CAPACITY(oldcap);
+                m_values = LIT_GROW_ARRAY(m_state, m_values, ElementT, oldcap, m_capacity);
             }
             m_values[m_count] = value;
             m_count++;
         }
 
-        inline void reserve(size_t size)
+        template<typename NullValT>
+        void reserve(size_t size, const NullValT& nullval)
         {
             size_t i;
             size_t old_capacity;
@@ -1004,7 +938,7 @@ class PCGenericArray
                 m_values = LIT_GROW_ARRAY(m_state, m_values, ElementT, old_capacity, size);
                 for(i = old_capacity; i < size; i++)
                 {
-                    m_values[i] = NULL_VALUE;
+                    m_values[i] = nullval;
                 }
             }
             if(m_count < size)
@@ -1013,12 +947,12 @@ class PCGenericArray
             }
         }
 
-        inline void release(LitState*)
+        void release(LitState*)
         {
             free(m_values);
         }
 
-        inline ElementT& pop()
+        ElementT& pop()
         {
             m_count--;
             return m_values[m_count];
@@ -1075,9 +1009,10 @@ struct LitStatement
 
 struct LitChunk
 {
+    LitState* state;
     /* how many items this chunk holds */
     size_t m_count;
-    size_t capacity;
+    size_t m_capacity;
     uint8_t* code;
     bool has_line_info;
     size_t line_count;
@@ -1804,7 +1739,7 @@ static inline bool lit_is_falsey(LitValue value)
 
 
 
-void lit_init_chunk(LitChunk* chunk);
+void lit_init_chunk(LitState* state, LitChunk* chunk);
 void lit_free_chunk(LitState* state, LitChunk* chunk);
 void lit_write_chunk(LitState* state, LitChunk* chunk, uint8_t byte, uint16_t line);
 size_t lit_chunk_add_constant(LitState* state, LitChunk* chunk, LitValue constant);
@@ -1861,7 +1796,6 @@ void lit_free_object(LitState* state, LitObject* object);
 int lit_closest_power_of_two(int n);
 
 void lit_init_table(LitTable* table);
-void lit_free_table(LitState* state, LitTable* table);
 bool lit_table_set(LitState* state, LitTable* table, LitString* key, LitValue value);
 bool lit_table_get(LitTable* table, LitString* key, LitValue* value);
 bool lit_table_get_slot(LitTable* table, LitString* key, LitValue** value);
@@ -2052,7 +1986,7 @@ void lit_trace_frame(LitFiber* fiber, LitWriter* wr);
 
 
 
-bool lit_parse(LitParser* parser, const char* file_name, const char* source, PCGenericArray<LitStatement*>* statements);
+bool lit_parse(LitParser* parser, const char* file_name, const char* source, PCGenericArray<LitStatement*>& statements);
 char* lit_read_file(const char* path);
 bool lit_file_exists(const char* path);
 bool lit_dir_exists(const char* path);
@@ -2203,7 +2137,7 @@ void lit_free_allocated_statements(LitState* state, PCGenericArray<LitStatement*
 void lit_init_emitter(LitState* state, LitEmitter* emitter);
 void lit_free_emitter(LitEmitter* emitter);
 
-LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<LitStatement*>* statements, LitString* module_name);
+LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<LitStatement*>& statements, LitString* module_name);
 
 void lit_init_parser(LitState* state, LitParser* parser);
 void lit_free_parser(LitParser* parser);
@@ -2915,12 +2849,12 @@ static void emit_expression(LitEmitter* emitter, LitExpression* expression);
 static bool emit_statement(LitEmitter* emitter, LitStatement* statement);
 static void resolve_statement(LitEmitter* emitter, LitStatement* statement);
 
-static void resolve_statements(LitEmitter* emitter, PCGenericArray<LitStatement*>* statements)
+static void resolve_statements(LitEmitter* emitter, PCGenericArray<LitStatement*>& statements)
 {
     size_t i;
-    for(i = 0; i < statements->m_count; i++)
+    for(i = 0; i < statements.m_count; i++)
     {
-        resolve_statement(emitter, statements->m_values[i]);
+        resolve_statement(emitter, statements.m_values[i]);
     }
 }
 
@@ -3447,6 +3381,10 @@ static bool emit_parameters(LitEmitter* emitter, PCGenericArray<LitParameter>* p
 
 static void resolve_statement(LitEmitter* emitter, LitStatement* statement)
 {
+    if(statement == NULL)
+    {
+        return;
+    }
     switch(statement->type)
     {
         case LITSTMT_VAR:
@@ -4652,7 +4590,7 @@ static bool emit_statement(LitEmitter* emitter, LitStatement* statement)
     return false;
 }
 
-LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<LitStatement*>* statements, LitString* module_name)
+LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<LitStatement*>& statements, LitString* module_name)
 {
     size_t i;
     size_t total;
@@ -4692,12 +4630,15 @@ LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<LitStatement*>* statemen
     init_compiler(emitter, &compiler, LITFUNC_SCRIPT);
     emitter->chunk = &compiler.function->chunk;
     resolve_statements(emitter, statements);
-    for(i = 0; i < statements->m_count; i++)
+    for(i = 0; i < statements.m_count; i++)
     {
-        stmt = statements->m_values[i];
-        if(emit_statement(emitter, stmt))
+        stmt = statements.m_values[i];
+        if(stmt != NULL)
         {
-            break;
+            if(emit_statement(emitter, stmt))
+            {
+                break;
+            }
         }
     }
     end_scope(emitter, emitter->last_line);
@@ -4824,19 +4765,19 @@ static void opt_end_scope(LitOptimizer* optimizer)
 {
     bool remove_unused;
     LitVariable* variable;
-    PCGenericArray<LitVariable> variables;
+    PCGenericArray<LitVariable>* variables;
     optimizer->depth--;
-    variables = optimizer->variables;
+    variables = &optimizer->variables;
     remove_unused = lit_is_optimization_enabled(LITOPTSTATE_UNUSED_VAR);
-    while(variables.m_count > 0 && variables.m_values[variables.m_count - 1].depth > optimizer->depth)
+    while(variables->m_count > 0 && variables->m_values[variables->m_count - 1].depth > optimizer->depth)
     {
-        if(remove_unused && !variables.m_values[variables.m_count - 1].used)
+        if(remove_unused && !variables->m_values[variables->m_count - 1].used)
         {
-            variable = &variables.m_values[variables.m_count - 1];
+            variable = &variables->m_values[variables->m_count - 1];
             lit_free_statement(optimizer->state, *variable->declaration);
             *variable->declaration = NULL;
         }
-        variables.m_count--;
+        variables->m_count--;
     }
 }
 
@@ -7309,7 +7250,7 @@ static LitStatement* parse_declaration(LitParser* parser)
     return statement;
 }
 
-bool lit_parse(LitParser* parser, const char* file_name, const char* source, PCGenericArray<LitStatement*>* statements)
+bool lit_parse(LitParser* parser, const char* file_name, const char* source, PCGenericArray<LitStatement*>& statements)
 {
     LitCompiler compiler;
     LitStatement* statement;
@@ -7326,7 +7267,8 @@ bool lit_parse(LitParser* parser, const char* file_name, const char* source, PCG
             statement = parse_declaration(parser);
             if(statement != NULL)
             {
-                statements->push(statement);
+                fprintf(stderr, "lit_parse:statement=%p\n", statement);
+                statements.push(statement);
             }
             if(!match_new_line(parser))
             {
@@ -8620,7 +8562,7 @@ static inline LitCallFrame* setup_call(LitState* state, LitFunction* callee, Lit
         {
             array = lit_create_array(vm->state);
             varargc = argc - function_arg_count + 1;
-            array->values.reserve(varargc + 1);
+            array->values.reserve(varargc + 1, NULL_VALUE);
             for(i = 0; i < varargc; i++)
             {
                 array->values.m_values[i] = fiber->stack_top[(int)i - (int)varargc];
@@ -8908,7 +8850,7 @@ LitString* lit_to_string(LitState* state, LitValue object)
         function->chunk.has_line_info = false;
         function->name = state->api_name;
         chunk = &function->chunk;
-        chunk.m_count = 0;
+        chunk->m_count = 0;
         chunk->constants.m_count = 0;
         function->max_slots = 3;
         lit_write_chunk(state, chunk, OP_INVOKE, 1);
@@ -8952,10 +8894,11 @@ LitValue lit_call_new(LitVM* vm, const char* name, LitValue* args, size_t argc, 
 }
 
 
-void lit_init_chunk(LitChunk* chunk)
+void lit_init_chunk(LitState* state, LitChunk* chunk)
 {
-    chunk.m_count = 0;
-    chunk->capacity = 0;
+    chunk->state = state;
+    chunk->m_count = 0;
+    chunk->m_capacity = 0;
     chunk->code = NULL;
 
     chunk->has_line_info = true;
@@ -8963,30 +8906,30 @@ void lit_init_chunk(LitChunk* chunk)
     chunk->line_capacity = 0;
     chunk->lines = NULL;
 
-    lit_init_values(&chunk->constants);
+    chunk->constants.init(chunk->state);
 }
 
 void lit_free_chunk(LitState* state, LitChunk* chunk)
 {
-    LIT_FREE_ARRAY(state, uint8_t, chunk->code, chunk->capacity);
+    LIT_FREE_ARRAY(state, uint8_t, chunk->code, chunk->m_capacity);
     LIT_FREE_ARRAY(state, uint16_t, chunk->lines, chunk->line_capacity);
 
     chunk->constants.release(state);
-    lit_init_chunk(chunk);
+    lit_init_chunk(state, chunk);
 }
 
 void lit_write_chunk(LitState* state, LitChunk* chunk, uint8_t byte, uint16_t line)
 {
-    if(chunk->capacity < chunk.m_count + 1)
+    if(chunk->m_capacity < chunk->m_count + 1)
     {
-        size_t old_capacity = chunk->capacity;
+        size_t old_capacity = chunk->m_capacity;
 
-        chunk->capacity = LIT_GROW_CAPACITY(old_capacity + 2);
-        chunk->code = LIT_GROW_ARRAY(state, chunk->code, uint8_t, old_capacity, chunk->capacity + 2);
+        chunk->m_capacity = LIT_GROW_CAPACITY(old_capacity + 2);
+        chunk->code = LIT_GROW_ARRAY(state, chunk->code, uint8_t, old_capacity, chunk->m_capacity + 2);
     }
 
-    chunk->code[chunk.m_count] = byte;
-    chunk.m_count++;
+    chunk->code[chunk->m_count] = byte;
+    chunk->m_count++;
 
     if(!chunk->has_line_info)
     {
@@ -9074,12 +9017,12 @@ size_t lit_chunk_get_line(LitChunk* chunk, size_t offset)
 
 void lit_shrink_chunk(LitState* state, LitChunk* chunk)
 {
-    if(chunk->capacity > chunk.m_count)
+    if(chunk->m_capacity > chunk->m_count)
     {
-        size_t old_capacity = chunk->capacity;
+        size_t old_capacity = chunk->m_capacity;
 
-        chunk->capacity = chunk.m_count;
-        chunk->code = LIT_GROW_ARRAY(state, chunk->code, uint8_t, old_capacity, chunk->capacity);
+        chunk->m_capacity = chunk->m_count;
+        chunk->code = LIT_GROW_ARRAY(state, chunk->code, uint8_t, old_capacity, chunk->m_capacity);
     }
 
     if(chunk->line_capacity > chunk->line_count)
@@ -9121,9 +9064,9 @@ void lit_disassemble_chunk(LitState* state, LitChunk* chunk, const char* name, c
     LitFunction* function;
     values = &chunk->constants;
 
-    for(i = 0; i < values.m_count; i++)
+    for(i = 0; i < values->m_count; i++)
     {
-        value = values->values[i];
+        value = values->m_values[i];
         if(IS_FUNCTION(value))
         {
             function = AS_FUNCTION(value);
@@ -9131,7 +9074,7 @@ void lit_disassemble_chunk(LitState* state, LitChunk* chunk, const char* name, c
         }
     }
     lit_writer_writeformat(&state->debugwriter, "== %s ==\n", name);
-    for(offset = 0; offset < chunk.m_count;)
+    for(offset = 0; offset < chunk->m_count;)
     {
         offset = lit_disassemble_instruction(state, chunk, offset, source);
     }
@@ -9831,9 +9774,9 @@ static LitFunction* load_function(LitState* state, LitEmulatedFile* file, LitMod
 
 static void save_chunk(FILE* file, LitChunk* chunk)
 {
-    lit_write_uint32_t(file, chunk.m_count);
+    lit_write_uint32_t(file, chunk->m_count);
 
-    for(size_t i = 0; i < chunk.m_count; i++)
+    for(size_t i = 0; i < chunk->m_count; i++)
     {
         lit_write_uint8_t(file, chunk->code[i]);
     }
@@ -9898,11 +9841,11 @@ static void load_chunk(LitState* state, LitEmulatedFile* file, LitModule* module
     size_t i;
     size_t count;
     uint8_t type;
-    lit_init_chunk(chunk);
+    lit_init_chunk(state, chunk);
     count = lit_read_euint32_t(file);
     chunk->code = (uint8_t*)lit_reallocate(state, NULL, 0, sizeof(uint8_t) * count);
-    chunk.m_count = count;
-    chunk->capacity = count;
+    chunk->m_count = count;
+    chunk->m_capacity = count;
     for(i = 0; i < count; i++)
     {
         chunk->code[i] = lit_read_euint8_t(file);
@@ -9925,7 +9868,7 @@ static void load_chunk(LitState* state, LitEmulatedFile* file, LitModule* module
     count = lit_read_euint32_t(file);
     chunk->constants.m_values = (LitValue*)lit_reallocate(state, NULL, 0, sizeof(LitValue) * count);
     chunk->constants.m_count = count;
-    chunk->constants.capacity = count;
+    chunk->constants.m_capacity = count;
     for(i = 0; i < count; i++)
     {
         type = lit_read_euint8_t(file);
@@ -9972,10 +9915,10 @@ void lit_save_module(LitModule* module, FILE* file)
         privates = &module->private_names->values;
         for(i = 0; i < module->private_count; i++)
         {
-            if(privates->entries[i].key != NULL)
+            if(privates->m_values[i].key != NULL)
             {
-                lit_write_string(file, privates->entries[i].key);
-                lit_write_uint16_t(file, (uint16_t)lit_value_to_number(privates->entries[i].value));
+                lit_write_string(file, privates->m_values[i].key);
+                lit_write_uint16_t(file, (uint16_t)lit_value_to_number(privates->m_values[i].value));
             }
         }
     }
@@ -10299,9 +10242,9 @@ static void mark_roots(LitVM* vm)
 static void mark_array(LitVM* vm, PCGenericArray<LitValue>* array)
 {
     size_t i;
-    for(i = 0; i < array.m_count; i++)
+    for(i = 0; i < array->m_count; i++)
     {
-        lit_mark_value(vm, array->values[i]);
+        lit_mark_value(vm, array->m_values[i]);
     }
 }
 
@@ -10594,7 +10537,7 @@ LitFunction* lit_create_function(LitState* state, LitModule* module)
 {
     LitFunction* function;
     function = ALLOCATE_OBJECT(state, LitFunction, LITTYPE_FUNCTION);
-    lit_init_chunk(&function->chunk);
+    lit_init_chunk(state, &function->chunk);
     function->name = NULL;
     function->arg_count = 0;
     function->upvalue_count = 0;
@@ -10895,9 +10838,9 @@ void lit_map_add_all(LitState* state, LitMap* from, LitMap* to)
 {
     int i;
     LitTableEntry* entry;
-    for(i = 0; i <= from->values.capacity; i++)
+    for(i = 0; i <= from->values.m_capacity; i++)
     {
-        entry = &from->values.entries[i];
+        entry = &from->values.m_values[i];
         if(entry->key != NULL)
         {
             lit_table_set(state, &to->values, entry->key, entry->value);
@@ -11173,9 +11116,9 @@ LitClass* lit_get_class_for(LitState* state, LitValue value)
 static void free_statements(LitState* state, PCGenericArray<LitStatement*>* statements)
 {
     size_t i;
-    for(i = 0; i < statements.m_count; i++)
+    for(i = 0; i < statements->m_count; i++)
     {
-        lit_free_statement(state, statements->values[i]);
+        lit_free_statement(state, statements->m_values[i]);
     }
     statements->release(state);
 }
@@ -11219,25 +11162,26 @@ LitModule* lit_compile_module(LitState* state, LitString* module_name, char* cod
             t = clock();
         }
         statements.init(state);
-        if(lit_parse(state->parser, module_name->chars, code, &statements))
+        if(lit_parse(state->parser, module_name->chars, code, statements))
         {
             free_statements(state, &statements);
             return NULL;
         }
-        if(measure_compilation_time)
+        fprintf(stderr, "statements.m_values(%d items)[0]=%p\n", statements.m_count, statements.m_values[0]);
+        //if(measure_compilation_time)
         {
             printf("Parsing:        %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
             t = clock();
         }
         lit_optimize(state->optimizer, &statements);
-        if(measure_compilation_time)
+        //if(measure_compilation_time)
         {
             printf("Optimization:   %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
             t = clock();
         }
-        module = lit_emit(state->emitter, &statements, module_name);
+        module = lit_emit(state->emitter, statements, module_name);
         free_statements(state, &statements);
-        if(measure_compilation_time)
+        //if(measure_compilation_time)
         {
             printf("Emitting:       %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
             printf("\nTotal:          %gms\n-----------------------\n",
@@ -11511,7 +11455,7 @@ static LitTableEntry* find_entry(LitTableEntry* entries, int capacity, LitString
 
 static void adjust_capacity(LitState* state, LitTable* table, int capacity)
 {
-    int i;
+    size_t i;
     LitTableEntry* destination;
     LitTableEntry* entries;
     LitTableEntry* entry;
@@ -11521,10 +11465,14 @@ static void adjust_capacity(LitState* state, LitTable* table, int capacity)
         entries[i].key = NULL;
         entries[i].value = NULL_VALUE;
     }
-    table.m_count = 0;
-    for(i = 0; i <= table->capacity; i++)
+    table->m_count = 0;
+    for(i = 0; i <= table->m_capacity; i++)
     {
-        entry = &table->entries[i];
+        entry = &table->m_values[i];
+        if(entry == NULL)
+        {
+            continue;
+        }
         if(entry->key == NULL)
         {
             continue;
@@ -11532,11 +11480,11 @@ static void adjust_capacity(LitState* state, LitTable* table, int capacity)
         destination = find_entry(entries, capacity, entry->key);
         destination->key = entry->key;
         destination->value = entry->value;
-        table.m_count++;
+        table->m_count++;
     }
-    LIT_FREE_ARRAY(state, LitTableEntry, table->entries, table->capacity + 1);
-    table->capacity = capacity;
-    table->entries = entries;
+    LIT_FREE_ARRAY(state, LitTableEntry, table->m_values, table->m_capacity + 1);
+    table->m_capacity = capacity;
+    table->m_values = entries;
 }
 
 bool lit_table_set(LitState* state, LitTable* table, LitString* key, LitValue value)
@@ -11544,16 +11492,16 @@ bool lit_table_set(LitState* state, LitTable* table, LitString* key, LitValue va
     bool is_new;
     int capacity;
     LitTableEntry* entry;
-    if(table.m_count + 1 > (table->capacity + 1) * TABLE_MAX_LOAD)
+    if(table->m_count + 1 > (table->m_capacity + 1) * TABLE_MAX_LOAD)
     {
-        capacity = LIT_GROW_CAPACITY(table->capacity + 1) - 1;
+        capacity = LIT_GROW_CAPACITY(table->m_capacity + 1) - 1;
         adjust_capacity(state, table, capacity);
     }
-    entry = find_entry(table->entries, table->capacity, key);
+    entry = find_entry(table->m_values, table->m_capacity, key);
     is_new = entry->key == NULL;
     if(is_new && IS_NULL(entry->value))
     {
-        table.m_count++;
+        table->m_count++;
     }
     entry->key = key;
     entry->value = value;
@@ -11563,11 +11511,11 @@ bool lit_table_set(LitState* state, LitTable* table, LitString* key, LitValue va
 bool lit_table_get(LitTable* table, LitString* key, LitValue* value)
 {
     LitTableEntry* entry;
-    if(table.m_count == 0)
+    if(table->m_count == 0)
     {
         return false;
     }
-    entry = find_entry(table->entries, table->capacity, key);
+    entry = find_entry(table->m_values, table->m_capacity, key);
     if(entry->key == NULL)
     {
         return false;
@@ -11579,11 +11527,11 @@ bool lit_table_get(LitTable* table, LitString* key, LitValue* value)
 bool lit_table_get_slot(LitTable* table, LitString* key, LitValue** value)
 {
     LitTableEntry* entry;
-    if(table.m_count == 0)
+    if(table->m_count == 0)
     {
         return false;
     }
-    entry = find_entry(table->entries, table->capacity, key);
+    entry = find_entry(table->m_values, table->m_capacity, key);
     if(entry->key == NULL)
     {
         return false;
@@ -11595,11 +11543,11 @@ bool lit_table_get_slot(LitTable* table, LitString* key, LitValue** value)
 bool lit_table_delete(LitTable* table, LitString* key)
 {
     LitTableEntry* entry;
-    if(table.m_count == 0)
+    if(table->m_count == 0)
     {
         return false;
     }
-    entry = find_entry(table->entries, table->capacity, key);
+    entry = find_entry(table->m_values, table->m_capacity, key);
     if(entry->key == NULL)
     {
         return false;
@@ -11613,14 +11561,14 @@ LitString* lit_table_find_string(LitTable* table, const char* chars, size_t leng
 {
     uint32_t index;
     LitTableEntry* entry;
-    if(table.m_count == 0)
+    if(table->m_count == 0)
     {
         return NULL;
     }
-    index = hash % table->capacity;
+    index = hash % table->m_capacity;
     while(true)
     {
-        entry = &table->entries[index];
+        entry = &table->m_values[index];
         if(entry->key == NULL)
         {
             if(IS_NULL(entry->value))
@@ -11632,7 +11580,7 @@ LitString* lit_table_find_string(LitTable* table, const char* chars, size_t leng
         {
             return entry->key;
         }
-        index = (index + 1) % table->capacity;
+        index = (index + 1) % table->m_capacity;
     }
 }
 
@@ -11640,9 +11588,9 @@ void lit_table_add_all(LitState* state, LitTable* from, LitTable* to)
 {
     int i;
     LitTableEntry* entry;
-    for(i = 0; i <= from->capacity; i++)
+    for(i = 0; i <= from->m_capacity; i++)
     {
-        entry = &from->entries[i];
+        entry = &from->m_values[i];
         if(entry->key != NULL)
         {
             lit_table_set(state, to, entry->key, entry->value);
@@ -11654,9 +11602,9 @@ void lit_table_remove_white(LitTable* table)
 {
     int i;
     LitTableEntry* entry;
-    for(i = 0; i <= table->capacity; i++)
+    for(i = 0; i <= table->m_capacity; i++)
     {
-        entry = &table->entries[i];
+        entry = &table->m_values[i];
         if(entry->key != NULL && !entry->key->object.marked)
         {
             lit_table_delete(table, entry->key);
@@ -11668,9 +11616,9 @@ void lit_mark_table(LitVM* vm, LitTable* table)
 {
     int i;
     LitTableEntry* entry;
-    for(i = 0; i <= table->capacity; i++)
+    for(i = 0; i <= table->m_capacity; i++)
     {
-        entry = &table->entries[i];
+        entry = &table->m_values[i];
         lit_mark_object(vm, (LitObject*)entry->key);
         lit_mark_value(vm, entry->value);
     }
@@ -12051,9 +11999,9 @@ static void print_map(LitState* state, LitWriter* wr, LitMap* map, size_t size)
     had_before = false;
     if(size > 0)
     {
-        for(i = 0; i < (size_t)map->values.capacity; i++)
+        for(i = 0; i < (size_t)map->values.m_capacity; i++)
         {
-            entry = &map->values.entries[i];
+            entry = &map->values.m_values[i];
             if(entry->key != NULL)
             {
                 if(had_before)
@@ -12622,7 +12570,7 @@ void lit_init_vm(LitState* state, LitVM* vm)
 
 void lit_free_vm(LitVM* vm)
 {
-    lit_free_table(vm->state, &vm->strings);
+    vm->strings.release(vm->state);
     lit_free_objects(vm->state, vm->objects);
     reset_vm(vm->state, vm);
 }
@@ -12832,7 +12780,7 @@ static bool call(LitVM* vm, LitFunction* function, LitClosure* closure, uint8_t 
             array = lit_create_array(vm->state);
             vararg_count = arg_count - function_arg_count + 1;
             lit_push_root(vm->state, (LitObject*)array);
-            array->values.reserve(vararg_count);
+            array->values.reserve(vararg_count, NULL_VALUE);
             lit_pop_root(vm->state);
             for(i = 0; i < vararg_count; i++)
             {
@@ -13862,9 +13810,9 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             op_case(PUSH_ARRAY_ELEMENT)
             {
                 values = &AS_ARRAY(vm_peek(fiber, 1))->values;
-                arindex = values.m_count;
-                values->reserve(arindex + 1);
-                values->values[arindex] = vm_peek(fiber, 0);
+                arindex = values->m_count;
+                values->reserve(arindex + 1, NULL_VALUE);
+                values->m_values[arindex] = vm_peek(fiber, 0);
                 vm_drop(fiber);
                 continue;
             }
@@ -14014,13 +13962,13 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                     continue;
                 }
                 values = &AS_ARRAY(slot)->values;
-                lit_ensure_fiber_stack(state, fiber, values.m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
-                for(i = 0; i < values.m_count; i++)
+                lit_ensure_fiber_stack(state, fiber, values->m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
+                for(i = 0; i < values->m_count; i++)
                 {
-                    vm_push(fiber, values->values[i]);
+                    vm_push(fiber, values->m_values[i]);
                 }
                 // Hot-bytecode patching, increment the amount of arguments to OP_CALL
-                ip[1] = ip[1] + values.m_count - 1;
+                ip[1] = ip[1] + values->m_count - 1;
                 continue;
             }
 
@@ -14158,25 +14106,25 @@ LitValue lit_array_removeat(LitArray* array, size_t index)
     LitValue value;
     PCGenericArray<LitValue>* values;
     values = &array->values;
-    count = values.m_count;
+    count = values->m_count;
     if(index >= count)
     {
         return NULL_VALUE;
     }
-    value = values->values[index];
+    value = values->m_values[index];
     if(index == count - 1)
     {
-        values->values[index] = NULL_VALUE;
+        values->m_values[index] = NULL_VALUE;
     }
     else
     {
-        for(i = index; i < values.m_count - 1; i++)
+        for(i = index; i < values->m_count - 1; i++)
         {
-            values->values[i] = values->values[i + 1];
+            values->m_values[i] = values->m_values[i + 1];
         }
-        values->values[count - 1] = NULL_VALUE;
+        values->m_values[count - 1] = NULL_VALUE;
     }
-    values.m_count--;
+    values->m_count--;
     return value;
 }
 
@@ -14246,10 +14194,10 @@ static LitValue objfn_array_subscript(LitVM* vm, LitValue instance, size_t argc,
         index = lit_value_to_number(argv[0]);
         if(index < 0)
         {
-            index = fmax(0, values.m_count + index);
+            index = fmax(0, values->m_count + index);
         }
-        values->reserve(index + 1);
-        return values->values[index] = argv[1];
+        values->reserve(index + 1, NULL_VALUE);
+        return values->m_values[index] = argv[1];
     }
     if(!IS_NUMBER(argv[0]))
     {
@@ -14265,13 +14213,13 @@ static LitValue objfn_array_subscript(LitVM* vm, LitValue instance, size_t argc,
     index = lit_value_to_number(argv[0]);
     if(index < 0)
     {
-        index = fmax(0, values.m_count + index);
+        index = fmax(0, values->m_count + index);
     }
-    if(values->capacity <= (size_t)index)
+    if(values->m_capacity <= (size_t)index)
     {
         return NULL_VALUE;
     }
-    return values->values[index];
+    return values->m_values[index];
 }
 
 bool lit_compare_values(LitState* state, const LitValue a, const LitValue b)
@@ -14346,22 +14294,22 @@ static LitValue objfn_array_insert(LitVM* vm, LitValue instance, size_t argc, Li
 
     if(index < 0)
     {
-        index = fmax(0, values.m_count + index);
+        index = fmax(0, values->m_count + index);
     }
     value = argv[1];
-    if((int)values.m_count <= index)
+    if((int)values->m_count <= index)
     {
-        values->reserve(index + 1);
+        values->reserve(index + 1, NULL_VALUE);
     }
     else
     {
-        values->reserve(values.m_count + 1);
-        for(i = values.m_count - 1; i > index; i--)
+        values->reserve(values->m_count + 1, NULL_VALUE);
+        for(i = values->m_count - 1; i > index; i--)
         {
-            values->values[i] = values->values[i - 1];
+            values->m_values[i] = values->m_values[i - 1];
         }
     }
-    values->values[index] = value;
+    values->m_values[index] = value;
     return NULL_VALUE;
 }
 
@@ -14459,11 +14407,11 @@ static LitValue objfn_array_iteratorvalue(LitVM* vm, LitValue instance, size_t a
     PCGenericArray<LitValue>* values;
     index = lit_check_number(vm, argv, argc, 0);
     values = &AS_ARRAY(instance)->values;
-    if(values.m_count <= index)
+    if(values->m_count <= index)
     {
         return NULL_VALUE;
     }
-    return values->values[index];
+    return values->m_values[index];
 }
 
 static LitValue objfn_array_join(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14487,10 +14435,10 @@ static LitValue objfn_array_join(LitVM* vm, LitValue instance, size_t argc, LitV
     }
     values = &AS_ARRAY(instance)->values;
     //LitString* strings[values.m_count];
-    strings = LIT_ALLOCATE(vm->state, LitString*, values.m_count+1);
-    for(i = 0; i < values.m_count; i++)
+    strings = LIT_ALLOCATE(vm->state, LitString*, values->m_count+1);
+    for(i = 0; i < values->m_count; i++)
     {
-        string = lit_to_string(vm->state, values->values[i]);
+        string = lit_to_string(vm->state, values->m_values[i]);
         strings[i] = string;
         length += lit_string_length(string);
         if(joinee != NULL)
@@ -14506,7 +14454,7 @@ static LitValue objfn_array_join(LitVM* vm, LitValue instance, size_t argc, LitV
     {
         jlen = lit_string_length(joinee);
     }
-    for(i = 0; i < values.m_count; i++)
+    for(i = 0; i < values->m_count; i++)
     {
         string = strings[i];
         memcpy(chars + index, string->chars, lit_string_length(string));
@@ -14532,11 +14480,11 @@ static LitValue objfn_array_sort(LitVM* vm, LitValue instance, size_t argc, LitV
     values = &AS_ARRAY(instance)->values;
     if(argc == 1 && lit_is_callable_function(argv[0]))
     {
-        util_custom_quick_sort(vm, values->values, values.m_count, argv[0]);
+        util_custom_quick_sort(vm, values->m_values, values->m_count, argv[0]);
     }
     else
     {
-        util_basic_quick_sort(vm->state, values->values, values.m_count);
+        util_basic_quick_sort(vm->state, values->m_values, values->m_count);
     }
     return instance;
 }
@@ -14554,12 +14502,12 @@ static LitValue objfn_array_clone(LitVM* vm, LitValue instance, size_t argc, Lit
     values = &AS_ARRAY(instance)->values;
     array = lit_create_array(state);
     new_values = &array->values;
-    new_values->reserve(values->m_count);
+    new_values->reserve(values->m_count, NULL_VALUE);
     // lit_values_ensure_size sets the count to max of previous count (0 in this case) and new count, so we have to reset it
-    new_values.m_count = 0;
-    for(i = 0; i < values.m_count; i++)
+    new_values->m_count = 0;
+    for(i = 0; i < values->m_count; i++)
     {
-        new_values.push(values->values[i]);
+        new_values->push(values->m_values[i]);
     }
     return OBJECT_VALUE(array);
 }
@@ -14585,12 +14533,12 @@ static LitValue objfn_array_tostring(LitVM* vm, LitValue instance, size_t argc, 
     self = AS_ARRAY(instance);
     values = &self->values;
     state = vm->state;
-    if(values.m_count == 0)
+    if(values->m_count == 0)
     {
         return OBJECT_CONST_STRING(state, "[]");
     }
-    has_more = values.m_count > LIT_CONTAINER_OUTPUT_MAX;
-    value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values.m_count;
+    has_more = values->m_count > LIT_CONTAINER_OUTPUT_MAX;
+    value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->m_count;
     values_converted = LIT_ALLOCATE(vm->state, LitString*, value_amount+1);
     // "[ ]"
     olength = 3;
@@ -14603,7 +14551,7 @@ static LitValue objfn_array_tostring(LitVM* vm, LitValue instance, size_t argc, 
     buffer = sdscat(buffer, "[");
     for(i = 0; i < value_amount; i++)
     {
-        val = values->values[(has_more && i == value_amount - 1) ? values.m_count - 1 : i];
+        val = values->m_values[(has_more && i == value_amount - 1) ? values->m_count - 1 : i];
         if(IS_ARRAY(val) && (AS_ARRAY(val) == self))
         {
             stringified = lit_string_copy(state, recstring, strlen(recstring));
@@ -14695,7 +14643,7 @@ static LitValue objfn_class_iterator(LitVM* vm, LitValue instance, size_t argc, 
     LIT_ENSURE_ARGS(1);
     klass = AS_CLASS(instance);
     index = argv[0] == NULL_VALUE ? -1 : lit_value_to_number(argv[0]);
-    mthcap = (int)klass->methods.capacity;
+    mthcap = (int)klass->methods.m_capacity;
     fields = index >= mthcap;
     value = util_table_iterator(fields ? &klass->static_fields : &klass->methods, fields ? index - mthcap : index);
     if(value == -1)
@@ -14725,7 +14673,7 @@ static LitValue objfn_class_iteratorvalue(LitVM* vm, LitValue instance, size_t a
     LitClass* klass;
     index = lit_check_number(vm, argv, argc, 0);
     klass = AS_CLASS(instance);
-    mthcap = klass->methods.capacity;
+    mthcap = klass->methods.m_capacity;
     fields = index >= mthcap;
     return util_table_iterator_key(fields ? &klass->static_fields : &klass->methods, fields ? index - mthcap : index);
 }
@@ -14970,7 +14918,7 @@ void util_run_fiber(LitVM* vm, LitFiber* fiber, LitValue* argv, size_t argc, boo
             vararg_count = argc - objfn_function_arg_count + 1;
             if(vararg_count > 0)
             {
-                array->values.reserve(vararg_count);
+                array->values.reserve(vararg_count, NULL_VALUE);
                 for(i = 0; i < vararg_count; i++)
                 {
                     array->values.m_values[i] = argv[i + objfn_function_arg_count - 1];
@@ -15096,8 +15044,8 @@ bool util_attempt_to_require(LitVM* vm, LitValue* argv, size_t argc, const char*
     modname = LIT_ALLOCATE(vm->state, char, length+5);
     //char modnamedotted[length + 5];
     modnamedotted = LIT_ALLOCATE(vm->state, char, length+5);
-    memcpy((void*)modnamedotted, path, length);
-    memcpy((void*)modnamedotted + length, ".lit", 4);
+    memcpy(modnamedotted, path, length);
+    memcpy(modnamedotted + length, ".lit", 4);
     modnamedotted[length + 4] = '\0';
     for(i = 0; i < length + 5; i++)
     {
@@ -15135,8 +15083,8 @@ bool util_attempt_to_require(LitVM* vm, LitValue* argv, size_t argc, const char*
                         {
                             char dir_path[length + name_length - 2];
                             dir_path[length + name_length - 3] = '\0';
-                            memcpy((void*)dir_path, path, length);
-                            memcpy((void*)dir_path + length + 1, name, name_length - 4);
+                            memcpy(dir_path, path, length);
+                            memcpy(dir_path + length + 1, name, name_length - 4);
                             dir_path[length] = '.';
                             if(!util_attempt_to_require(vm, argv + argc, 0, dir_path, false, false))
                             {
@@ -15162,8 +15110,8 @@ bool util_attempt_to_require(LitVM* vm, LitValue* argv, size_t argc, const char*
         {
             char dir_name[length + 6];
             dir_name[length + 5] = '\0';
-            memcpy((void*)dir_name, modname, length);
-            memcpy((void*)dir_name + length, ".init", 5);
+            memcpy(dir_name, modname, length);
+            memcpy(dir_name + length, ".init", 5);
             if(util_attempt_to_require(vm, argv, argc, dir_name, ignore_previous, false))
             {
                 return true;
@@ -15200,7 +15148,7 @@ bool util_attempt_to_require(LitVM* vm, LitValue* argv, size_t argc, const char*
     if(!util_test_file_exists(modname))
     {
         // .lit -> .lbc
-        memcpy((void*)modname + length + 2, "bc", 2);
+        memcpy(modname + length + 2, "bc", 2);
         if(!util_test_file_exists(modname))
         {
             return false;
@@ -15231,8 +15179,8 @@ bool util_attempt_to_require_combined(LitVM* vm, LitValue* argv, size_t argc, co
     b_length = strlen(b);
     total_length = a_length + b_length + 1;
     path = LIT_ALLOCATE(vm->state, char, total_length+1);
-    memcpy((void*)path, a, a_length);
-    memcpy((void*)path + a_length + 1, b, b_length);
+    memcpy(path, a, a_length);
+    memcpy(path + a_length + 1, b, b_length);
     path[a_length] = '.';
     path[total_length] = '\0';
     rt = util_attempt_to_require(vm, argv, argc, (const char*)&path, ignore_previous, false);
@@ -16257,18 +16205,18 @@ void lit_open_gc_library(LitState* state)
 
 int util_table_iterator(LitTable* table, int number)
 {
-    if(table.m_count == 0)
+    if(table->m_count == 0)
     {
         return -1;
     }
-    if(number >= (int)table->capacity)
+    if(number >= (int)table->m_capacity)
     {
         return -1;
     }
     number++;
-    for(; number < table->capacity; number++)
+    for(; number < table->m_capacity; number++)
     {
-        if(table->entries[number].key != NULL)
+        if(table->m_values[number].key != NULL)
         {
             return number;
         }
@@ -16279,11 +16227,11 @@ int util_table_iterator(LitTable* table, int number)
 
 LitValue util_table_iterator_key(LitTable* table, int index)
 {
-    if(table->capacity <= index)
+    if(table->m_capacity <= index)
     {
         return NULL_VALUE;
     }
-    return OBJECT_VALUE(table->entries[index].key);
+    return OBJECT_VALUE(table->m_values[index].key);
 }
 
 static LitValue objfn_map_constructor(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16403,13 +16351,13 @@ static LitValue objfn_map_tostring(LitVM* vm, LitValue instance, size_t argc, Li
     state = vm->state;
     map = AS_MAP(instance);
     values = &map->values;
-    if(values.m_count == 0)
+    if(values->m_count == 0)
     {
         return OBJECT_CONST_STRING(state, "{}");
     }
     has_wrapper = map->index_fn != NULL;
-    has_more = values.m_count > LIT_CONTAINER_OUTPUT_MAX;
-    value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values.m_count;
+    has_more = values->m_count > LIT_CONTAINER_OUTPUT_MAX;
+    value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->m_count;
     values_converted = LIT_ALLOCATE(vm->state, LitString*, value_amount+1);
     keys = LIT_ALLOCATE(vm->state, LitString*, value_amount+1);
     olength = 3;
@@ -16421,7 +16369,7 @@ static LitValue objfn_map_tostring(LitVM* vm, LitValue instance, size_t argc, Li
     index = 0;
     do
     {
-        entry = &values->entries[index++];
+        entry = &values->m_values[index++];
         if(entry->key != NULL)
         {
             // Special hidden key
@@ -16808,7 +16756,7 @@ static LitValue random_pick(LitVM* vm, LitValue instance, size_t argc, LitValue*
         {
             LitMap* map = AS_MAP(argv[0]);
             size_t length = map->values.m_count;
-            size_t capacity = map->values.capacity;
+            size_t m_capacity = map->values.m_capacity;
 
             if(length == 0)
             {
@@ -16818,13 +16766,13 @@ static LitValue random_pick(LitVM* vm, LitValue instance, size_t argc, LitValue*
             size_t target = value % length;
             size_t index = 0;
 
-            for(size_t i = 0; i < capacity; i++)
+            for(size_t i = 0; i < m_capacity; i++)
             {
-                if(map->values.entries[i].key != NULL)
+                if(map->values.m_values[i].key != NULL)
                 {
                     if(index == target)
                     {
-                        return map->values.entries[i].value;
+                        return map->values.m_values[i].value;
                     }
 
                     index++;
@@ -17022,12 +16970,12 @@ static void fillmap(LitState* state, LitMap* destmap, LitTable* fromtbl, bool in
     LitString* key;
     LitValue val;
     (void)includenullkeys;
-    for(i=0; i<(size_t)(fromtbl.m_count); i++)
+    for(i=0; i<(size_t)(fromtbl->m_count); i++)
     {
-        key = fromtbl->entries[i].key;
+        key = fromtbl->m_values[i].key;
         if(key != NULL)
         {
-            val = fromtbl->entries[i].value;
+            val = fromtbl->m_values[i].value;
             lit_map_set(state, destmap, key, OBJECT_VALUE(val));
         }
     }
