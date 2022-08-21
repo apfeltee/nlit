@@ -1,6 +1,6 @@
 
 #pragma once
-#include <stdbool.h>
+#include <string_view>
 #include <stddef.h>
 #include <stdint.h>
 #include <assert.h>
@@ -248,19 +248,9 @@
 
 
 #define lit_as_bool(v) ((v) == TRUE_VALUE)
-#define lit_as_string(value) ((LitString*)LitObject::asObject(value))
-#define lit_as_cstring(value) (lit_as_string(value)->chars)
-#define AS_FUNCTION(value) ((LitFunction*)LitObject::asObject(value))
-#define AS_NATIVE_FUNCTION(value) ((LitNativeFunction*)LitObject::asObject(value))
-#define AS_NATIVE_PRIMITIVE(value) ((LitNativePrimFunction*)LitObject::asObject(value))
-#define AS_NATIVE_METHOD(value) ((LitNativeMethod*)LitObject::asObject(value))
-#define AS_PRIMITIVE_METHOD(value) ((LitPrimitiveMethod*)LitObject::asObject(value))
-#define AS_MODULE(value) ((LitModule*)LitObject::asObject(value))
-#define AS_CLOSURE(value) ((LitClosure*)LitObject::asObject(value))
+#define lit_as_cstring(value) (LitObject::as<LitString>(value)->chars)
 #define AS_UPVALUE(value) ((LitUpvalue*)LitObject::asObject(value))
 #define AS_CLASS(value) ((LitClass*)LitObject::asObject(value))
-#define AS_INSTANCE(value) ((LitInstance*)LitObject::asObject(value))
-#define AS_ARRAY(value) ((LitArray*)LitObject::asObject(value))
 #define AS_MAP(value) ((LitMap*)LitObject::asObject(value))
 #define AS_BOUND_METHOD(value) ((LitBoundMethod*)LitObject::asObject(value))
 #define AS_USERDATA(value) ((LitUserdata*)LitObject::asObject(value))
@@ -269,7 +259,6 @@
 #define AS_FIBER(value) ((LitFiber*)LitObject::asObject(value))
 #define AS_REFERENCE(value) ((LitReference*)LitObject::asObject(value))
 
-#define ALLOCATE_OBJECT(state, type, objectType) (type*)LitObject::make(state, sizeof(type), objectType)
 #define OBJECT_CONST_STRING(state, text) LitString::copy((state), (text), strlen(text))->asValue()
 #define CONST_STRING(state, text) LitString::copy((state), (text), strlen(text))
 
@@ -277,123 +266,168 @@
 
 
 
-#define LIT_GET_FIELD(id) AS_INSTANCE(instance)->fields.getField(vm->state, id)
-#define LIT_GET_MAP_FIELD(id) AS_INSTANCE(instance).fields.getField(vm->state, id))
-#define LIT_SET_FIELD(id, value) AS_INSTANCE(instance)->fields.setField(vm->state, id, value)
-#define LIT_SET_MAP_FIELD(id, value) lit_set_map_field(vm->state, &AS_INSTANCE(instance)->fields, id, value)
+#define LIT_GET_FIELD(id) LitObject::as<LitInstance>(instance)->fields.getField(vm->state, id)
+#define LIT_GET_MAP_FIELD(id) LitObject::as<LitInstance>(instance).fields.getField(vm->state, id))
+#define LIT_SET_FIELD(id, value) LitObject::as<LitInstance>(instance)->fields.setField(id, value)
+#define LIT_SET_MAP_FIELD(id, value) lit_set_map_field(vm->state, &LitObject::as<LitInstance>(instance)->fields, id, value)
 
 
-#define LIT_ENSURE_ARGS(count)                                                   \
-    if(argc != count)                                                       \
-    {                                                                            \
+#define LIT_ENSURE_ARGS(count) \
+    if(argc != count) \
+    { \
         lit_runtime_error(vm, "expected %i argument, got %i", count, argc); \
-        return NULL_VALUE;                                                       \
+        return NULL_VALUE; \
     }
 
-#define LIT_ENSURE_MIN_ARGS(count)                                                       \
-    if(argc < count)                                                                \
-    {                                                                                    \
+#define LIT_ENSURE_MIN_ARGS(count) \
+    if(argc < count) \
+    { \
         lit_runtime_error(vm, "expected minimum %i argument, got %i", count, argc); \
-        return NULL_VALUE;                                                               \
+        return NULL_VALUE; \
     }
 
-#define LIT_ENSURE_MAX_ARGS(count)                                                       \
-    if(argc > count)                                                                \
-    {                                                                                    \
+#define LIT_ENSURE_MAX_ARGS(count) \
+    if(argc > count) \
+    { \
         lit_runtime_error(vm, "expected maximum %i argument, got %i", count, argc); \
-        return NULL_VALUE;                                                               \
+        return NULL_VALUE; \
     }
 
 
-#define LIT_BEGIN_CLASS(name)                                               \
-    {                                                                       \
+#define LIT_BEGIN_CLASS(name) \
+    { \
         LitString* klass_name = LitString::copy(state, name, strlen(name)); \
         LitClass* klass = lit_create_class(state, klass_name);
 
-#define LIT_INHERIT_CLASS(super_klass)                                \
-    klass->super = (LitClass*)super_klass;                            \
-    if(klass->init_method == nullptr)                                    \
-    {                                                                 \
-        klass->init_method = super_klass->init_method;                \
-    }                                                                 \
+#define LIT_INHERIT_CLASS(super_klass) \
+    klass->super = (LitClass*)super_klass; \
+    if(klass->init_method == nullptr) \
+    { \
+        klass->init_method = super_klass->init_method; \
+    } \
     super_klass->methods.addAll(&klass->methods); \
     super_klass->static_fields.addAll(&klass->static_fields);
 
-#define LIT_END_CLASS_IGNORING()                            \
+#define LIT_END_CLASS_IGNORING() \
     lit_set_global(state, klass_name, klass->asValue()); \
     }
 
 
-#define LIT_END_CLASS()                                     \
+#define LIT_END_CLASS() \
     lit_set_global(state, klass_name, klass->asValue()); \
     if(klass->super == nullptr) \
-    {                                                       \
-        LIT_INHERIT_CLASS(state->objectvalue_class);             \
-    }                                                       \
+    { \
+        LIT_INHERIT_CLASS(state->objectvalue_class); \
+    } \
     }
 
 
-#define LIT_BIND_STATIC_METHOD(name, method)                                                                        \
-    {                                                                                                               \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                 \
-        klass->static_fields.set(nm, lit_create_native_method(state, method, nm)->asValue()); \
+
+#define LIT_BIND_STATIC_METHOD(name, method) \
+    { \
+        klass->setStaticMethod(name, method); \
     }
 
-#define LIT_BIND_STATIC_PRIMITIVE(name, method)                                                                        \
-    {                                                                                                                  \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                    \
-        klass->static_fields.set(nm, lit_create_primitive_method(state, method, nm)->asValue()); \
+#define LIT_BIND_STATIC_PRIMITIVE(name, method) \
+    { \
+        klass->setStaticPrimitive(name, method); \
     }
 
-#define LIT_SET_STATIC_FIELD(name, field)                           \
-    {                                                               \
+#define LIT_SET_STATIC_FIELD(name, field) \
+    { \
+        klass->static_fields.setField(name, field); \
+    }
+
+#define LIT_BIND_SETTER(name, setter) \
+    { \
         LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->static_fields.set(nm, field);     \
+        klass->methods.set(nm, \
+                      LitField::make(state, nullptr, (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
+    }
+#define LIT_BIND_GETTER(name, getter) \
+    { \
+        klass->setGetter(name, getter); \
     }
 
-#define LIT_BIND_SETTER(name, setter)                                                                                        \
-    {                                                                                                                        \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
-        klass->methods.set(nm,                                                                            \
-                      lit_create_field(state, nullptr, (LitObject*)lit_create_native_method(state, setter, nm))->asValue()); \
-    }
-#define LIT_BIND_GETTER(name, getter)                                                                                        \
-    {                                                                                                                        \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
-        klass->methods.set(nm,                                                                            \
-                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), nullptr)->asValue()); \
-    }
-#define LIT_BIND_FIELD(name, getter, setter)                                                                        \
-    {                                                                                                               \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                 \
-        klass->methods.set(nm,                                                                   \
-                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), \
-                                                    (LitObject*)lit_create_native_method(state, setter, nm))->asValue());     \
+#define LIT_BIND_FIELD(name, getter, setter) \
+    { \
+        LitString* nm = LitString::copy(state, name, strlen(name)); \
+        klass->methods.set(nm, \
+                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), \
+                                                    (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
     }
 
-#define LIT_BIND_STATIC_SETTER(name, setter)                                                                                 \
-    {                                                                                                                        \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
-        klass->static_fields.set(nm,                                                                      \
-                      lit_create_field(state, nullptr, (LitObject*)lit_create_native_method(state, setter, nm))->asValue()); \
+#define LIT_BIND_STATIC_SETTER(name, setter) \
+    { \
+        LitString* nm = LitString::copy(state, name, strlen(name)); \
+        klass->static_fields.set(nm, \
+                      LitField::make(state, nullptr, (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
     }
-#define LIT_BIND_STATIC_GETTER(name, getter)                                                                                 \
-    {                                                                                                                        \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
-        klass->static_fields.set(nm,                                                                      \
-                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), nullptr)->asValue()); \
+#define LIT_BIND_STATIC_GETTER(name, getter) \
+    { \
+        LitString* nm = LitString::copy(state, name, strlen(name)); \
+        klass->static_fields.set(nm, \
+                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), nullptr)->asValue()); \
     }
-#define LIT_BIND_STATIC_FIELD(name, getter, setter)                                                                 \
-    {                                                                                                               \
-        LitString* nm = LitString::copy(state, name, strlen(name));                                                 \
-        klass->static_fields.set(nm,                                                             \
-                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), \
-                                                    (LitObject*)lit_create_native_method(state, setter, nm))->asValue());     \
+#define LIT_BIND_STATIC_FIELD(name, getter, setter) \
+    { \
+        LitString* nm = LitString::copy(state, name, strlen(name)); \
+        klass->static_fields.set(nm, \
+                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), \
+                                                    (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
     }
 
 
+enum class LitError
+{
+    // Preprocessor errors
+    LITERROR_UNCLOSED_MACRO,
+    LITERROR_UNKNOWN_MACRO,
 
-typedef uint64_t LitValue;
+    // Scanner errors
+    LITERROR_UNEXPECTED_CHAR,
+    LITERROR_UNTERMINATED_STRING,
+    LITERROR_INVALID_ESCAPE_CHAR,
+    LITERROR_INTERPOLATION_NESTING_TOO_DEEP,
+    LITERROR_NUMBER_IS_TOO_BIG,
+    LITERROR_CHAR_EXPECTATION_UNMET,
+
+    // Parser errors
+    LITERROR_EXPECTATION_UNMET,
+    LITERROR_INVALID_ASSIGMENT_TARGET,
+    LITERROR_TOO_MANY_FUNCTION_ARGS,
+    LITERROR_MULTIPLE_ELSE_BRANCHES,
+    LITERROR_VAR_MISSING_IN_FORIN,
+    LITERROR_NO_GETTER_AND_SETTER,
+    LITERROR_STATIC_OPERATOR,
+    LITERROR_SELF_INHERITED_CLASS,
+    LITERROR_STATIC_FIELDS_AFTER_METHODS,
+    LITERROR_MISSING_STATEMENT,
+    LITERROR_EXPECTED_EXPRESSION,
+    LITERROR_DEFAULT_ARG_CENTRED,
+
+    // Emitter errors
+    LITERROR_TOO_MANY_CONSTANTS,
+    LITERROR_TOO_MANY_PRIVATES,
+    LITERROR_VAR_REDEFINED,
+    LITERROR_TOO_MANY_LOCALS,
+    LITERROR_TOO_MANY_UPVALUES,
+    LITERROR_VARIABLE_USED_IN_INIT,
+    LITERROR_JUMP_TOO_BIG,
+    LITERROR_NO_SUPER,
+    LITERROR_THIS_MISSUSE,
+    LITERROR_SUPER_MISSUSE,
+    LITERROR_UNKNOWN_EXPRESSION,
+    LITERROR_UNKNOWN_STATEMENT,
+    LITERROR_LOOP_JUMP_MISSUSE,
+    LITERROR_RETURN_FROM_CONSTRUCTOR,
+    LITERROR_STATIC_CONSTRUCTOR,
+    LITERROR_CONSTANT_MODIFIED,
+    LITERROR_INVALID_REFERENCE_TARGET,
+
+    LITERROR_TOTAL
+};
+
 
 enum LitOpCode
 {
@@ -526,55 +560,7 @@ enum LitOptimization
     LITOPTSTATE_TOTAL
 };
 
-enum LitError
-{
-    // Preprocessor errors
-    LITERROR_UNCLOSED_MACRO,
-    LITERROR_UNKNOWN_MACRO,
 
-    // Scanner errors
-    LITERROR_UNEXPECTED_CHAR,
-    LITERROR_UNTERMINATED_STRING,
-    LITERROR_INVALID_ESCAPE_CHAR,
-    LITERROR_INTERPOLATION_NESTING_TOO_DEEP,
-    LITERROR_NUMBER_IS_TOO_BIG,
-    LITERROR_CHAR_EXPECTATION_UNMET,
-
-    // Parser errors
-    LITERROR_EXPECTATION_UNMET,
-    LITERROR_INVALID_ASSIGMENT_TARGET,
-    LITERROR_TOO_MANY_FUNCTION_ARGS,
-    LITERROR_MULTIPLE_ELSE_BRANCHES,
-    LITERROR_VAR_MISSING_IN_FORIN,
-    LITERROR_NO_GETTER_AND_SETTER,
-    LITERROR_STATIC_OPERATOR,
-    LITERROR_SELF_INHERITED_CLASS,
-    LITERROR_STATIC_FIELDS_AFTER_METHODS,
-    LITERROR_MISSING_STATEMENT,
-    LITERROR_EXPECTED_EXPRESSION,
-    LITERROR_DEFAULT_ARG_CENTRED,
-
-    // Emitter errors
-    LITERROR_TOO_MANY_CONSTANTS,
-    LITERROR_TOO_MANY_PRIVATES,
-    LITERROR_VAR_REDEFINED,
-    LITERROR_TOO_MANY_LOCALS,
-    LITERROR_TOO_MANY_UPVALUES,
-    LITERROR_VARIABLE_USED_IN_INIT,
-    LITERROR_JUMP_TOO_BIG,
-    LITERROR_NO_SUPER,
-    LITERROR_THIS_MISSUSE,
-    LITERROR_SUPER_MISSUSE,
-    LITERROR_UNKNOWN_EXPRESSION,
-    LITERROR_UNKNOWN_STATEMENT,
-    LITERROR_LOOP_JUMP_MISSUSE,
-    LITERROR_RETURN_FROM_CONSTRUCTOR,
-    LITERROR_STATIC_CONSTRUCTOR,
-    LITERROR_CONSTANT_MODIFIED,
-    LITERROR_INVALID_REFERENCE_TARGET,
-
-    LITERROR_TOTAL
-};
 
 enum LitPrecedence
 {
@@ -732,22 +718,9 @@ struct /**/LitScanner;
 struct /**/LitEmitter;
 struct /**/LitOptimizer;
 struct /**/LitFunction;
+struct /**/LitNativeMethod;
 
-typedef ASTExpression* (*LitPrefixParseFn)(LitParser*, bool);
-typedef ASTExpression* (*LitInfixParseFn)(LitParser*, ASTExpression*, bool);
-
-typedef LitValue (*LitNativeFunctionFn)(LitVM*, size_t, LitValue*);
-typedef bool (*LitNativePrimitiveFn)(LitVM*, size_t, LitValue*);
-typedef LitValue (*LitNativeMethodFn)(LitVM*, LitValue, size_t arg_count, LitValue*);
-typedef bool (*LitPrimitiveMethodFn)(LitVM*, LitValue, size_t, LitValue*);
-typedef LitValue (*LitMapIndexFn)(LitVM*, LitMap*, LitString*, LitValue*);
-typedef void (*LitCleanupFn)(LitState*, LitUserdata*, bool mark);
-typedef void (*LitErrorFn)(LitState*, const char*);
-typedef void (*LitPrintFn)(LitState*, const char*);
-
-typedef void(*LitWriterByteFN)(LitWriter*, int);
-typedef void(*LitWriterStringFN)(LitWriter*, const char*, size_t);
-typedef void(*LitWriterFormatFN)(LitWriter*, const char*, va_list);
+typedef uint64_t LitValue;
 
 
 /* allocate/reallocate memory. if new_size is 0, frees the pointer, and returns nullptr. */
@@ -889,6 +862,12 @@ struct LitObject
     public:
         static LitObject* make(LitState* state, size_t size, LitObject::Type type);
 
+        template<typename ObjType>
+        static inline ObjType* make(LitState* state, LitObject::Type type)
+        {
+            return (ObjType*)LitObject::make(state, sizeof(ObjType), type);
+        }
+
         static void releaseObject(LitState* state, LitObject* obj);
 
         static inline LitObject* asObject(LitValue v)
@@ -901,8 +880,14 @@ struct LitObject
             return (LitValue)(LitObject::SIGN_BIT | LitObject::QNAN_BIT | (uint64_t)(uintptr_t)(obj));
         }
 
+        template<typename ObjType>
+        static inline ObjType* as(LitValue v)
+        {
+            return (ObjType*)LitObject::asObject(v);
+        }
 
     public:
+        LitState* m_state;
         /* the type of this object */
         Type type;
         LitObject* next;
@@ -933,7 +918,7 @@ struct LitString: public LitObject
         static LitString* allocEmpty(LitState* state, size_t length, bool reuse)
         {
             LitString* string;
-            string = ALLOCATE_OBJECT(state, LitString, LitObject::Type::String);
+            string = LitObject::make<LitString>(state, LitObject::Type::String);
             if(!reuse)
             {
                 string->chars = sdsempty();
@@ -988,6 +973,11 @@ struct LitString: public LitObject
 
         /* copy a string, creating a full newly allocated LitString. */
         static LitString* copy(LitState* state, const char* chars, size_t length);
+
+        static LitString* copy(LitState* state, std::string_view sv)
+        {
+            return LitString::copy(state, sv.data(), sv.size());
+        }
 
         static LitValue stringNumberToString(LitState* state, double value)
         {
@@ -1129,6 +1119,118 @@ struct LitString: public LitObject
         }
 };
 
+struct LitChunk
+{
+    LitState* state;
+    /* how many items this chunk holds */
+    size_t m_count;
+    size_t m_capacity;
+    uint8_t* code;
+    bool has_line_info;
+    size_t line_count;
+    size_t line_capacity;
+    uint16_t* lines;
+    PCGenericArray<LitValue> constants;
+};
+
+struct LitFunction: public LitObject
+{
+    LitChunk chunk;
+    LitString* name;
+    uint8_t arg_count;
+    uint16_t upvalue_count;
+    size_t max_slots;
+    bool vararg;
+    LitModule* module;
+};
+
+struct LitUpvalue: public LitObject
+{
+    LitValue* location;
+    LitValue closed;
+    LitUpvalue* next;
+};
+
+struct LitClosure: public LitObject
+{
+    LitFunction* function;
+    LitUpvalue** upvalues;
+    size_t upvalue_count;
+};
+
+struct LitNativeFunction: public LitObject
+{
+    public:
+        using FuncType = LitValue(*)(LitVM*, size_t, LitValue*);
+
+    public:
+        /* the native callback for this function */
+        FuncType function;
+        /* the name of this function */
+        LitString* name;
+};
+
+struct LitNativePrimFunction: public LitObject
+{
+    public:
+        using FuncType = bool(*)(LitVM*, size_t, LitValue*);
+
+    public:
+        FuncType function;
+        LitString* name;
+};
+
+struct LitNativeMethod: public LitObject
+{
+    public:
+        using FuncType = LitValue(*)(LitVM*, LitValue, size_t arg_count, LitValue*);
+
+    public:
+        static LitNativeMethod* make(LitState* state, FuncType method, LitString* name)
+        {
+            LitNativeMethod* native;
+            native = LitObject::make<LitNativeMethod>(state, LitObject::Type::NativeMethod);
+            native->method = method;
+            native->name = name;
+            return native;
+        }
+
+        static LitNativeMethod* make(LitState* state, FuncType method, std::string_view name)
+        {
+            return LitNativeMethod::make(state, method, LitString::copy(state, name.data(), name.size()));
+        }
+
+    public:
+        FuncType method;
+        LitString* name;
+};
+
+struct LitPrimitiveMethod: public LitObject
+{
+    public:
+        using FuncType = bool (*)(LitVM*, LitValue, size_t, LitValue*);
+
+    public:
+        static LitPrimitiveMethod* make(LitState* state, FuncType method, LitString* name)
+        {
+            LitPrimitiveMethod* native;
+            native = LitObject::make<LitPrimitiveMethod>(state, LitObject::Type::PrimitiveMethod);
+            native->method = method;
+            native->name = name;
+            return native;
+        }
+
+        static LitPrimitiveMethod* make(LitState* state, FuncType method, std::string_view sv)
+        {
+            return make(state, method, LitString::copy(state, sv.data(), sv.size()));
+        }
+
+    public:
+        FuncType method;
+        LitString* name;
+};
+
+
 struct LitTableEntry
 {
     /* the key of this entry. can be nullptr! */
@@ -1141,7 +1243,31 @@ struct LitTableEntry
 
 struct LitTable: public PCGenericArray<LitTableEntry>
 {
+
     public:
+        template<typename FuncT>
+        static void setFunctionValue(LitTable& dest, LitString* nm, typename FuncT::FuncType fn)
+        {
+            dest.set(nm, FuncT::make(dest.m_state, fn, nm)->asValue());
+        }
+
+        template<typename FuncT>
+        static void setFunctionValue(LitTable& dest, std::string_view sv, typename FuncT::FuncType fn)
+        {
+            auto nm = LitString::copy(dest.m_state, sv.data(), sv.size());
+            setFunctionValue<FuncT>(dest, nm, fn);
+        }
+
+        static void setNativeMethod(LitTable& dest, LitString* nm, LitNativeMethod::FuncType fn)
+        {
+            setFunctionValue<LitNativeMethod>(dest, nm, fn);
+        }
+
+        static void setNativeMethod(LitTable& dest, std::string_view sv, LitNativeMethod::FuncType fn)
+        {
+            setFunctionValue<LitNativeMethod>(dest, sv, fn);
+        }
+
         static LitTableEntry* findEntry(LitTableEntry* entries, int capacity, LitString* key)
         {
             uint32_t index;
@@ -1208,15 +1334,15 @@ struct LitTable: public PCGenericArray<LitTableEntry>
     public:
         void markForGC(LitVM* vm);
 
-        void setField(LitState* state, const char* name, LitValue value)
+        void setField(const char* name, LitValue value)
         {
-            this->set(CONST_STRING(state, name), value);
+            this->set(CONST_STRING(m_state, name), value);
         }
 
-        LitValue getField(LitState* state, const char* name)
+        LitValue getField(const char* name)
         {
             LitValue value;
-            if(!this->get(CONST_STRING(state, name), &value))
+            if(!this->get(CONST_STRING(m_state, name), &value))
             {
                 value = NULL_VALUE;
             }
@@ -1242,6 +1368,11 @@ struct LitTable: public PCGenericArray<LitTableEntry>
             entry->key = key;
             entry->value = value;
             return is_new;
+        }
+
+        inline bool set(std::string_view sv, LitValue value)
+        {
+            return set(LitString::copy(m_state, sv.data(), sv.size()), value);
         }
 
         bool get(LitString* key, LitValue* value)
@@ -1381,31 +1512,150 @@ struct LitTable: public PCGenericArray<LitTableEntry>
             }
             return this->m_values[index].key->asValue();
         }
-
 };
 
 struct LitWriter
 {
-    LitState* state;
-    /* the main pointer, that either holds a pointer to a LitString, or a FILE */
-    void* uptr;
+    public:
+        using WriteByteFuncType = void(*)(LitWriter*, int);
+        using WriteStringFuncType = void(*)(LitWriter*, const char*, size_t);
+        using WriteFormatFuncType = void(*)(LitWriter*, const char*, va_list);
 
-    /* if true, then uptr is a LitString, otherwise it's a FILE */
-    bool stringmode;
+    public:
+        static void cb_writebyte(LitWriter* wr, int byte)
+        {
+            LitString* ds;
+            if(wr->stringmode)
+            {
+                ds = (LitString*)wr->uptr;
+                ds->append(byte);        
+            }
+            else
+            {
+                fputc(byte, (FILE*)wr->uptr);
+            }
+        }
 
-    /* if true, and !stringmode, then calls fflush() after each i/o operations */
-    bool forceflush;
+        static void cb_writestring(LitWriter* wr, const char* string, size_t len)
+        {
+            LitString* ds;
+            if(wr->stringmode)
+            {
+                ds = (LitString*)wr->uptr;
+                ds->append(string, len);
+            }
+            else
+            {
+                fwrite(string, sizeof(char), len, (FILE*)wr->uptr);
+            }
+        }
 
-    /* the callback that emits a single character */
-    LitWriterByteFN fnbyte;
+        static void cb_writeformat(LitWriter* wr, const char* fmt, va_list va)
+        {
+            LitString* ds;
+            if(wr->stringmode)
+            {
+                ds = (LitString*)wr->uptr;
+                ds->chars = sdscatvprintf(ds->chars, fmt, va);
+            }
+            else
+            {
+                vfprintf((FILE*)wr->uptr, fmt, va);
+            }
+        }
 
-    /* the callback that emits a string */
-    LitWriterStringFN fnstring;
+        static void initDefault(LitState* state, LitWriter* wr)
+        {
+            wr->state = state;
+            wr->forceflush = false;
+            wr->stringmode = false;
+            wr->fnbyte = cb_writebyte;
+            wr->fnstring = cb_writestring;
+            wr->fnformat = cb_writeformat;
+        }
 
-    /* the callback that emits a format string (printf-style) */
-    LitWriterFormatFN fnformat;
+
+    public:
+        LitState* state;
+        /* the main pointer, that either holds a pointer to a LitString, or a FILE */
+        void* uptr;
+
+        /* if true, then uptr is a LitString, otherwise it's a FILE */
+        bool stringmode;
+
+        /* if true, and !stringmode, then calls fflush() after each i/o operations */
+        bool forceflush;
+
+        /* the callback that emits a single character */
+        WriteByteFuncType fnbyte;
+
+        /* the callback that emits a string */
+        WriteStringFuncType fnstring;
+
+        /* the callback that emits a format string (printf-style) */
+        WriteFormatFuncType fnformat;
+
+    public:
+        /*
+        * creates a LitWriter that writes to the given FILE.
+        * if $forceflush is true, then fflush() is called after each i/o operation.
+        */
+        void initFile(LitState* state, FILE* fh, bool forceflush)
+        {
+            initDefault(state, this);
+            this->uptr = fh;
+            this->forceflush = forceflush;
+        }
+
+        /*
+        * creates a LitWriter that writes to a buffer.
+        */
+        void initString(LitState* state)
+        {
+            initDefault(state, this);
+            this->stringmode = true;
+            this->uptr = LitString::allocEmpty(state, 0, false);
+        }
+
+        /* emit a single byte */
+        void put(int byte)
+        {
+            this->fnbyte(this, byte);
+        }
+
+        void put(const char* str, size_t len)
+        {
+            this->fnstring(this, str, len);
+        }
+
+        /* emit a string */
+        void put(std::string_view sv)
+        {
+            this->fnstring(this, sv.data(), sv.size());
+        }
+
+        /* emit a printf-style formatted string */
+        void format(const char* fmt, ...)
+        {
+            va_list va;
+            va_start(va, fmt);
+            this->fnformat(this, fmt, va);
+            va_end(va);
+        }
+
+        /*
+        * returns a LitString* if this LitWriter was initiated via lit_writer_init_string, otherwise nullptr.
+        */
+        LitString* asString()
+        {
+            if(this->stringmode)
+            {
+                return (LitString*)this->uptr;
+            }
+            return nullptr;
+        }
+
 };
-
 
 struct LitVariable
 {
@@ -1475,19 +1725,7 @@ struct ASTStatement
         size_t line = 0;
 };
 
-struct LitChunk
-{
-    LitState* state;
-    /* how many items this chunk holds */
-    size_t m_count;
-    size_t m_capacity;
-    uint8_t* code;
-    bool has_line_info;
-    size_t line_count;
-    size_t line_capacity;
-    uint16_t* lines;
-    PCGenericArray<LitValue> constants;
-};
+
 
 
 struct LitToken
@@ -1631,11 +1869,16 @@ struct LitEmitter
 
 };
 
-struct LitParseRule
+struct ASTParseRule
 {
-    LitPrefixParseFn prefix;
-    LitInfixParseFn infix;
-    LitPrecedence precedence;
+    public:
+        using PrefixFuncType = ASTExpression* (*)(LitParser*, bool);
+        using InfixFuncType = ASTExpression*(*)(LitParser*, ASTExpression*, bool);
+
+    public:
+        PrefixFuncType prefix;
+        InfixFuncType infix;
+        LitPrecedence precedence;
 };
 
 
@@ -1883,57 +2126,6 @@ struct ASTStmtField
 
 
 
-struct LitFunction: public LitObject
-{
-    LitChunk chunk;
-    LitString* name;
-    uint8_t arg_count;
-    uint16_t upvalue_count;
-    size_t max_slots;
-    bool vararg;
-    LitModule* module;
-};
-
-struct LitUpvalue: public LitObject
-{
-    LitValue* location;
-    LitValue closed;
-    LitUpvalue* next;
-};
-
-struct LitClosure: public LitObject
-{
-    LitFunction* function;
-    LitUpvalue** upvalues;
-    size_t upvalue_count;
-};
-
-struct LitNativeFunction: public LitObject
-{
-    /* the native callback for this function */
-    LitNativeFunctionFn function;
-    /* the name of this function */
-    LitString* name;
-};
-
-struct LitNativePrimFunction: public LitObject
-{
-    LitNativePrimitiveFn function;
-    LitString* name;
-};
-
-struct LitNativeMethod: public LitObject
-{
-    LitNativeMethodFn method;
-    LitString* name;
-};
-
-struct LitPrimitiveMethod: public LitObject
-{
-    LitPrimitiveMethodFn method;
-    LitString* name;
-};
-
 struct LitCallFrame
 {
     LitFunction* function;
@@ -1947,10 +2139,13 @@ struct LitCallFrame
 struct LitMap: public LitObject
 {
     public:
+        using IndexFuncType = LitValue(*)(LitVM*, LitMap*, LitString*, LitValue*);
+
+    public:
         static LitMap* make(LitState* state)
         {
             LitMap* map;
-            map = ALLOCATE_OBJECT(state, LitMap, LitObject::Type::Map);
+            map = LitObject::make<LitMap>(state, LitObject::Type::Map);
             map->values.init(state);
             map->index_fn = nullptr;
             return map;
@@ -1960,7 +2155,7 @@ struct LitMap: public LitObject
         /* the table that holds the actual entries */
         LitTable values;
         /* the index function corresponding to operator[] */
-        LitMapIndexFn index_fn;
+        IndexFuncType index_fn;
 
     public:
         bool set(LitString* key, LitValue value)
@@ -2033,21 +2228,78 @@ struct LitFiber: public LitObject
     bool catcher;
 };
 
+struct LitField: public LitObject
+{
+    public:
+        static LitField* make(LitState* state, LitObject* getter, LitObject* setter)
+        {
+            LitField* field;
+            field = LitObject::make<LitField>(state, LitObject::Type::Field);
+            field->getter = getter;
+            field->setter = setter;
+            return field;
+        }
+
+    public:
+        LitObject* getter;
+        LitObject* setter;
+};
+
 struct LitClass: public LitObject
 {
-    /* the name of this class */
-    LitString* name;
-    /* the constructor object */
-    LitObject* init_method;
-    /* runtime methods */
-    LitTable methods;
-    /* static fields, which include functions, and variables */
-    LitTable static_fields;
-    /*
-    * the parent class - the topmost is always LitClass, followed by LitObject.
-    * that is, eg for LitString: LitString <- LitObject <- LitClass
-    */
-    LitClass* super;
+    public:
+        /* the name of this class */
+        LitString* name;
+        /* the constructor object */
+        LitObject* init_method;
+        /* runtime methods */
+        LitTable methods;
+        /* static fields, which include functions, and variables */
+        LitTable static_fields;
+        /*
+        * the parent class - the topmost is always LitClass, followed by LitObject.
+        * that is, eg for LitString: LitString <- LitObject <- LitClass
+        */
+        LitClass* super;
+
+    public:
+
+    public:
+        void setStaticMethod(LitString* nm, LitNativeMethod::FuncType fn)
+        {
+            LitTable::setNativeMethod(this->static_fields, nm, fn);
+        }
+
+        void setStaticMethod(std::string_view sv, LitNativeMethod::FuncType fn)
+        {
+            LitTable::setNativeMethod(this->static_fields, sv, fn);
+        }
+
+        void setStaticPrimitive(LitString* nm, LitPrimitiveMethod::FuncType fn)
+        {
+            LitTable::setFunctionValue<LitPrimitiveMethod>(this->static_fields, nm, fn);
+        }
+
+        void setStaticPrimitive(std::string_view sv, LitPrimitiveMethod::FuncType fn)
+        {
+            LitTable::setFunctionValue<LitPrimitiveMethod>(this->static_fields, sv, fn);
+        }
+
+/*
+        LitString* nm = LitString::copy(state, name, strlen(name)); \
+        klass->methods.set(nm, \
+                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), nullptr)->asValue()); \
+*/
+        void setGetter(LitString* nm, LitNativeMethod::FuncType fn)
+        {
+            this->methods.set(nm, LitField::make(this->m_state, LitNativeMethod::make(m_state, fn, nm), nullptr)->asValue());
+        }
+
+        void setGetter(std::string_view sv, LitNativeMethod::FuncType fn)
+        {
+            auto nm = LitString::copy(this->m_state, sv.data(), sv.size());
+            setGetter(nm, fn);
+        }
 };
 
 struct LitInstance: public LitObject
@@ -2069,7 +2321,7 @@ struct LitArray: public LitObject
         static LitArray* make(LitState* state)
         {
             LitArray* array;
-            array = ALLOCATE_OBJECT(state, LitArray, LitObject::Type::Array);
+            array = LitObject::make<LitArray>(state, LitObject::Type::Array);
             array->values.init(state);
             return array;
         }
@@ -2128,10 +2380,14 @@ struct LitArray: public LitObject
 
 struct LitUserdata: public LitObject
 {
-    void* data;
-    size_t size;
-    LitCleanupFn cleanup_fn;
-    bool canfree;
+    public:
+        using CleanupFuncType = void(*)(LitState*, LitUserdata*, bool);
+
+    public:
+        void* data;
+        size_t size;
+        CleanupFuncType cleanup_fn;
+        bool canfree;
 };
 
 struct LitRange: public LitObject
@@ -2140,11 +2396,7 @@ struct LitRange: public LitObject
     double to;
 };
 
-struct LitField: public LitObject
-{
-    LitObject* getter;
-    LitObject* setter;
-};
+
 
 struct LitReference: public LitObject
 {
@@ -2154,12 +2406,16 @@ struct LitReference: public LitObject
 struct LitState
 {
     public:
+        using ErrorFuncType = void(*)(LitState*, const char*);
+        using PrintFuncType = void(*)(LitState*, const char*);
+
+    public:
         /* how much was allocated in total? */
         int64_t bytes_allocated;
         int64_t next_gc;
         bool allow_gc;
-        LitErrorFn error_fn;
-        LitPrintFn print_fn;
+        ErrorFuncType error_fn;
+        PrintFuncType print_fn;
         LitValue* roots;
         size_t root_count;
         size_t root_capacity;
@@ -2292,7 +2548,7 @@ struct LitState
                         break;
                     case LitObject::Type::Instance:
                         {
-                            return AS_INSTANCE(value)->klass;
+                            return LitObject::as<LitInstance>(value)->klass;
                         }
                         break;
                     case LitObject::Type::Class:
@@ -2668,33 +2924,7 @@ struct LitInterpretResult
 };
 
 
-/*
-* creates a LitWriter that writes to the given FILE.
-* if $forceflush is true, then fflush() is called after each i/o operation.
-*/
-void lit_writer_init_file(LitState* state, LitWriter* wr, FILE* fh, bool forceflush);
 
-/*
-* creates a LitWriter that writes to a buffer.
-*/
-void lit_writer_init_string(LitState* state, LitWriter* wr);
-
-/* emit a printf-style formatted string */
-void lit_writer_writeformat(LitWriter* wr, const char* fmt, ...);
-
-/* emit a string */
-void lit_writer_writestringl(LitWriter* wr, const char* str, size_t len);
-
-/* like lit_writer_writestringl, but calls strlen() on str */
-void lit_writer_writestring(LitWriter* wr, const char* str);
-
-/* emit a single byte */
-void lit_writer_writebyte(LitWriter* wr, int byte);
-
-/*
-* returns a LitString* if this LitWriter was initiated via lit_writer_init_string, otherwise nullptr.
-*/
-LitString* lit_writer_get_string(LitWriter* wr);
 
 /**
 * utility functions
@@ -2775,10 +3005,8 @@ LitFunction* lit_create_function(LitState* state, LitModule* module);
 LitValue lit_get_function_name(LitVM* vm, LitValue instance);
 LitUpvalue* lit_create_upvalue(LitState* state, LitValue* slot);
 LitClosure* lit_create_closure(LitState* state, LitFunction* function);
-LitNativeFunction* lit_create_native_function(LitState* state, LitNativeFunctionFn function, LitString* name);
-LitNativePrimFunction* lit_create_native_primitive(LitState* state, LitNativePrimitiveFn function, LitString* name);
-LitNativeMethod* lit_create_native_method(LitState* state, LitNativeMethodFn function, LitString* name);
-LitPrimitiveMethod* lit_create_primitive_method(LitState* state, LitPrimitiveMethodFn method, LitString* name);
+LitNativeFunction* lit_create_native_function(LitState* state, LitNativeFunction::FuncType function, LitString* name);
+LitNativePrimFunction* lit_create_native_primitive(LitState* state, LitNativePrimFunction::FuncType function, LitString* name);
 
 LitModule* lit_create_module(LitState* state, LitString* name);
 LitFiber* lit_create_fiber(LitState* state, LitModule* module, LitFunction* function);
@@ -2788,7 +3016,6 @@ LitInstance* lit_create_instance(LitState* state, LitClass* klass);
 LitBoundMethod* lit_create_bound_method(LitState* state, LitValue receiver, LitValue method);
 LitUserdata* lit_create_userdata(LitState* state, size_t size, bool ispointeronly);
 LitRange* lit_create_range(LitState* state, double from, double to);
-LitField* lit_create_field(LitState* state, LitObject* getter, LitObject* setter);
 LitReference* lit_create_reference(LitState* state, LitValue* slot);
 
 
@@ -2855,8 +3082,8 @@ LitFunction* lit_get_global_function(LitState* state, LitString* name);
 
 void lit_set_global(LitState* state, LitString* name, LitValue value);
 bool lit_global_exists(LitState* state, LitString* name);
-void lit_define_native(LitState* state, const char* name, LitNativeFunctionFn native);
-void lit_define_native_primitive(LitState* state, const char* name, LitNativePrimitiveFn native);
+void lit_define_native(LitState* state, const char* name, LitNativeFunction::FuncType native);
+void lit_define_native_primitive(LitState* state, const char* name, LitNativePrimFunction::FuncType native);
 
 double lit_check_number(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id);
 double lit_get_number(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id, double def);
@@ -3112,6 +3339,7 @@ LitObject* LitObject::make(LitState* state, size_t size, LitObject::Type type)
 {
     LitObject* obj;
     obj = (LitObject*)lit_reallocate(state, nullptr, 0, size);
+    obj->m_state = state;
     obj->type = type;
     obj->marked = false;
     obj->next = state->vm->objects;
@@ -3274,6 +3502,7 @@ void LitObject::releaseObject(LitState* state, LitObject* obj)
     }
 }
 
+
 void LitTable::markForGC(LitVM* vm)
 {
     size_t i;
@@ -3385,7 +3614,7 @@ LitString* LitString::format(LitState* state, const char* format, ...)
                     val = va_arg(arg_list, LitValue);
                     if(IS_STRING(val))
                     {
-                        string = lit_as_string(val);
+                        string = LitObject::as<LitString>(val);
                     }
                     else
                     {
@@ -3409,7 +3638,7 @@ LitString* LitString::format(LitState* state, const char* format, ...)
                 break;
             case '#':
                 {
-                    string = lit_as_string(LitString::stringNumberToString(state, va_arg(arg_list, double)));
+                    string = LitObject::as<LitString>(LitString::stringNumberToString(state, va_arg(arg_list, double)));
                     length = sdslen(string->chars);
                     if(length > 0)
                     {
@@ -3439,26 +3668,22 @@ LitString* LitString::format(LitState* state, const char* format, ...)
 */
 
 
-inline static void lit_bind_method(LitState* state, LitClass* klass, const char* name, LitNativeMethodFn method)
+inline static void lit_bind_method(LitState* state, LitClass* klass, const char* name, LitNativeMethod::FuncType method)
 {
-    LitString* nm;
-    nm = LitString::copy(state, name, strlen(name));
-    klass->methods.set(nm, lit_create_native_method(state, method, nm)->asValue());
+    auto nm = LitString::copy(state, name);
+    klass->methods.set(nm, LitNativeMethod::make(state, method, name)->asValue());
 }
 
-inline static void lit_bind_primitive(LitState* state, LitClass* klass, const char* name, LitPrimitiveMethodFn method)
+inline static void lit_bind_primitive(LitState* state, LitClass* klass, const char* name, LitPrimitiveMethod::FuncType method)
 {
-    LitString* nm;
-    nm = LitString::copy(state, name, strlen(name));
-    klass->methods.set(nm, lit_create_primitive_method(state, method, nm)->asValue());
+    auto nm = LitString::copy(state, name);
+    klass->methods.set(nm, LitPrimitiveMethod::make(state, method, nm)->asValue());
 }
 
-inline static void lit_bind_constructor(LitState* state, LitClass* klass, LitNativeMethodFn method)
+inline static void lit_bind_constructor(LitState* state, LitClass* klass, LitNativeMethod::FuncType method)
 {
-    LitString* nm;
-    LitNativeMethod* m;
-    nm = LitString::copy(state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1);
-    m = lit_create_native_method(state, method, nm);
+    auto nm = LitString::copy(state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1);
+    auto m = LitNativeMethod::make(state, method, nm);
     klass->init_method = (LitObject*)m;
     klass->methods.set(nm, m->asValue());
 }
@@ -4400,7 +4625,7 @@ static uint16_t add_constant(LitEmitter* emitter, size_t line, LitValue value)
 
     if(constant >= UINT16_MAX)
     {
-        error(emitter, line, LITERROR_TOO_MANY_CONSTANTS);
+        error(emitter, line, LitError::LITERROR_TOO_MANY_CONSTANTS);
     }
 
     return constant;
@@ -4421,7 +4646,7 @@ static size_t emit_constant(LitEmitter* emitter, size_t line, LitValue value)
     }
     else
     {
-        error(emitter, line, LITERROR_TOO_MANY_CONSTANTS);
+        error(emitter, line, LitError::LITERROR_TOO_MANY_CONSTANTS);
     }
 
     return constant;
@@ -4433,7 +4658,7 @@ static int add_private(LitEmitter* emitter, const char* name, size_t length, siz
 
     if(privates->m_count == UINT16_MAX)
     {
-        error(emitter, line, LITERROR_TOO_MANY_PRIVATES);
+        error(emitter, line, LitError::LITERROR_TOO_MANY_PRIVATES);
     }
 
     LitTable* private_names = &emitter->module->private_names->values;
@@ -4441,7 +4666,7 @@ static int add_private(LitEmitter* emitter, const char* name, size_t length, siz
 
     if(key != nullptr)
     {
-        error(emitter, line, LITERROR_VAR_REDEFINED, length, name);
+        error(emitter, line, LitError::LITERROR_VAR_REDEFINED, length, name);
 
         LitValue index;
         private_names->get(key, &index);
@@ -4474,7 +4699,7 @@ static int resolve_private(LitEmitter* emitter, const char* name, size_t length,
 
         if(!emitter->privates.m_values[number_index].initialized)
         {
-            error(emitter, line, LITERROR_VARIABLE_USED_IN_INIT, length, name);
+            error(emitter, line, LitError::LITERROR_VARIABLE_USED_IN_INIT, length, name);
         }
 
         return number_index;
@@ -4490,7 +4715,7 @@ static int add_local(LitEmitter* emitter, const char* name, size_t length, size_
 
     if(locals->m_count == UINT16_MAX)
     {
-        error(emitter, line, LITERROR_TOO_MANY_LOCALS);
+        error(emitter, line, LitError::LITERROR_TOO_MANY_LOCALS);
     }
 
     for(int i = (int)locals->m_count - 1; i >= 0; i--)
@@ -4504,7 +4729,7 @@ static int add_local(LitEmitter* emitter, const char* name, size_t length, size_
 
         if(length == local->length && memcmp(local->name, name, length) == 0)
         {
-            error(emitter, line, LITERROR_VAR_REDEFINED, length, name);
+            error(emitter, line, LitError::LITERROR_VAR_REDEFINED, length, name);
         }
     }
 
@@ -4525,7 +4750,7 @@ static int resolve_local(LitEmitter* emitter, LitCompiler* compiler, const char*
         {
             if(local->depth == UINT16_MAX)
             {
-                error(emitter, line, LITERROR_VARIABLE_USED_IN_INIT, length, name);
+                error(emitter, line, LitError::LITERROR_VARIABLE_USED_IN_INIT, length, name);
             }
 
             return i;
@@ -4551,7 +4776,7 @@ static int add_upvalue(LitEmitter* emitter, LitCompiler* compiler, uint8_t index
 
     if(upvalue_count == UINT16_COUNT)
     {
-        error(emitter, line, LITERROR_TOO_MANY_UPVALUES);
+        error(emitter, line, LitError::LITERROR_TOO_MANY_UPVALUES);
         return 0;
     }
 
@@ -4610,7 +4835,7 @@ static void patch_jump(LitEmitter* emitter, size_t offset, size_t line)
 
     if(jump > UINT16_MAX)
     {
-        error(emitter, line, LITERROR_JUMP_TOO_BIG);
+        error(emitter, line, LitError::LITERROR_JUMP_TOO_BIG);
     }
 
     emitter->chunk->code[offset] = (jump >> 8) & 0xff;
@@ -4624,7 +4849,7 @@ static void emit_loop(LitEmitter* emitter, size_t start, size_t line)
 
     if(offset > UINT16_MAX)
     {
-        error(emitter, line, LITERROR_JUMP_TOO_BIG);
+        error(emitter, line, LitError::LITERROR_JUMP_TOO_BIG);
     }
 
     emit_short(emitter, line, offset);
@@ -4967,7 +5192,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                             {
                                 if(emitter->privates.m_values[index].constant)
                                 {
-                                    error(emitter, expression->line, LITERROR_CONSTANT_MODIFIED, e->length, e->name);
+                                    error(emitter, expression->line, LitError::LITERROR_CONSTANT_MODIFIED, e->length, e->name);
                                 }
                                 emit_byte_or_short(emitter, expression->line, OP_SET_PRIVATE, OP_SET_PRIVATE_LONG, index);
                             }
@@ -4982,7 +5207,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                     {
                         if(emitter->compiler->locals.m_values[index].constant)
                         {
-                            error(emitter, expression->line, LITERROR_CONSTANT_MODIFIED, e->length, e->name);
+                            error(emitter, expression->line, LitError::LITERROR_CONSTANT_MODIFIED, e->length, e->name);
                         }
 
                         emit_byte_or_short(emitter, expression->line, OP_SET_LOCAL, OP_SET_LOCAL_LONG, index);
@@ -5013,7 +5238,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 }
                 else
                 {
-                    error(emitter, expression->line, LITERROR_INVALID_ASSIGMENT_TARGET);
+                    error(emitter, expression->line, LitError::LITERROR_INVALID_ASSIGMENT_TARGET);
                 }
             }
             break;
@@ -5233,7 +5458,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 LitFunctionType type = emitter->compiler->type;
                 if(type == LITFUNC_STATIC_METHOD)
                 {
-                    error(emitter, expression->line, LITERROR_THIS_MISSUSE, "in static methods");
+                    error(emitter, expression->line, LitError::LITERROR_THIS_MISSUSE, "in static methods");
                 }
                 if(type == LITFUNC_CONSTRUCTOR || type == LITFUNC_METHOD)
                 {
@@ -5243,7 +5468,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 {
                     if(emitter->compiler->enclosing == nullptr)
                     {
-                        error(emitter, expression->line, LITERROR_THIS_MISSUSE, "in functions outside of any class");
+                        error(emitter, expression->line, LitError::LITERROR_THIS_MISSUSE, "in functions outside of any class");
                     }
                     else
                     {
@@ -5258,11 +5483,11 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
             {
                 if(emitter->compiler->type == LITFUNC_STATIC_METHOD)
                 {
-                    error(emitter, expression->line, LITERROR_SUPER_MISSUSE, "in static methods");
+                    error(emitter, expression->line, LitError::LITERROR_SUPER_MISSUSE, "in static methods");
                 }
                 else if(!emitter->class_has_super)
                 {
-                    error(emitter, expression->line, LITERROR_NO_SUPER, emitter->class_name->chars);
+                    error(emitter, expression->line, LitError::LITERROR_NO_SUPER, emitter->class_name->chars);
                 }
                 ASTExprSuper* expr = (ASTExprSuper*)expression;
                 if(!expr->ignore_emit)
@@ -5315,7 +5540,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 ASTExpression* to = ((ASTExprReference*)expression)->to;
                 if(to->type != ASTExpression::Type::Variable && to->type != ASTExpression::Type::Get && to->type != ASTExpression::Type::This && to->type != ASTExpression::Type::Super)
                 {
-                    error(emitter, expression->line, LITERROR_INVALID_REFERENCE_TARGET);
+                    error(emitter, expression->line, LitError::LITERROR_INVALID_REFERENCE_TARGET);
                     break;
                 }
                 int old = emitter->emit_reference;
@@ -5326,7 +5551,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
             break;
         default:
             {
-                error(emitter, expression->line, LITERROR_UNKNOWN_EXPRESSION, (int)expression->type);
+                error(emitter, expression->line, LitError::LITERROR_UNKNOWN_EXPRESSION, (int)expression->type);
             }
             break;
     }
@@ -5644,7 +5869,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
         {
             if(emitter->compiler->loop_depth == 0)
             {
-                error(emitter, statement->line, LITERROR_LOOP_JUMP_MISSUSE, "continue");
+                error(emitter, statement->line, LitError::LITERROR_LOOP_JUMP_MISSUSE, "continue");
             }
             emitter->continues.push(emit_jump(emitter, OP_JUMP, statement->line));
             break;
@@ -5654,7 +5879,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
             {
                 if(emitter->compiler->loop_depth == 0)
                 {
-                    error(emitter, statement->line, LITERROR_LOOP_JUMP_MISSUSE, "break");
+                    error(emitter, statement->line, LitError::LITERROR_LOOP_JUMP_MISSUSE, "break");
                 }
                 emit_op(emitter, statement->line, OP_POP_LOCALS);
                 depth = emitter->compiler->scope_depth;
@@ -5740,7 +5965,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
             {
                 if(emitter->compiler->type == LITFUNC_CONSTRUCTOR)
                 {
-                    error(emitter, statement->line, LITERROR_RETURN_FROM_CONSTRUCTOR);
+                    error(emitter, statement->line, LitError::LITERROR_RETURN_FROM_CONSTRUCTOR);
                 }
                 expression = ((ASTStmtReturn*)statement)->expression;
                 if(expression == nullptr)
@@ -5765,7 +5990,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                 constructor = mthstmt->name->length() == (sizeof(LIT_NAME_CONSTRUCTOR)-1) && memcmp(mthstmt->name->chars, LIT_NAME_CONSTRUCTOR, strlen(LIT_NAME_CONSTRUCTOR)-1) == 0;
                 if(constructor && mthstmt->is_static)
                 {
-                    error(emitter, statement->line, LITERROR_STATIC_CONSTRUCTOR);
+                    error(emitter, statement->line, LitError::LITERROR_STATIC_CONSTRUCTOR);
                 }
                 init_compiler(emitter, &compiler,
                               constructor ? LITFUNC_CONSTRUCTOR : (mthstmt->is_static ? LITFUNC_STATIC_METHOD : LITFUNC_METHOD));
@@ -5867,7 +6092,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                     setter->arg_count = 1;
                     setter->max_slots++;
                 }
-                field = lit_create_field(emitter->state, (LitObject*)getter, (LitObject*)setter);
+                field = LitField::make(emitter->state, (LitObject*)getter, (LitObject*)setter);
                 emit_constant(emitter, statement->line, field->asValue());
                 emit_op(emitter, statement->line, fieldstmt->is_static ? OP_STATIC_FIELD : OP_DEFINE_FIELD);
                 emit_short(emitter, statement->line, add_constant(emitter, statement->line, fieldstmt->name->asValue()));
@@ -5875,7 +6100,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
             break;
         default:
             {
-                error(emitter, statement->line, LITERROR_UNKNOWN_STATEMENT, (int)statement->type);
+                error(emitter, statement->line, LitError::LITERROR_UNKNOWN_STATEMENT, (int)statement->type);
             }
             break;
     }
@@ -5901,7 +6126,7 @@ LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<ASTStatement*>& statemen
     isnew = false;
     if(emitter->state->vm->modules->values.get(module_name, &module_value))
     {
-        module = AS_MODULE(module_value);
+        module = LitObject::as<LitModule>(module_value);
     }
     else
     {
@@ -6966,7 +7191,7 @@ const char* lit_get_optimization_level_description(LitOptimizationLevel level)
 
 
 static jmp_buf prs_jmpbuffer;
-static LitParseRule rules[LITTOK_EOF + 1];
+static ASTParseRule rules[LITTOK_EOF + 1];
 
 
 static LitTokenType operators[]=
@@ -7116,63 +7341,63 @@ const char* token_name(int t)
 
 static void setup_rules()
 {
-    rules[LITTOK_LEFT_PAREN] = (LitParseRule){ parse_grouping_or_lambda, parse_call, LITPREC_CALL };
-    rules[LITTOK_PLUS] = (LitParseRule){ nullptr, parse_binary, LITPREC_TERM };
-    rules[LITTOK_MINUS] = (LitParseRule){ parse_unary, parse_binary, LITPREC_TERM };
-    rules[LITTOK_BANG] = (LitParseRule){ parse_unary, parse_binary, LITPREC_TERM };
-    rules[LITTOK_STAR] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_STAR_STAR] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_SLASH] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_SHARP] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_STAR] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_STAR] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_BAR] = (LitParseRule){ nullptr, parse_binary, LITPREC_BOR };
-    rules[LITTOK_AMPERSAND] = (LitParseRule){ nullptr, parse_binary, LITPREC_BAND };
-    rules[LITTOK_TILDE] = (LitParseRule){ parse_unary, nullptr, LITPREC_UNARY };
-    rules[LITTOK_CARET] = (LitParseRule){ nullptr, parse_binary, LITPREC_BOR };
-    rules[LITTOK_LESS_LESS] = (LitParseRule){ nullptr, parse_binary, LITPREC_SHIFT };
-    rules[LITTOK_GREATER_GREATER] = (LitParseRule){ nullptr, parse_binary, LITPREC_SHIFT };
-    rules[LITTOK_PERCENT] = (LitParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
-    rules[LITTOK_IS] = (LitParseRule){ nullptr, parse_binary, LITPREC_IS };
-    rules[LITTOK_NUMBER] = (LitParseRule){ parse_number, nullptr, LITPREC_NONE };
-    rules[LITTOK_TRUE] = (LitParseRule){ parse_literal, nullptr, LITPREC_NONE };
-    rules[LITTOK_FALSE] = (LitParseRule){ parse_literal, nullptr, LITPREC_NONE };
-    rules[LITTOK_NULL] = (LitParseRule){ parse_literal, nullptr, LITPREC_NONE };
-    rules[LITTOK_BANG_EQUAL] = (LitParseRule){ nullptr, parse_binary, LITPREC_EQUALITY };
-    rules[LITTOK_EQUAL_EQUAL] = (LitParseRule){ nullptr, parse_binary, LITPREC_EQUALITY };
-    rules[LITTOK_GREATER] = (LitParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
-    rules[LITTOK_GREATER_EQUAL] = (LitParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
-    rules[LITTOK_LESS] = (LitParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
-    rules[LITTOK_LESS_EQUAL] = (LitParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
-    rules[LITTOK_STRING] = (LitParseRule){ parse_string, nullptr, LITPREC_NONE };
-    rules[LITTOK_INTERPOLATION] = (LitParseRule){ parse_interpolation, nullptr, LITPREC_NONE };
-    rules[LITTOK_IDENTIFIER] = (LitParseRule){ parse_variable_expression, nullptr, LITPREC_NONE };
-    rules[LITTOK_NEW] = (LitParseRule){ parse_new_expression, nullptr, LITPREC_NONE };
-    rules[LITTOK_PLUS_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_MINUS_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_STAR_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_SLASH_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_SHARP_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_PERCENT_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_CARET_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_BAR_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_AMPERSAND_EQUAL] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_PLUS_PLUS] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_MINUS_MINUS] = (LitParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
-    rules[LITTOK_AMPERSAND_AMPERSAND] = (LitParseRule){ nullptr, parse_and, LITPREC_AND };
-    rules[LITTOK_BAR_BAR] = (LitParseRule){ nullptr, parse_or, LITPREC_AND };
-    rules[LITTOK_QUESTION_QUESTION] = (LitParseRule){ nullptr, parse_null_filter, LITPREC_NULL };
-    rules[LITTOK_DOT] = (LitParseRule){ nullptr, parse_dot, LITPREC_CALL };
-    rules[LITTOK_SMALL_ARROW] = (LitParseRule){ nullptr, parse_dot, LITPREC_CALL };
-    rules[LITTOK_DOT_DOT] = (LitParseRule){ nullptr, parse_range, LITPREC_RANGE };
-    rules[LITTOK_DOT_DOT_DOT] = (LitParseRule){ parse_variable_expression, nullptr, LITPREC_ASSIGNMENT };
-    rules[LITTOK_LEFT_BRACKET] = (LitParseRule){ parse_array, parse_subscript, LITPREC_NONE };
-    rules[LITTOK_LEFT_BRACE] = (LitParseRule){ parse_object, nullptr, LITPREC_NONE };
-    rules[LITTOK_THIS] = (LitParseRule){ parse_this, nullptr, LITPREC_NONE };
-    rules[LITTOK_SUPER] = (LitParseRule){ parse_super, nullptr, LITPREC_NONE };
-    rules[LITTOK_QUESTION] = (LitParseRule){ nullptr, parse_ternary_or_question, LITPREC_EQUALITY };
-    rules[LITTOK_REF] = (LitParseRule){ parse_reference, nullptr, LITPREC_NONE };
-    //rules[LITTOK_SEMICOLON] = (LitParseRule){nullptr, nullptr, LITPREC_NONE};
+    rules[LITTOK_LEFT_PAREN] = (ASTParseRule){ parse_grouping_or_lambda, parse_call, LITPREC_CALL };
+    rules[LITTOK_PLUS] = (ASTParseRule){ nullptr, parse_binary, LITPREC_TERM };
+    rules[LITTOK_MINUS] = (ASTParseRule){ parse_unary, parse_binary, LITPREC_TERM };
+    rules[LITTOK_BANG] = (ASTParseRule){ parse_unary, parse_binary, LITPREC_TERM };
+    rules[LITTOK_STAR] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_STAR_STAR] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_SLASH] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_SHARP] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_STAR] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_STAR] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_BAR] = (ASTParseRule){ nullptr, parse_binary, LITPREC_BOR };
+    rules[LITTOK_AMPERSAND] = (ASTParseRule){ nullptr, parse_binary, LITPREC_BAND };
+    rules[LITTOK_TILDE] = (ASTParseRule){ parse_unary, nullptr, LITPREC_UNARY };
+    rules[LITTOK_CARET] = (ASTParseRule){ nullptr, parse_binary, LITPREC_BOR };
+    rules[LITTOK_LESS_LESS] = (ASTParseRule){ nullptr, parse_binary, LITPREC_SHIFT };
+    rules[LITTOK_GREATER_GREATER] = (ASTParseRule){ nullptr, parse_binary, LITPREC_SHIFT };
+    rules[LITTOK_PERCENT] = (ASTParseRule){ nullptr, parse_binary, LITPREC_FACTOR };
+    rules[LITTOK_IS] = (ASTParseRule){ nullptr, parse_binary, LITPREC_IS };
+    rules[LITTOK_NUMBER] = (ASTParseRule){ parse_number, nullptr, LITPREC_NONE };
+    rules[LITTOK_TRUE] = (ASTParseRule){ parse_literal, nullptr, LITPREC_NONE };
+    rules[LITTOK_FALSE] = (ASTParseRule){ parse_literal, nullptr, LITPREC_NONE };
+    rules[LITTOK_NULL] = (ASTParseRule){ parse_literal, nullptr, LITPREC_NONE };
+    rules[LITTOK_BANG_EQUAL] = (ASTParseRule){ nullptr, parse_binary, LITPREC_EQUALITY };
+    rules[LITTOK_EQUAL_EQUAL] = (ASTParseRule){ nullptr, parse_binary, LITPREC_EQUALITY };
+    rules[LITTOK_GREATER] = (ASTParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
+    rules[LITTOK_GREATER_EQUAL] = (ASTParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
+    rules[LITTOK_LESS] = (ASTParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
+    rules[LITTOK_LESS_EQUAL] = (ASTParseRule){ nullptr, parse_binary, LITPREC_COMPARISON };
+    rules[LITTOK_STRING] = (ASTParseRule){ parse_string, nullptr, LITPREC_NONE };
+    rules[LITTOK_INTERPOLATION] = (ASTParseRule){ parse_interpolation, nullptr, LITPREC_NONE };
+    rules[LITTOK_IDENTIFIER] = (ASTParseRule){ parse_variable_expression, nullptr, LITPREC_NONE };
+    rules[LITTOK_NEW] = (ASTParseRule){ parse_new_expression, nullptr, LITPREC_NONE };
+    rules[LITTOK_PLUS_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_MINUS_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_STAR_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_SLASH_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_SHARP_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_PERCENT_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_CARET_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_BAR_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_AMPERSAND_EQUAL] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_PLUS_PLUS] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_MINUS_MINUS] = (ASTParseRule){ nullptr, parse_compound, LITPREC_COMPOUND };
+    rules[LITTOK_AMPERSAND_AMPERSAND] = (ASTParseRule){ nullptr, parse_and, LITPREC_AND };
+    rules[LITTOK_BAR_BAR] = (ASTParseRule){ nullptr, parse_or, LITPREC_AND };
+    rules[LITTOK_QUESTION_QUESTION] = (ASTParseRule){ nullptr, parse_null_filter, LITPREC_NULL };
+    rules[LITTOK_DOT] = (ASTParseRule){ nullptr, parse_dot, LITPREC_CALL };
+    rules[LITTOK_SMALL_ARROW] = (ASTParseRule){ nullptr, parse_dot, LITPREC_CALL };
+    rules[LITTOK_DOT_DOT] = (ASTParseRule){ nullptr, parse_range, LITPREC_RANGE };
+    rules[LITTOK_DOT_DOT_DOT] = (ASTParseRule){ parse_variable_expression, nullptr, LITPREC_ASSIGNMENT };
+    rules[LITTOK_LEFT_BRACKET] = (ASTParseRule){ parse_array, parse_subscript, LITPREC_NONE };
+    rules[LITTOK_LEFT_BRACE] = (ASTParseRule){ parse_object, nullptr, LITPREC_NONE };
+    rules[LITTOK_THIS] = (ASTParseRule){ parse_this, nullptr, LITPREC_NONE };
+    rules[LITTOK_SUPER] = (ASTParseRule){ parse_super, nullptr, LITPREC_NONE };
+    rules[LITTOK_QUESTION] = (ASTParseRule){ nullptr, parse_ternary_or_question, LITPREC_EQUALITY };
+    rules[LITTOK_REF] = (ASTParseRule){ parse_reference, nullptr, LITPREC_NONE };
+    //rules[LITTOK_SEMICOLON] = (ASTParseRule){nullptr, nullptr, LITPREC_NONE};
 }
 
 
@@ -7200,7 +7425,7 @@ static void prs_end_scope(LitParser* parser)
     parser->compiler->scope_depth--;
 }
 
-static LitParseRule* get_rule(LitTokenType type)
+static ASTParseRule* get_rule(LitTokenType type)
 {
     return &rules[type];
 }
@@ -7316,7 +7541,7 @@ static void consume(LitParser* parser, LitTokenType type, const char* error)
     line = parser->previous.type == LITTOK_NEW_LINE;
     olen = (line ? 8 : parser->previous.length);
     otext = (line ? "new line" : parser->previous.start);
-    fmt = lit_format_error(parser->state, parser->current.line, LITERROR_EXPECTATION_UNMET, error, olen, otext)->chars;
+    fmt = lit_format_error(parser->state, parser->current.line, LitError::LITERROR_EXPECTATION_UNMET, error, olen, otext)->chars;
     string_error(parser, &parser->current,fmt);
 }
 
@@ -7350,8 +7575,8 @@ static ASTExpression* parse_precedence(LitParser* parser, LitPrecedence preceden
     bool parser_prev_newline;
     bool can_assign;
     ASTExpression* expr;
-    LitPrefixParseFn prefix_rule;
-    LitInfixParseFn infix_rule;
+    ASTParseRule::PrefixFuncType prefix_rule;
+    ASTParseRule::InfixFuncType infix_rule;
     LitToken previous;
     (void)new_line;
     prev_newline = false;
@@ -7373,7 +7598,7 @@ static ASTExpression* parse_precedence(LitParser* parser, LitPrecedence preceden
         // todo: file start
         new_line = previous.start != nullptr && *previous.start == '\n';
         parser_prev_newline = parser->previous.start != nullptr && *parser->previous.start == '\n';
-        prs_error(parser, LITERROR_EXPECTED_EXPRESSION,
+        prs_error(parser, LitError::LITERROR_EXPECTED_EXPRESSION,
             (prev_newline ? 8 : previous.length),
             (prev_newline ? "new line" : previous.start),
             (parser_prev_newline ? 8 : parser->previous.length),
@@ -7393,7 +7618,7 @@ static ASTExpression* parse_precedence(LitParser* parser, LitPrecedence preceden
     }
     if(err && can_assign && prs_match(parser, LITTOK_EQUAL))
     {
-        prs_error(parser, LITERROR_INVALID_ASSIGMENT_TARGET);
+        prs_error(parser, LitError::LITERROR_INVALID_ASSIGMENT_TARGET);
     }
     return expr;
 }
@@ -7436,7 +7661,7 @@ static void parse_parameters(LitParser* parser, PCGenericArray<ASTExprFuncParam>
         }
         else if(had_default)
         {
-            prs_error(parser, LITERROR_DEFAULT_ARG_CENTRED);
+            prs_error(parser, LitError::LITERROR_DEFAULT_ARG_CENTRED);
         }
         parameters->push((ASTExprFuncParam){ arg_name, arg_length, default_value });
         if(!prs_match(parser, LITTOK_COMMA))
@@ -7515,7 +7740,7 @@ static ASTExpression* parse_grouping_or_lambda(LitParser* parser, bool can_assig
                     }
                     else if(had_default)
                     {
-                        prs_error(parser, LITERROR_DEFAULT_ARG_CENTRED);
+                        prs_error(parser, LitError::LITERROR_DEFAULT_ARG_CENTRED);
                     }
                     lambda->parameters.push((ASTExprFuncParam){ arg_name, arg_length, default_value });
                     if(stop)
@@ -7575,7 +7800,7 @@ static ASTExpression* parse_call(LitParser* parser, ASTExpression* prev, bool ca
     }
     if(expression->args.m_count > 255)
     {
-        prs_error(parser, LITERROR_TOO_MANY_FUNCTION_ARGS, (int)expression->args.m_count);
+        prs_error(parser, LitError::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)expression->args.m_count);
     }
     consume(parser, LITTOK_RIGHT_PAREN, "')' after arguments");
     return (ASTExpression*)expression;
@@ -7598,7 +7823,7 @@ static ASTExpression* parse_binary(LitParser* parser, ASTExpression* prev, bool 
     (void)can_assign;
     bool invert;
     size_t line;
-    LitParseRule* rule;
+    ASTParseRule* rule;
     ASTExpression* expression;
     LitTokenType op;
     invert = parser->previous.type == LITTOK_BANG;
@@ -7722,7 +7947,7 @@ static ASTExpression* parse_compound(LitParser* parser, ASTExpression* prev, boo
     size_t line;
     ASTExprBinary* binary;
     ASTExpression* expression;
-    LitParseRule* rule;
+    ASTParseRule* rule;
     LitTokenType op;
     op = parser->previous.type;
     line = parser->previous.line;
@@ -7790,14 +8015,14 @@ static ASTExpression* parse_interpolation(LitParser* parser, bool can_assign)
     expression = lit_create_interpolation_expression(parser->state, parser->previous.line);
     do
     {
-        if(lit_as_string(parser->previous.value)->length() > 0)
+        if(LitObject::as<LitString>(parser->previous.value)->length() > 0)
         {
             expression->expressions.push((ASTExpression*)lit_create_literal_expression(parser->state, parser->previous.line, parser->previous.value));
         }
         expression->expressions.push(parse_expression(parser));
     } while(prs_match(parser, LITTOK_INTERPOLATION));
     consume(parser, LITTOK_STRING, "end of interpolation");
-    if(lit_as_string(parser->previous.value)->length() > 0)
+    if(LitObject::as<LitString>(parser->previous.value)->length() > 0)
     {
         expression->expressions.push((ASTExpression*)lit_create_literal_expression(parser->state, parser->previous.line, parser->previous.value));
     }
@@ -7859,7 +8084,7 @@ static ASTExpression* parse_variable_expression_base(LitParser* parser, bool can
         }
         else if(!had_args)
         {
-            error_at_current(parser, LITERROR_EXPECTATION_UNMET, "argument list for instance creation",
+            error_at_current(parser, LitError::LITERROR_EXPECTATION_UNMET, "argument list for instance creation",
                              parser->previous.length, parser->previous.start);
         }
         return (ASTExpression*)call;
@@ -8127,7 +8352,7 @@ static ASTStatement* parse_if(LitParser* parser)
         // else
         if(else_branch != nullptr)
         {
-            prs_error(parser, LITERROR_MULTIPLE_ELSE_BRANCHES);
+            prs_error(parser, LitError::LITERROR_MULTIPLE_ELSE_BRANCHES);
         }
         ignore_new_lines(parser);
         else_branch = parse_statement(parser);
@@ -8175,7 +8400,7 @@ static ASTStatement* parse_for(LitParser* parser)
         condition = parse_expression(parser);
         if(var == nullptr)
         {
-            prs_error(parser, LITERROR_VAR_MISSING_IN_FORIN);
+            prs_error(parser, LitError::LITERROR_VAR_MISSING_IN_FORIN);
         }
     }
     if(had_paren)
@@ -8236,7 +8461,7 @@ static ASTStatement* parse_function(LitParser* parser)
         parse_parameters(parser, &lambda->parameters);
         if(lambda->parameters.m_count > 255)
         {
-            prs_error(parser, LITERROR_TOO_MANY_FUNCTION_ARGS, (int)lambda->parameters.m_count);
+            prs_error(parser, LitError::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)lambda->parameters.m_count);
         }
         consume(parser, LITTOK_RIGHT_PAREN, "')' after function arguments");
         ignore_new_lines(parser);
@@ -8253,7 +8478,7 @@ static ASTStatement* parse_function(LitParser* parser)
     parse_parameters(parser, &function->parameters);
     if(function->parameters.m_count > 255)
     {
-        prs_error(parser, LITERROR_TOO_MANY_FUNCTION_ARGS, (int)function->parameters.m_count);
+        prs_error(parser, LitError::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)function->parameters.m_count);
     }
     consume(parser, LITTOK_RIGHT_PAREN, "')' after function arguments");
     function->body = parse_statement(parser);
@@ -8304,7 +8529,7 @@ static ASTStatement* parse_field(LitParser* parser, LitString* name, bool is_sta
         }
         if(getter == nullptr && setter == nullptr)
         {
-            prs_error(parser, LITERROR_NO_GETTER_AND_SETTER);
+            prs_error(parser, LitError::LITERROR_NO_GETTER_AND_SETTER);
         }
         ignore_new_lines(parser);
         consume(parser, LITTOK_RIGHT_BRACE, "'}' after field declaration");
@@ -8328,7 +8553,7 @@ static ASTStatement* parse_method(LitParser* parser, bool is_static)
     {
         if(is_static)
         {
-            prs_error(parser, LITERROR_STATIC_OPERATOR);
+            prs_error(parser, LitError::LITERROR_STATIC_OPERATOR);
         }
         i = 0;
         while(operators[i] != LITTOK_EOF)
@@ -8365,7 +8590,7 @@ static ASTStatement* parse_method(LitParser* parser, bool is_static)
     parse_parameters(parser, &method->parameters);
     if(method->parameters.m_count > 255)
     {
-        prs_error(parser, LITERROR_TOO_MANY_FUNCTION_ARGS, (int)method->parameters.m_count);
+        prs_error(parser, LitError::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)method->parameters.m_count);
     }
     consume(parser, LITTOK_RIGHT_PAREN, "')' after method arguments");
     method->body = parse_statement(parser);
@@ -8404,7 +8629,7 @@ static ASTStatement* parse_class(LitParser* parser)
         super = LitString::copy(parser->state, parser->previous.start, parser->previous.length);
         if(super == name)
         {
-            prs_error(parser, LITERROR_SELF_INHERITED_CLASS);
+            prs_error(parser, LitError::LITERROR_SELF_INHERITED_CLASS);
         }
     }
     klass = lit_create_class_statement(parser->state, line, name, super);
@@ -8422,7 +8647,7 @@ static ASTStatement* parse_class(LitParser* parser)
             {
                 if(finished_parsing_fields)
                 {
-                    prs_error(parser, LITERROR_STATIC_FIELDS_AFTER_METHODS);
+                    prs_error(parser, LitError::LITERROR_STATIC_FIELDS_AFTER_METHODS);
                 }
                 var = parse_var_declaration(parser);
                 if(var != nullptr)
@@ -8751,7 +8976,7 @@ bool lit_preprocess(LitPreprocessor* preprocessor, char* source)
                     else
                     {
                         lit_error(preprocessor->state, (LitErrorType)0,
-                                  lit_format_error(preprocessor->state, 0, LITERROR_UNKNOWN_MACRO, (int)(current - macro_start) - 1, macro_start)
+                                  lit_format_error(preprocessor->state, 0, LitError::LITERROR_UNKNOWN_MACRO, (int)(current - macro_start) - 1, macro_start)
                                   ->chars);
                         return false;
                     }
@@ -8777,7 +9002,7 @@ bool lit_preprocess(LitPreprocessor* preprocessor, char* source)
     } while(c != '\0');
     if(in_macro || preprocessor->open_ifs.m_count > 0 || depth > 0)
     {
-        lit_error(preprocessor->state, (LitErrorType)0, lit_format_error(preprocessor->state, 0, LITERROR_UNCLOSED_MACRO)->chars);
+        lit_error(preprocessor->state, (LitErrorType)0, lit_format_error(preprocessor->state, 0, LitError::LITERROR_UNCLOSED_MACRO)->chars);
         return false;
     }
     preprocessor->open_ifs.release();
@@ -8961,7 +9186,7 @@ static LitToken scan_string(LitScanner* scanner, bool interpolation)
         {
             if(scanner->num_braces >= LIT_MAX_INTERPOLATION_NESTING)
             {
-                return make_error_token(scanner, LITERROR_INTERPOLATION_NESTING_TOO_DEEP, LIT_MAX_INTERPOLATION_NESTING);
+                return make_error_token(scanner, LitError::LITERROR_INTERPOLATION_NESTING_TOO_DEEP, LIT_MAX_INTERPOLATION_NESTING);
             }
             string_type = LITTOK_INTERPOLATION;
             scanner->braces[scanner->num_braces++] = 1;
@@ -8971,7 +9196,7 @@ static LitToken scan_string(LitScanner* scanner, bool interpolation)
         {
             case '\0':
                 {
-                    return make_error_token(scanner, LITERROR_UNTERMINATED_STRING);
+                    return make_error_token(scanner, LitError::LITERROR_UNTERMINATED_STRING);
                 }
                 break;
             case '\n':
@@ -9046,7 +9271,7 @@ static LitToken scan_string(LitScanner* scanner, bool interpolation)
                             break;
                         default:
                             {
-                                return make_error_token(scanner, LITERROR_INVALID_ESCAPE_CHAR, scanner->current[-1]);
+                                return make_error_token(scanner, LitError::LITERROR_INVALID_ESCAPE_CHAR, scanner->current[-1]);
 
                                 fprintf(stderr, "scanner->current[-1] = '%c', c = '%c'\n", scanner->current[-1], c);
                                 if(isdigit(scanner->current[-1]))
@@ -9080,7 +9305,7 @@ static LitToken scan_string(LitScanner* scanner, bool interpolation)
                                 }
                                 else
                                 {
-                                    return make_error_token(scanner, LITERROR_INVALID_ESCAPE_CHAR, scanner->current[-1]);
+                                    return make_error_token(scanner, LitError::LITERROR_INVALID_ESCAPE_CHAR, scanner->current[-1]);
                                 }
                             }
                             break;
@@ -9153,7 +9378,7 @@ static LitToken make_number_token(LitScanner* scanner, bool is_hex, bool is_bina
     if(errno == ERANGE)
     {
         errno = 0;
-        return make_error_token(scanner, LITERROR_NUMBER_IS_TOO_BIG);
+        return make_error_token(scanner, LitError::LITERROR_NUMBER_IS_TOO_BIG);
     }
     token = make_token(scanner, LITTOK_NUMBER);
     token.value = value;
@@ -9488,7 +9713,7 @@ LitToken lit_scan_token(LitScanner* scanner)
         {
             if(!match(scanner, '\"'))
             {
-                return make_error_token(scanner, LITERROR_CHAR_EXPECTATION_UNMET, '\"', '$', peek(scanner));
+                return make_error_token(scanner, LitError::LITERROR_CHAR_EXPECTATION_UNMET, '\"', '$', peek(scanner));
             }
 
             return scan_string(scanner, true);
@@ -9498,7 +9723,7 @@ LitToken lit_scan_token(LitScanner* scanner)
             return scan_string(scanner, false);
     }
 
-    return make_error_token(scanner, LITERROR_UNEXPECTED_CHAR, c);
+    return make_error_token(scanner, LitError::LITERROR_UNEXPECTED_CHAR, c);
 }
 
 #define PUSH(value) (*fiber->stack_top++ = value)
@@ -9531,7 +9756,7 @@ LitFunction* lit_get_global_function(LitState* state, LitString* name)
     LitValue function = lit_get_global(state, name);
     if(IS_FUNCTION(function))
     {
-        return AS_FUNCTION(function);
+        return LitObject::as<LitFunction>(function);
     }
     return nullptr;
 }
@@ -9550,19 +9775,19 @@ bool lit_global_exists(LitState* state, LitString* name)
     return state->vm->globals->values.get(name, &global);
 }
 
-void lit_define_native(LitState* state, const char* name, LitNativeFunctionFn native)
+void lit_define_native(LitState* state, const char* name, LitNativeFunction::FuncType native)
 {
     state->pushRoot((LitObject*)CONST_STRING(state, name));
-    state->pushRoot((LitObject*)lit_create_native_function(state, native, lit_as_string(state->peekRoot(0))));
-    state->vm->globals->values.set(lit_as_string(state->peekRoot(1)), state->peekRoot(0));
+    state->pushRoot((LitObject*)lit_create_native_function(state, native, LitObject::as<LitString>(state->peekRoot(0))));
+    state->vm->globals->values.set(LitObject::as<LitString>(state->peekRoot(1)), state->peekRoot(0));
     state->popRoots(2);
 }
 
-void lit_define_native_primitive(LitState* state, const char* name, LitNativePrimitiveFn native)
+void lit_define_native_primitive(LitState* state, const char* name, LitNativePrimFunction::FuncType native)
 {
     state->pushRoot((LitObject*)CONST_STRING(state, name));
-    state->pushRoot((LitObject*)lit_create_native_primitive(state, native, lit_as_string(state->peekRoot(0))));
-    state->vm->globals->values.set(lit_as_string(state->peekRoot(1)), state->peekRoot(0));
+    state->pushRoot((LitObject*)lit_create_native_primitive(state, native, LitObject::as<LitString>(state->peekRoot(0))));
+    state->vm->globals->values.set(LitObject::as<LitString>(state->peekRoot(1)), state->peekRoot(0));
     state->popRoots(2);
 }
 
@@ -9571,7 +9796,7 @@ LitValue lit_instance_get_method(LitState* state, LitValue callee, LitString* mt
     LitValue mthval;
     LitClass* klass;
     klass = state->getClassFor(callee);
-    if((IS_INSTANCE(callee) && AS_INSTANCE(callee)->fields.get(mthname, &mthval)) || klass->methods.get(mthname, &mthval))
+    if((IS_INSTANCE(callee) && LitObject::as<LitInstance>(callee)->fields.get(mthname, &mthval)) || klass->methods.get(mthname, &mthval))
     {
         return mthval;
     }
@@ -9639,7 +9864,7 @@ const char* lit_check_string(LitVM* vm, LitValue* args, uint8_t arg_count, uint8
                                   id >= arg_count ? "null" : lit_get_value_type(args[id]));
     }
 
-    return lit_as_string(args[id])->chars;
+    return LitObject::as<LitString>(args[id])->chars;
 }
 
 const char* lit_get_string(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id, const char* def)
@@ -9650,7 +9875,7 @@ const char* lit_get_string(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t
         return def;
     }
 
-    return lit_as_string(args[id])->chars;
+    return LitObject::as<LitString>(args[id])->chars;
 }
 
 LitString* lit_check_object_string(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id)
@@ -9661,7 +9886,7 @@ LitString* lit_check_object_string(LitVM* vm, LitValue* args, uint8_t arg_count,
                                   id >= arg_count ? "null" : lit_get_value_type(args[id]));
     }
 
-    return lit_as_string(args[id]);
+    return LitObject::as<LitString>(args[id]);
 }
 
 LitInstance* lit_check_instance(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id)
@@ -9672,7 +9897,7 @@ LitInstance* lit_check_instance(LitVM* vm, LitValue* args, uint8_t arg_count, ui
                                   id >= arg_count ? "null" : lit_get_value_type(args[id]));
     }
 
-    return AS_INSTANCE(args[id]);
+    return LitObject::as<LitInstance>(args[id]);
 }
 
 LitValue* lit_check_reference(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id)
@@ -9900,11 +10125,11 @@ LitInterpretResult lit_call_method(LitState* state, LitValue instance, LitValue 
 
         if(type == LitObject::Type::Function)
         {
-            return lit_call_function(state, AS_FUNCTION(callee), argv, argc, ignfiber);
+            return lit_call_function(state, LitObject::as<LitFunction>(callee), argv, argc, ignfiber);
         }
         else if(type == LitObject::Type::Closure)
         {
-            return lit_call_closure(state, AS_CLOSURE(callee), argv, argc, ignfiber);
+            return lit_call_closure(state, LitObject::as<LitClosure>(callee), argv, argc, ignfiber);
         }
         fiber = vm->fiber;
         if(ignfiber)
@@ -9935,21 +10160,21 @@ LitInterpretResult lit_call_method(LitState* state, LitValue instance, LitValue 
         {
             case LitObject::Type::NativeFunction:
                 {
-                    LitValue result = AS_NATIVE_FUNCTION(callee)->function(vm, argc, fiber->stack_top - argc);
+                    LitValue result = LitObject::as<LitNativeFunction>(callee)->function(vm, argc, fiber->stack_top - argc);
                     fiber->stack_top = slot;
                     RETURN_OK(result);
                 }
                 break;
             case LitObject::Type::NativePrimitive:
                 {
-                    AS_NATIVE_PRIMITIVE(callee)->function(vm, argc, fiber->stack_top - argc);
+                    LitObject::as<LitNativePrimFunction>(callee)->function(vm, argc, fiber->stack_top - argc);
                     fiber->stack_top = slot;
                     RETURN_OK(NULL_VALUE);
                 }
                 break;
             case LitObject::Type::NativeMethod:
                 {
-                    natmethod = AS_NATIVE_METHOD(callee);
+                    natmethod = LitObject::as<LitNativeMethod>(callee);
                     result = natmethod->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
                     fiber->stack_top = slot;
                     RETURN_OK(result);
@@ -9976,13 +10201,13 @@ LitInterpretResult lit_call_method(LitState* state, LitValue instance, LitValue 
                     *slot = bound_method->receiver;
                     if(IS_NATIVE_METHOD(mthval))
                     {
-                        result = AS_NATIVE_METHOD(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
+                        result = LitObject::as<LitNativeMethod>(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
                         fiber->stack_top = slot;
                         RETURN_OK(result);
                     }
                     else if(IS_PRIMITIVE_METHOD(mthval))
                     {
-                        AS_PRIMITIVE_METHOD(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
+                        LitObject::as<LitPrimitiveMethod>(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
 
                         fiber->stack_top = slot;
                         RETURN_OK(NULL_VALUE);
@@ -9990,13 +10215,13 @@ LitInterpretResult lit_call_method(LitState* state, LitValue instance, LitValue 
                     else
                     {
                         fiber->stack_top = slot;
-                        return lit_call_function(state, AS_FUNCTION(mthval), argv, argc, ignfiber);
+                        return lit_call_function(state, LitObject::as<LitFunction>(mthval), argv, argc, ignfiber);
                     }
                 }
                 break;
             case LitObject::Type::PrimitiveMethod:
                 {
-                    AS_PRIMITIVE_METHOD(callee)->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
+                    LitObject::as<LitPrimitiveMethod>(callee)->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
                     fiber->stack_top = slot;
                     RETURN_OK(NULL_VALUE);
                 }
@@ -10041,7 +10266,7 @@ LitInterpretResult lit_find_and_call_method(LitState* state, LitValue callee, Li
         }
     }
     klass = state->getClassFor(callee);
-    if((IS_INSTANCE(callee) && AS_INSTANCE(callee)->fields.get(method_name, &mthval)) || klass->methods.get(method_name, &mthval))
+    if((IS_INSTANCE(callee) && LitObject::as<LitInstance>(callee)->fields.get(method_name, &mthval)) || klass->methods.get(method_name, &mthval))
     {
         return lit_call_method(state, callee, mthval, argv, argc, ignfiber);
     }
@@ -10059,7 +10284,7 @@ LitString* lit_to_string(LitState* state, LitValue valobj)
     LitInterpretResult result;
     if(IS_STRING(valobj))
     {
-        return lit_as_string(valobj);
+        return LitObject::as<LitString>(valobj);
     }
     else if(!IS_OBJECT(valobj))
     {
@@ -10069,7 +10294,7 @@ LitString* lit_to_string(LitState* state, LitValue valobj)
         }
         else if(IS_NUMBER(valobj))
         {
-            return lit_as_string(LitString::stringNumberToString(state, lit_value_to_number(valobj)));
+            return LitObject::as<LitString>(LitString::stringNumberToString(state, lit_value_to_number(valobj)));
         }
         else if(IS_BOOL(valobj))
         {
@@ -10122,7 +10347,7 @@ LitString* lit_to_string(LitState* state, LitValue valobj)
     {
         return CONST_STRING(state, "null");
     }
-    return lit_as_string(result.result);
+    return LitObject::as<LitString>(result.result);
 }
 
 LitValue lit_call_new(LitVM* vm, const char* name, LitValue* args, size_t argc, bool ignfiber)
@@ -10318,11 +10543,11 @@ void lit_disassemble_chunk(LitState* state, LitChunk* chunk, const char* name, c
         value = values->m_values[i];
         if(IS_FUNCTION(value))
         {
-            function = AS_FUNCTION(value);
+            function = LitObject::as<LitFunction>(value);
             lit_disassemble_chunk(state, &function->chunk, function->name->chars, source);
         }
     }
-    lit_writer_writeformat(&state->debugwriter, "== %s ==\n", name);
+    state->debugwriter.format("== %s ==\n", name);
     for(offset = 0; offset < chunk->m_count;)
     {
         offset = lit_disassemble_instruction(state, chunk, offset, source);
@@ -10332,7 +10557,7 @@ void lit_disassemble_chunk(LitState* state, LitChunk* chunk, const char* name, c
 static size_t print_simple_op(LitState* state, LitWriter* wr, const char* name, size_t offset)
 {
     (void)state;
-    lit_writer_writeformat(wr, "%s%s%s\n", COLOR_YELLOW, name, COLOR_RESET);
+    wr->format("%s%s%s\n", COLOR_YELLOW, name, COLOR_RESET);
     return offset + 1;
 }
 
@@ -10348,9 +10573,9 @@ static size_t print_constant_op(LitState* state, LitWriter* wr, const char* name
     {
         constant = chunk->code[offset + 1];
     }
-    lit_writer_writeformat(wr, "%s%-16s%s %4d '", COLOR_YELLOW, name, COLOR_RESET, constant);
+    wr->format("%s%-16s%s %4d '", COLOR_YELLOW, name, COLOR_RESET, constant);
     lit_print_value(state, wr, chunk->constants.m_values[constant]);
-    lit_writer_writeformat(wr, "'\n");
+    wr->format("'\n");
     return offset + (big ? 3 : 2);
 }
 
@@ -10359,7 +10584,7 @@ static size_t print_byte_op(LitState* state, LitWriter* wr, const char* name, Li
     uint8_t slot;
     (void)state;
     slot = chunk->code[offset + 1];
-    lit_writer_writeformat(wr, "%s%-16s%s %4d\n", COLOR_YELLOW, name, COLOR_RESET, slot);
+    wr->format("%s%-16s%s %4d\n", COLOR_YELLOW, name, COLOR_RESET, slot);
     return offset + 2;
 }
 
@@ -10369,7 +10594,7 @@ static size_t print_short_op(LitState* state, LitWriter* wr, const char* name, L
     (void)state;
     slot = (uint16_t)(chunk->code[offset + 1] << 8);
     slot |= chunk->code[offset + 2];
-    lit_writer_writeformat(wr, "%s%-16s%s %4d\n", COLOR_YELLOW, name, COLOR_RESET, slot);
+    wr->format("%s%-16s%s %4d\n", COLOR_YELLOW, name, COLOR_RESET, slot);
     return offset + 2;
 }
 
@@ -10379,7 +10604,7 @@ static size_t print_jump_op(LitState* state, LitWriter* wr, const char* name, in
     (void)state;
     jump = (uint16_t)(chunk->code[offset + 1] << 8);
     jump |= chunk->code[offset + 2];
-    lit_writer_writeformat(wr, "%s%-16s%s %4d -> %d\n", COLOR_YELLOW, name, COLOR_RESET, (int)offset, (int)(offset + 3 + sign * jump));
+    wr->format("%s%-16s%s %4d -> %d\n", COLOR_YELLOW, name, COLOR_RESET, (int)offset, (int)(offset + 3 + sign * jump));
     return offset + 3;
 }
 
@@ -10391,9 +10616,9 @@ static size_t print_invoke_op(LitState* state, LitWriter* wr, const char* name, 
     arg_count = chunk->code[offset + 1];
     constant = chunk->code[offset + 2];
     constant |= chunk->code[offset + 3];
-    lit_writer_writeformat(wr, "%s%-16s%s (%d args) %4d '", COLOR_YELLOW, name, COLOR_RESET, arg_count, constant);
+    wr->format("%s%-16s%s (%d args) %4d '", COLOR_YELLOW, name, COLOR_RESET, arg_count, constant);
     lit_print_value(state, wr, chunk->constants.m_values[constant]);
-    lit_writer_writeformat(wr, "'\n");
+    wr->format("'\n");
     return offset + 4;
 }
 
@@ -10433,19 +10658,19 @@ size_t lit_disassemble_instruction(LitState* state, LitChunk* chunk, size_t offs
                 {
                     output_line++;
                 }
-                lit_writer_writeformat(wr, "%s        %.*s%s\n", COLOR_RED, next_line ? (int)(next_line - output_line) : (int)strlen(prev_line), output_line, COLOR_RESET);
+                wr->format("%s        %.*s%s\n", COLOR_RED, next_line ? (int)(next_line - output_line) : (int)strlen(prev_line), output_line, COLOR_RESET);
                 break;
             }
         }
     }
-    lit_writer_writeformat(wr, "%04d ", (int)offset);
+    wr->format("%04d ", (int)offset);
     if(same)
     {
-        lit_writer_writestring(wr, "   | ");
+        wr->put("   | ");
     }
     else
     {
-        lit_writer_writeformat(wr, "%s%4d%s ", COLOR_BLUE, (int)line, COLOR_RESET);
+        wr->format("%s%4d%s ", COLOR_BLUE, (int)line, COLOR_RESET);
     }
     instruction = chunk->code[offset];
     switch(instruction)
@@ -10554,15 +10779,15 @@ size_t lit_disassemble_instruction(LitState* state, LitChunk* chunk, size_t offs
                 constant = (uint16_t)(chunk->code[offset] << 8);
                 offset++;
                 constant |= chunk->code[offset];
-                lit_writer_writeformat(wr, "%-16s %4d ", "OP_CLOSURE", constant);
+                wr->format("%-16s %4d ", "OP_CLOSURE", constant);
                 lit_print_value(state, wr, chunk->constants.m_values[constant]);
-                lit_writer_writeformat(wr, "\n");
-                function = AS_FUNCTION(chunk->constants.m_values[constant]);
+                wr->format("\n");
+                function = LitObject::as<LitFunction>(chunk->constants.m_values[constant]);
                 for(j = 0; j < function->upvalue_count; j++)
                 {
                     is_local = chunk->code[offset++];
                     index = chunk->code[offset++];
-                    lit_writer_writeformat(wr, "%04d      |                     %s %d\n", (int)(offset - 2), is_local ? "local" : "upvalue", (int)index);
+                    wr->format("%04d      |                     %s %d\n", (int)(offset - 2), is_local ? "local" : "upvalue", (int)index);
                 }
                 return offset;
             }
@@ -10627,7 +10852,7 @@ size_t lit_disassemble_instruction(LitState* state, LitChunk* chunk, size_t offs
             return print_simple_op(state, wr, "OP_SET_REFERENCE", offset);
         default:
             {
-                lit_writer_writeformat(wr, "Unknown opcode %d\n", instruction);
+                wr->format("Unknown opcode %d\n", instruction);
                 return offset + 1;
             }
             break;
@@ -10646,137 +10871,104 @@ void lit_trace_frame(LitFiber* fiber, LitWriter* wr)
         return;
     }
     frame = &fiber->frames[fiber->frame_count - 1];
-    lit_writer_writeformat(wr, "== fiber %p f%i %s (expects %i, max %i, added %i, current %i, exits %i) ==\n", fiber,
+    wr->format("== fiber %p f%i %s (expects %i, max %i, added %i, current %i, exits %i) ==\n", fiber,
            fiber->frame_count - 1, frame->function->name->chars, frame->function->arg_count, frame->function->max_slots,
            frame->function->max_slots + (int)(fiber->stack_top - fiber->stack), fiber->stack_capacity, frame->return_to_c);
 #endif
 }
 
-static const char* error_messages[LITERROR_TOTAL] =
+static const char* errorCodeToString(LitError eid)
 {
-   // LITERROR_UNCLOSED_MACRO
-   "unclosed macro.",
+    switch(eid)
+    {
+        case LitError::LITERROR_UNCLOSED_MACRO:
+            return "unclosed macro.";
+        case LitError::LITERROR_UNKNOWN_MACRO:
+            return "unknown macro '%.*s'.";
+        case LitError::LITERROR_UNEXPECTED_CHAR:
+            return "unexpected character '%c'";
+        case LitError::LITERROR_UNTERMINATED_STRING:
+            return "unterminated string";
+        case LitError::LITERROR_INVALID_ESCAPE_CHAR:
+            return "invalid escape character '%c'";
+        case LitError::LITERROR_INTERPOLATION_NESTING_TOO_DEEP:
+            return "interpolation nesting is too deep, maximum is %i";
+        case LitError::LITERROR_NUMBER_IS_TOO_BIG:
+            return "number is too big to be represented by a single literal";
+        case LitError::LITERROR_CHAR_EXPECTATION_UNMET:
+            return "expected '%c' after '%c', got '%c'";
+        case LitError::LITERROR_EXPECTATION_UNMET:
+            return "expected %s, got '%.*s'";
+        case LitError::LITERROR_INVALID_ASSIGMENT_TARGET:
+            return "invalid assigment target";
+        case LitError::LITERROR_TOO_MANY_FUNCTION_ARGS:
+            return "function cannot have more than 255 arguments, got %i";
+        case LitError::LITERROR_MULTIPLE_ELSE_BRANCHES:
+            return "if-statement can have only one else-branch";
+        case LitError::LITERROR_VAR_MISSING_IN_FORIN:
+            return "for-loops using in-iteration must declare a new variable";
+        case LitError::LITERROR_NO_GETTER_AND_SETTER:
+            return "expected declaration of either getter or setter, got none";
+        case LitError::LITERROR_STATIC_OPERATOR:
+            return "operator methods cannot be static or defined in static classes";
+        case LitError::LITERROR_SELF_INHERITED_CLASS:
+            return "class cannot inherit itself";
+        case LitError::LITERROR_STATIC_FIELDS_AFTER_METHODS:
+            return "all static fields must be defined before the methods";
+        case LitError::LITERROR_MISSING_STATEMENT:
+            return "expected statement but got nothing";
+        case LitError::LITERROR_EXPECTED_EXPRESSION:
+            return "expected expression after '%.*s', got '%.*s'";
+        case LitError::LITERROR_DEFAULT_ARG_CENTRED:
+            return "default arguments must always be in the end of the argument list.";
+        case LitError::LITERROR_TOO_MANY_CONSTANTS:
+            return "too many constants for one chunk";
+        case LitError::LITERROR_TOO_MANY_PRIVATES:
+            return "too many private locals for one module";
+        case LitError::LITERROR_VAR_REDEFINED:
+            return "variable '%.*s' was already declared in this scope";
+        case LitError::LITERROR_TOO_MANY_LOCALS:
+            return "too many local variables for one function";
+        case LitError::LITERROR_TOO_MANY_UPVALUES:
+            return "too many upvalues for one function";
+        case LitError::LITERROR_VARIABLE_USED_IN_INIT:
+            return "variable '%.*s' cannot use itself in its initializer";
+        case LitError::LITERROR_JUMP_TOO_BIG:
+            return "too much code to jump over";
+        case LitError::LITERROR_NO_SUPER:
+            return "'super' cannot be used in class '%s', because it does not have a super class";
+        case LitError::LITERROR_THIS_MISSUSE:
+            return "'this' cannot be used %s";
+        case LitError::LITERROR_SUPER_MISSUSE:
+            return "'super' cannot be used %s";
+        case LitError::LITERROR_UNKNOWN_EXPRESSION:
+            return "unknown expression with id '%i'";
+        case LitError::LITERROR_UNKNOWN_STATEMENT:
+            return "unknown statement with id '%i'";
+        case LitError::LITERROR_LOOP_JUMP_MISSUSE:
+            return "cannot use '%s' outside of loops";
+        case LitError::LITERROR_RETURN_FROM_CONSTRUCTOR:
+            return "cannot use 'return' in constructors";
+        case LitError::LITERROR_STATIC_CONSTRUCTOR:
+            return "constructors cannot be static (at least for now)";
+        case LitError::LITERROR_CONSTANT_MODIFIED:
+            return "attempt to modify constant '%.*s'";
+        case LitError::LITERROR_INVALID_REFERENCE_TARGET:
+            return "invalid refence target";
+        default:
+            break;
+    }
+    return "(nothing)";
+}
 
-   // LITERROR_UNKNOWN_MACRO
-   "unknown macro '%.*s'.",
-
-   // LITERROR_UNEXPECTED_CHAR
-   "unexpected character '%c'",
-
-   // LITERROR_UNTERMINATED_STRING
-   "unterminated string",
-
-   // LITERROR_INVALID_ESCAPE_CHAR
-   "invalid escape character '%c'",
-
-   // LITERROR_INTERPOLATION_NESTING_TOO_DEEP
-   "interpolation nesting is too deep, maximum is %i",
-
-   // LITERROR_NUMBER_IS_TOO_BIG
-   "number is too big to be represented by a single literal",
-
-   // LITERROR_CHAR_EXPECTATION_UNMET
-   "expected '%c' after '%c', got '%c'",
-
-   // LITERROR_EXPECTATION_UNMET
-   "expected %s, got '%.*s'",
-
-   // LITERROR_INVALID_ASSIGMENT_TARGET
-   "invalid assigment target",
-
-   // LITERROR_TOO_MANY_FUNCTION_ARGS
-   "function cannot have more than 255 arguments, got %i",
-
-   // LITERROR_MULTIPLE_ELSE_BRANCHES
-   "if-statement can have only one else-branch",
-
-   // LITERROR_VAR_MISSING_IN_FORIN
-   "for-loops using in-iteration must declare a new variable",
-
-   // LITERROR_NO_GETTER_AND_SETTER
-   "expected declaration of either getter or setter, got none",
-
-   // LITERROR_STATIC_OPERATOR
-   "operator methods cannot be static or defined in static classes",
-
-   // LITERROR_SELF_INHERITED_CLASS
-   "class cannot inherit itself",
-
-   // LITERROR_STATIC_FIELDS_AFTER_METHODS
-   "all static fields must be defined before the methods",
-
-   // LITERROR_MISSING_STATEMENT
-   "expected statement but got nothing",
-
-   // LITERROR_EXPECTED_EXPRESSION
-   "expected expression after '%.*s', got '%.*s'",
-
-   // LITERROR_DEFAULT_ARG_CENTRED
-   "default arguments must always be in the end of the argument list.",
-
-   // LITERROR_TOO_MANY_CONSTANTS
-   "too many constants for one chunk",
-
-   // LITERROR_TOO_MANY_PRIVATES
-   "too many private locals for one module",
-
-   // LITERROR_VAR_REDEFINED
-   "variable '%.*s' was already declared in this scope",
-
-   // LITERROR_TOO_MANY_LOCALS
-   "too many local variables for one function",
-
-   // LITERROR_TOO_MANY_UPVALUES
-   "too many upvalues for one function",
-
-   // LITERROR_VARIABLE_USED_IN_INIT
-   "variable '%.*s' cannot use itself in its initializer",
-
-   // LITERROR_JUMP_TOO_BIG
-   "too much code to jump over",
-
-   // LITERROR_NO_SUPER
-   "'super' cannot be used in class '%s', because it does not have a super class",
-
-   // LITERROR_THIS_MISSUSE
-   "'this' cannot be used %s",
-
-   // LITERROR_SUPER_MISSUSE
-   "'super' cannot be used %s",
-
-   // LITERROR_UNKNOWN_EXPRESSION
-   "unknown expression with id '%i'",
-
-   // LITERROR_UNKNOWN_STATEMENT
-   "unknown statement with id '%i'",
-
-   // LITERROR_LOOP_JUMP_MISSUSE
-   "cannot use '%s' outside of loops",
-
-   // LITERROR_RETURN_FROM_CONSTRUCTOR
-   "cannot use 'return' in constructors",
-
-   // LITERROR_STATIC_CONSTRUCTOR
-   "constructors cannot be static (at least for now)",
-
-   // LITERROR_CONSTANT_MODIFIED
-   "attempt to modify constant '%.*s'",
-
-   // LITERROR_INVALID_REFERENCE_TARGET
-   "invalid refence target",
-
-};
-
-LitString* lit_vformat_error(LitState* state, size_t line, LitError error, va_list args)
+LitString* lit_vformat_error(LitState* state, size_t line, LitError error_id, va_list args)
 {
-    int error_id;
     size_t buffer_size;
     char* buffer;
     const char* error_message;
     LitString* rt;
     va_list args_copy;
-    error_id = (int)error;
-    error_message = error_messages[error_id];
+    error_message = errorCodeToString(error_id);
     va_copy(args_copy, args);
     buffer_size = vsnprintf(nullptr, 0, error_message, args_copy) + 1;
     va_end(args_copy);
@@ -11060,13 +11252,13 @@ static void save_chunk(FILE* file, LitChunk* chunk)
             {
                 case LitObject::Type::String:
                 {
-                    lit_write_string(file, lit_as_string(constant));
+                    lit_write_string(file, LitObject::as<LitString>(constant));
                     break;
                 }
 
                 case LitObject::Type::Function:
                 {
-                    save_function(file, AS_FUNCTION(constant));
+                    save_function(file, LitObject::as<LitFunction>(constant));
                     break;
                 }
 
@@ -11297,7 +11489,7 @@ bool lit_is_callable_function(LitValue value)
 LitFunction* lit_create_function(LitState* state, LitModule* module)
 {
     LitFunction* function;
-    function = ALLOCATE_OBJECT(state, LitFunction, LitObject::Type::Function);
+    function = LitObject::make<LitFunction>(state, LitObject::Type::Function);
     lit_init_chunk(state, &function->chunk);
     function->name = nullptr;
     function->arg_count = 0;
@@ -11317,12 +11509,12 @@ LitValue lit_get_function_name(LitVM* vm, LitValue instance)
     {
         case LitObject::Type::Function:
             {
-                name = AS_FUNCTION(instance)->name;
+                name = LitObject::as<LitFunction>(instance)->name;
             }
             break;
         case LitObject::Type::Closure:
             {
-                name = AS_CLOSURE(instance)->function->name;
+                name = LitObject::as<LitClosure>(instance)->function->name;
             }
             break;
         case LitObject::Type::Field:
@@ -11337,22 +11529,22 @@ LitValue lit_get_function_name(LitVM* vm, LitValue instance)
             break;
         case LitObject::Type::NativePrimitive:
             {
-                name = AS_NATIVE_PRIMITIVE(instance)->name;
+                name = LitObject::as<LitNativePrimFunction>(instance)->name;
             }
             break;
         case LitObject::Type::NativeFunction:
             {
-                name = AS_NATIVE_FUNCTION(instance)->name;
+                name = LitObject::as<LitNativeFunction>(instance)->name;
             }
             break;
         case LitObject::Type::NativeMethod:
             {
-                name = AS_NATIVE_METHOD(instance)->name;
+                name = LitObject::as<LitNativeMethod>(instance)->name;
             }
             break;
         case LitObject::Type::PrimitiveMethod:
             {
-                name = AS_PRIMITIVE_METHOD(instance)->name;
+                name = LitObject::as<LitPrimitiveMethod>(instance)->name;
             }
             break;
         case LitObject::Type::BoundMethod:
@@ -11376,7 +11568,7 @@ LitValue lit_get_function_name(LitVM* vm, LitValue instance)
 LitUpvalue* lit_create_upvalue(LitState* state, LitValue* slot)
 {
     LitUpvalue* upvalue;
-    upvalue = ALLOCATE_OBJECT(state, LitUpvalue, LitObject::Type::Upvalue);
+    upvalue = LitObject::make<LitUpvalue>(state, LitObject::Type::Upvalue);
     upvalue->location = slot;
     upvalue->closed = NULL_VALUE;
     upvalue->next = nullptr;
@@ -11388,7 +11580,7 @@ LitClosure* lit_create_closure(LitState* state, LitFunction* function)
     size_t i;
     LitClosure* closure;
     LitUpvalue** upvalues;
-    closure = ALLOCATE_OBJECT(state, LitClosure, LitObject::Type::Closure);
+    closure = LitObject::make<LitClosure>(state, LitObject::Type::Closure);
     state->pushRoot((LitObject*)closure);
     upvalues = LIT_ALLOCATE(state, LitUpvalue*, function->upvalue_count);
     state->popRoot();
@@ -11402,38 +11594,20 @@ LitClosure* lit_create_closure(LitState* state, LitFunction* function)
     return closure;
 }
 
-LitNativeFunction* lit_create_native_function(LitState* state, LitNativeFunctionFn function, LitString* name)
+LitNativeFunction* lit_create_native_function(LitState* state, LitNativeFunction::FuncType function, LitString* name)
 {
     LitNativeFunction* native;
-    native = ALLOCATE_OBJECT(state, LitNativeFunction, LitObject::Type::NativeFunction);
+    native = LitObject::make<LitNativeFunction>(state, LitObject::Type::NativeFunction);
     native->function = function;
     native->name = name;
     return native;
 }
 
-LitNativePrimFunction* lit_create_native_primitive(LitState* state, LitNativePrimitiveFn function, LitString* name)
+LitNativePrimFunction* lit_create_native_primitive(LitState* state, LitNativePrimFunction::FuncType function, LitString* name)
 {
     LitNativePrimFunction* native;
-    native = ALLOCATE_OBJECT(state, LitNativePrimFunction, LitObject::Type::NativePrimitive);
+    native = LitObject::make<LitNativePrimFunction>(state, LitObject::Type::NativePrimitive);
     native->function = function;
-    native->name = name;
-    return native;
-}
-
-LitNativeMethod* lit_create_native_method(LitState* state, LitNativeMethodFn method, LitString* name)
-{
-    LitNativeMethod* native;
-    native = ALLOCATE_OBJECT(state, LitNativeMethod, LitObject::Type::NativeMethod);
-    native->method = method;
-    native->name = name;
-    return native;
-}
-
-LitPrimitiveMethod* lit_create_primitive_method(LitState* state, LitPrimitiveMethodFn method, LitString* name)
-{
-    LitPrimitiveMethod* native;
-    native = ALLOCATE_OBJECT(state, LitPrimitiveMethod, LitObject::Type::PrimitiveMethod);
-    native->method = method;
     native->name = name;
     return native;
 }
@@ -11449,7 +11623,7 @@ LitFiber* lit_create_fiber(LitState* state, LitModule* module, LitFunction* func
     stack_capacity = function == nullptr ? 1 : (size_t)lit_closest_power_of_two(function->max_slots + 1);
     stack = LIT_ALLOCATE(state, LitValue, stack_capacity);
     frames = LIT_ALLOCATE(state, LitCallFrame, LIT_INITIAL_CALL_FRAMES);
-    fiber = ALLOCATE_OBJECT(state, LitFiber, LitObject::Type::Fiber);
+    fiber = LitObject::make<LitFiber>(state, LitObject::Type::Fiber);
     if(module != nullptr)
     {
         if(module->main_fiber == nullptr)
@@ -11515,7 +11689,7 @@ void lit_ensure_fiber_stack(LitState* state, LitFiber* fiber, size_t needed)
 LitModule* lit_create_module(LitState* state, LitString* name)
 {
     LitModule* module;
-    module = ALLOCATE_OBJECT(state, LitModule, LitObject::Type::Module);
+    module = LitObject::make<LitModule>(state, LitObject::Type::Module);
     module->name = name;
     module->return_value = NULL_VALUE;
     module->main_function = nullptr;
@@ -11530,7 +11704,7 @@ LitModule* lit_create_module(LitState* state, LitString* name)
 LitClass* lit_create_class(LitState* state, LitString* name)
 {
     LitClass* klass;
-    klass = ALLOCATE_OBJECT(state, LitClass, LitObject::Type::Class);
+    klass = LitObject::make<LitClass>(state, LitObject::Type::Class);
     klass->name = name;
     klass->init_method = nullptr;
     klass->super = nullptr;
@@ -11542,7 +11716,7 @@ LitClass* lit_create_class(LitState* state, LitString* name)
 LitInstance* lit_create_instance(LitState* state, LitClass* klass)
 {
     LitInstance* instance;
-    instance = ALLOCATE_OBJECT(state, LitInstance, LitObject::Type::Instance);
+    instance = LitObject::make<LitInstance>(state, LitObject::Type::Instance);
     instance->klass = klass;
     instance->fields.init(state);
     instance->fields.m_count = 0;
@@ -11552,7 +11726,7 @@ LitInstance* lit_create_instance(LitState* state, LitClass* klass)
 LitBoundMethod* lit_create_bound_method(LitState* state, LitValue receiver, LitValue method)
 {
     LitBoundMethod* bound_method;
-    bound_method = ALLOCATE_OBJECT(state, LitBoundMethod, LitObject::Type::BoundMethod);
+    bound_method = LitObject::make<LitBoundMethod>(state, LitObject::Type::BoundMethod);
     bound_method->receiver = receiver;
     bound_method->method = method;
     return bound_method;
@@ -11563,7 +11737,7 @@ LitBoundMethod* lit_create_bound_method(LitState* state, LitValue receiver, LitV
 LitUserdata* lit_create_userdata(LitState* state, size_t size, bool ispointeronly)
 {
     LitUserdata* userdata;
-    userdata = ALLOCATE_OBJECT(state, LitUserdata, LitObject::Type::Userdata);
+    userdata = LitObject::make<LitUserdata>(state, LitObject::Type::Userdata);
     userdata->data = nullptr;
     if(size > 0)
     {
@@ -11581,25 +11755,16 @@ LitUserdata* lit_create_userdata(LitState* state, size_t size, bool ispointeronl
 LitRange* lit_create_range(LitState* state, double from, double to)
 {
     LitRange* range;
-    range = ALLOCATE_OBJECT(state, LitRange, LitObject::Type::Range);
+    range = LitObject::make<LitRange>(state, LitObject::Type::Range);
     range->from = from;
     range->to = to;
     return range;
 }
 
-LitField* lit_create_field(LitState* state, LitObject* getter, LitObject* setter)
-{
-    LitField* field;
-    field = ALLOCATE_OBJECT(state, LitField, LitObject::Type::Field);
-    field->getter = getter;
-    field->setter = setter;
-    return field;
-}
-
 LitReference* lit_create_reference(LitState* state, LitValue* slot)
 {
     LitReference* reference;
-    reference = ALLOCATE_OBJECT(state, LitReference, LitObject::Type::Reference);
+    reference = LitObject::make<LitReference>(state, LitObject::Type::Reference);
     reference->slot = slot;
     return reference;
 }
@@ -11652,7 +11817,7 @@ LitState* lit_new_state()
     state->root_count = 0;
     state->root_capacity = 0;
     state->last_module = nullptr;
-    lit_writer_init_file(state, &state->debugwriter, stdout, true);
+    state->debugwriter.initFile(state, stdout, true);
     state->preprocessor = (LitPreprocessor*)malloc(sizeof(LitPreprocessor));
     lit_init_preprocessor(state, state->preprocessor);
     state->scanner = (LitScanner*)malloc(sizeof(LitScanner));
@@ -11753,7 +11918,7 @@ LitModule* lit_get_module(LitState* state, const char* name)
     LitValue value;
     if(state->vm->modules->values.get(CONST_STRING(state, name), &value))
     {
-        return AS_MODULE(value);
+        return LitObject::as<LitModule>(value);
     }
     return nullptr;
 }
@@ -12192,103 +12357,7 @@ int lit_uchar_offset(char* str, int index)
 #undef is_utf
 }
 
-static void litwr_cb_writebyte(LitWriter* wr, int byte)
-{
-    LitString* ds;
-    if(wr->stringmode)
-    {
-        ds = (LitString*)wr->uptr;
-        ds->append(byte);        
-    }
-    else
-    {
-        fputc(byte, (FILE*)wr->uptr);
-    }
-}
 
-static void litwr_cb_writestring(LitWriter* wr, const char* string, size_t len)
-{
-    LitString* ds;
-    if(wr->stringmode)
-    {
-        ds = (LitString*)wr->uptr;
-        ds->append(string, len);
-    }
-    else
-    {
-        fwrite(string, sizeof(char), len, (FILE*)wr->uptr);
-    }
-}
-
-static void litwr_cb_writeformat(LitWriter* wr, const char* fmt, va_list va)
-{
-    LitString* ds;
-    if(wr->stringmode)
-    {
-        ds = (LitString*)wr->uptr;
-        ds->chars = sdscatvprintf(ds->chars, fmt, va);
-    }
-    else
-    {
-        vfprintf((FILE*)wr->uptr, fmt, va);
-    }
-}
-
-static void lit_writer_init_default(LitState* state, LitWriter* wr)
-{
-    wr->state = state;
-    wr->forceflush = false;
-    wr->stringmode = false;
-    wr->fnbyte = litwr_cb_writebyte;
-    wr->fnstring = litwr_cb_writestring;
-    wr->fnformat = litwr_cb_writeformat;
-}
-
-void lit_writer_init_file(LitState* state, LitWriter* wr, FILE* fh, bool forceflush)
-{
-    lit_writer_init_default(state, wr);
-    wr->uptr = fh;
-    wr->forceflush = forceflush;
-}
-
-void lit_writer_init_string(LitState* state, LitWriter* wr)
-{
-    lit_writer_init_default(state, wr);
-    wr->stringmode = true;
-    wr->uptr = LitString::allocEmpty(state, 0, false);
-}
-
-void lit_writer_writebyte(LitWriter* wr, int byte)
-{
-    wr->fnbyte(wr, byte);
-}
-
-void lit_writer_writestringl(LitWriter* wr, const char* str, size_t len)
-{
-    wr->fnstring(wr, str, len);
-}
-
-void lit_writer_writestring(LitWriter* wr, const char* str)
-{
-    wr->fnstring(wr, str, strlen(str));
-}
-
-void lit_writer_writeformat(LitWriter* wr, const char* fmt, ...)
-{
-    va_list va;
-    va_start(va, fmt);
-    wr->fnformat(wr, fmt, va);
-    va_end(va);
-}
-
-LitString* lit_writer_get_string(LitWriter* wr)
-{
-    if(wr->stringmode)
-    {
-        return (LitString*)wr->uptr;
-    }
-    return nullptr;
-}
 
 static const char* lit_object_type_names[] =
 {
@@ -12318,15 +12387,15 @@ static const char* lit_object_type_names[] =
 static void print_array(LitState* state, LitWriter* wr, LitArray* array, size_t size)
 {
     size_t i;
-    lit_writer_writeformat(wr, "(%u) [", (unsigned int)size);
+    wr->format("(%u) [", (unsigned int)size);
     if(size > 0)
     {
-        lit_writer_writestring(wr, " ");
+        wr->put(" ");
         for(i = 0; i < size; i++)
         {
-            if(IS_ARRAY(array->values.m_values[i]) && (array == AS_ARRAY(array->values.m_values[i])))
+            if(IS_ARRAY(array->values.m_values[i]) && (array == LitObject::as<LitArray>(array->values.m_values[i])))
             {
-                lit_writer_writestring(wr, "(recursion)");
+                wr->put("(recursion)");
             }
             else
             {
@@ -12334,15 +12403,15 @@ static void print_array(LitState* state, LitWriter* wr, LitArray* array, size_t 
             }
             if(i + 1 < size)
             {
-                lit_writer_writestring(wr, ", ");
+                wr->put(", ");
             }
             else
             {
-                lit_writer_writestring(wr, " ");
+                wr->put(" ");
             }
         }
     }
-    lit_writer_writestring(wr, "]");
+    wr->put("]");
 }
 
 static void print_map(LitState* state, LitWriter* wr, LitMap* map, size_t size)
@@ -12350,7 +12419,7 @@ static void print_map(LitState* state, LitWriter* wr, LitMap* map, size_t size)
     bool had_before;
     size_t i;
     LitTableEntry* entry;
-    lit_writer_writeformat(wr, "(%u) {", (unsigned int)size);
+    wr->format("(%u) {", (unsigned int)size);
     had_before = false;
     if(size > 0)
     {
@@ -12361,16 +12430,16 @@ static void print_map(LitState* state, LitWriter* wr, LitMap* map, size_t size)
             {
                 if(had_before)
                 {
-                    lit_writer_writestring(wr, ", ");
+                    wr->put(", ");
                 }
                 else
                 {
-                    lit_writer_writestring(wr, " ");
+                    wr->put(" ");
                 }
-                lit_writer_writeformat(wr, "%s = ", entry->key->chars);
+                wr->format("%s = ", entry->key->chars);
                 if(IS_MAP(entry->value) && (map == AS_MAP(entry->value)))
                 {
-                    lit_writer_writestring(wr, "(recursion)");
+                    wr->put("(recursion)");
                 }
                 else
                 {
@@ -12382,11 +12451,11 @@ static void print_map(LitState* state, LitWriter* wr, LitMap* map, size_t size)
     }
     if(had_before)
     {
-        lit_writer_writestring(wr, " }");
+        wr->put(" }");
     }
     else
     {
-        lit_writer_writestring(wr, "}");
+        wr->put("}");
     }
 }
 
@@ -12406,47 +12475,47 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
         {
             case LitObject::Type::String:
                 {
-                    lit_writer_writeformat(wr, "%s", lit_as_cstring(value));
+                    wr->format("%s", lit_as_cstring(value));
                 }
                 break;
             case LitObject::Type::Function:
                 {
-                    lit_writer_writeformat(wr, "function %s", AS_FUNCTION(value)->name->chars);
+                    wr->format("function %s", LitObject::as<LitFunction>(value)->name->chars);
                 }
                 break;
             case LitObject::Type::Closure:
                 {
-                    lit_writer_writeformat(wr, "closure %s", AS_CLOSURE(value)->function->name->chars);
+                    wr->format("closure %s", LitObject::as<LitClosure>(value)->function->name->chars);
                 }
                 break;
             case LitObject::Type::NativePrimitive:
                 {
-                    lit_writer_writeformat(wr, "function %s", AS_NATIVE_PRIMITIVE(value)->name->chars);
+                    wr->format("function %s", LitObject::as<LitNativePrimFunction>(value)->name->chars);
                 }
                 break;
             case LitObject::Type::NativeFunction:
                 {
-                    lit_writer_writeformat(wr, "function %s", AS_NATIVE_FUNCTION(value)->name->chars);
+                    wr->format("function %s", LitObject::as<LitNativeFunction>(value)->name->chars);
                 }
                 break;
             case LitObject::Type::PrimitiveMethod:
                 {
-                    lit_writer_writeformat(wr, "function %s", AS_PRIMITIVE_METHOD(value)->name->chars);
+                    wr->format("function %s", LitObject::as<LitPrimitiveMethod>(value)->name->chars);
                 }
                 break;
             case LitObject::Type::NativeMethod:
                 {
-                    lit_writer_writeformat(wr, "function %s", AS_NATIVE_METHOD(value)->name->chars);
+                    wr->format("function %s", LitObject::as<LitNativeMethod>(value)->name->chars);
                 }
                 break;
             case LitObject::Type::Fiber:
                 {
-                    lit_writer_writeformat(wr, "fiber");
+                    wr->format("fiber");
                 }
                 break;
             case LitObject::Type::Module:
                 {
-                    lit_writer_writeformat(wr, "module %s", AS_MODULE(value)->name->chars);
+                    wr->format("module %s", LitObject::as<LitModule>(value)->name->chars);
                 }
                 break;
 
@@ -12465,23 +12534,23 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
                 break;
             case LitObject::Type::Class:
                 {
-                    lit_writer_writeformat(wr, "class %s", AS_CLASS(value)->name->chars);
+                    wr->format("class %s", AS_CLASS(value)->name->chars);
                 }
                 break;
             case LitObject::Type::Instance:
                 {
                     /*
-                    if(AS_INSTANCE(value)->klass->type == LitObject::Type::Map)
+                    if(LitObject::as<LitInstance>(value)->klass->type == LitObject::Type::Map)
                     {
                         fprintf(stderr, "instance is a map\n");
                     }
-                    printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
+                    printf("%s instance", LitObject::as<LitInstance>(value)->klass->name->chars);
                     */
-                    lit_writer_writeformat(wr, "<instance '%s' ", AS_INSTANCE(value)->klass->name->chars);
+                    wr->format("<instance '%s' ", LitObject::as<LitInstance>(value)->klass->name->chars);
                     map = AS_MAP(value);
                     size = map->values.m_count;
                     print_map(state, wr, map, size);
-                    lit_writer_writestring(wr, ">");
+                    wr->put(">");
                 }
                 break;
             case LitObject::Type::BoundMethod:
@@ -12493,9 +12562,9 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
             case LitObject::Type::Array:
                 {
                     #ifdef LIT_MINIMIZE_CONTAINERS
-                        lit_writer_writestring(wr, "array");
+                        wr->put("array");
                     #else
-                        array = AS_ARRAY(value);
+                        array = LitObject::as<LitArray>(value);
                         size = array->values.m_count;
                         print_array(state, wr, array, size);
                     #endif
@@ -12504,7 +12573,7 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
             case LitObject::Type::Map:
                 {
                     #ifdef LIT_MINIMIZE_CONTAINERS
-                        lit_writer_writeformat(wr, "map");
+                        wr->format("map");
                     #else
                         map = AS_MAP(value);
                         size = map->values.m_count;
@@ -12514,27 +12583,27 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
                 break;
             case LitObject::Type::Userdata:
                 {
-                    lit_writer_writeformat(wr, "userdata");
+                    wr->format("userdata");
                 }
                 break;
             case LitObject::Type::Range:
                 {
                     range = AS_RANGE(value);
-                    lit_writer_writeformat(wr, "%g .. %g", range->from, range->to);
+                    wr->format("%g .. %g", range->from, range->to);
                 }
                 break;
             case LitObject::Type::Field:
                 {
-                    lit_writer_writeformat(wr, "field");
+                    wr->format("field");
                 }
                 break;
             case LitObject::Type::Reference:
                 {
-                    lit_writer_writeformat(wr, "reference => ");
+                    wr->format("reference => ");
                     slot = AS_REFERENCE(value)->slot;
                     if(slot == nullptr)
                     {
-                        lit_writer_writestring(wr, "null");
+                        wr->put("null");
                     }
                     else
                     {
@@ -12550,7 +12619,7 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
     }
     else
     {
-        lit_writer_writestring(wr, "!nullpointer!");
+        wr->put("!nullpointer!");
     }
 }
 
@@ -12581,7 +12650,7 @@ void lit_print_value(LitState* state, LitWriter* wr, LitValue value)
                 if(!IS_NULL(tstrval))
                 {
                     fprintf(stderr, "lit_print_value: toString() returned a string! so that's what we'll use.\n");
-                    tstring = lit_as_string(tstrval);
+                    tstring = LitObject::as<LitString>(tstrval);
                     printf("%.*s", (int)tstring->length(), tstring->chars);
                     return;
                 }
@@ -12592,15 +12661,15 @@ void lit_print_value(LitState* state, LitWriter* wr, LitValue value)
     */
     if(IS_BOOL(value))
     {
-        lit_writer_writestring(wr, lit_as_bool(value) ? "true" : "false");
+        wr->put(lit_as_bool(value) ? "true" : "false");
     }
     else if(IS_NULL(value))
     {
-        lit_writer_writestring(wr, "null");
+        wr->put("null");
     }
     else if(IS_NUMBER(value))
     {
-        lit_writer_writeformat(wr, "%g", lit_value_to_number(value));
+        wr->format("%g", lit_value_to_number(value));
     }
     else if(IS_OBJECT(value))
     {
@@ -12701,10 +12770,10 @@ static inline uint16_t vm_readshort(uint8_t* ip)
     (current_chunk->constants.m_values[vm_readshort(ip)])
 
 #define vm_readstring(current_chunk) \
-    lit_as_string(vm_readconstant(current_chunk))
+    LitObject::as<LitString>(vm_readconstant(current_chunk))
 
 #define vm_readstringlong(current_chunk, ip) \
-    lit_as_string(vm_readconstantlong(current_chunk, ip))
+    LitObject::as<LitString>(vm_readconstantlong(current_chunk, ip))
 
 
 static inline LitValue vm_peek(LitFiber* fiber, short distance)
@@ -12762,7 +12831,7 @@ static inline LitValue vm_peek(LitFiber* fiber, short distance)
 #define vm_rterrorvarg(format, ...) \
     if(lit_runtime_error(vm, format, __VA_ARGS__)) \
     { \
-        vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues);  \
+        vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
         continue; \
     } \
     else \
@@ -12772,7 +12841,7 @@ static inline LitValue vm_peek(LitFiber* fiber, short distance)
 
 #define vm_invoke_from_class_advanced(zklass, method_name, arg_count, error, stat, ignoring, callee) \
     LitValue mthval; \
-    if((IS_INSTANCE(callee) && (AS_INSTANCE(callee)->fields.get(method_name, &mthval))) \
+    if((IS_INSTANCE(callee) && (LitObject::as<LitInstance>(callee)->fields.get(method_name, &mthval))) \
        || zklass->stat.get(method_name, &mthval)) \
     { \
         if(ignoring) \
@@ -12872,7 +12941,7 @@ static inline LitValue vm_peek(LitFiber* fiber, short distance)
     } \
     else if(IS_INSTANCE(receiver)) \
     { \
-        LitInstance* instance = AS_INSTANCE(receiver); \
+        LitInstance* instance = LitObject::as<LitInstance>(receiver); \
         LitValue value; \
         if(instance->fields.get(method_name, &value)) \
         { \
@@ -12924,21 +12993,21 @@ void lit_trace_vm_stack(LitVM* vm, LitWriter* wr)
         return;
     }
     top = fiber->frames[fiber->frame_count - 1].slots;
-    lit_writer_writeformat(wr, "        | %s", COLOR_GREEN);
+    wr->format("        | %s", COLOR_GREEN);
     for(slot = fiber->stack; slot < top; slot++)
     {
-        lit_writer_writeformat(wr, "[ ");
+        wr->format("[ ");
         lit_print_value(vm->state, wr, *slot);
-        lit_writer_writeformat(wr, " ]");
+        wr->format(" ]");
     }
-    lit_writer_writeformat(wr, "%s", COLOR_RESET);
+    wr->format("%s", COLOR_RESET);
     for(slot = top; slot < fiber->stack_top; slot++)
     {
-        lit_writer_writeformat(wr, "[ ");
+        wr->format("[ ");
         lit_print_value(vm->state, wr, *slot);
-        lit_writer_writeformat(wr, " ]");
+        wr->format(" ]");
     }
-    lit_writer_writeformat(wr, "\n");
+    wr->format("\n");
 }
 
 bool lit_handle_runtime_error(LitVM* vm, LitString* error_string)
@@ -13167,19 +13236,19 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
         {
             case LitObject::Type::Function:
                 {
-                    return call(vm, AS_FUNCTION(callee), nullptr, arg_count);
+                    return call(vm, LitObject::as<LitFunction>(callee), nullptr, arg_count);
                 }
                 break;
             case LitObject::Type::Closure:
                 {
-                    closure = AS_CLOSURE(callee);
+                    closure = LitObject::as<LitClosure>(callee);
                     return call(vm, closure->function, closure, arg_count);
                 }
                 break;
             case LitObject::Type::NativeFunction:
                 {
                     vm_pushgc(vm->state, false)
-                    result = AS_NATIVE_FUNCTION(callee)->function(vm, arg_count, vm->fiber->stack_top - arg_count);
+                    result = LitObject::as<LitNativeFunction>(callee)->function(vm, arg_count, vm->fiber->stack_top - arg_count);
                     vm->fiber->stack_top -= arg_count + 1;
                     lit_push(vm, result);
                     vm_popgc(vm->state);
@@ -13190,7 +13259,7 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
                 {
                     vm_pushgc(vm->state, false)
                     fiber = vm->fiber;
-                    bres = AS_NATIVE_PRIMITIVE(callee)->function(vm, arg_count, fiber->stack_top - arg_count);
+                    bres = LitObject::as<LitNativePrimFunction>(callee)->function(vm, arg_count, fiber->stack_top - arg_count);
                     if(bres)
                     {
                         fiber->stack_top -= arg_count;
@@ -13202,7 +13271,7 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
             case LitObject::Type::NativeMethod:
                 {
                     vm_pushgc(vm->state, false);
-                    mthobj = AS_NATIVE_METHOD(callee);
+                    mthobj = LitObject::as<LitNativeMethod>(callee);
                     fiber = vm->fiber;
                     result = mthobj->method(vm, *(vm->fiber->stack_top - arg_count - 1), arg_count, vm->fiber->stack_top - arg_count);
                     vm->fiber->stack_top -= arg_count + 1;
@@ -13221,7 +13290,7 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
                 {
                     vm_pushgc(vm->state, false);
                     fiber = vm->fiber;
-                    bres = AS_PRIMITIVE_METHOD(callee)->method(vm, *(fiber->stack_top - arg_count - 1), arg_count, fiber->stack_top - arg_count);
+                    bres = LitObject::as<LitPrimitiveMethod>(callee)->method(vm, *(fiber->stack_top - arg_count - 1), arg_count, fiber->stack_top - arg_count);
                     if(bres)
                     {
                         fiber->stack_top -= arg_count;
@@ -13255,7 +13324,7 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
                     if(IS_NATIVE_METHOD(mthval))
                     {
                         vm_pushgc(vm->state, false);
-                        result = AS_NATIVE_METHOD(mthval)->method(vm, bound_method->receiver, arg_count, vm->fiber->stack_top - arg_count);
+                        result = LitObject::as<LitNativeMethod>(mthval)->method(vm, bound_method->receiver, arg_count, vm->fiber->stack_top - arg_count);
                         vm->fiber->stack_top -= arg_count + 1;
                         lit_push(vm, result);
                         vm_popgc(vm->state);
@@ -13265,7 +13334,7 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
                     {
                         fiber = vm->fiber;
                         vm_pushgc(vm->state, false);
-                        if(AS_PRIMITIVE_METHOD(mthval)->method(vm, bound_method->receiver, arg_count, fiber->stack_top - arg_count))
+                        if(LitObject::as<LitPrimitiveMethod>(mthval)->method(vm, bound_method->receiver, arg_count, fiber->stack_top - arg_count))
                         {
                             fiber->stack_top -= arg_count;
                             return true;
@@ -13276,7 +13345,7 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
                     else
                     {
                         vm->fiber->stack_top[-arg_count - 1] = bound_method->receiver;
-                        return call(vm, AS_FUNCTION(mthval), nullptr, arg_count);
+                        return call(vm, LitObject::as<LitFunction>(mthval), nullptr, arg_count);
                     }
                 }
                 break;
@@ -13591,7 +13660,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 if(IS_INSTANCE(vm_peek(fiber, 0)))
                 {
                     vm_writeframe(frame, ip);
-                    vm_invoke_from_class(AS_INSTANCE(vm_peek(fiber, 0))->klass, CONST_STRING(state, "!"), 0, false, methods, false);
+                    vm_invoke_from_class(LitObject::as<LitInstance>(vm_peek(fiber, 0))->klass, CONST_STRING(state, "!"), 0, false, methods, false);
                     continue;
                 }
                 tmpval = BOOL_VALUE(lit_is_falsey(vm_pop(fiber)));
@@ -13701,7 +13770,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 {
                     vm_writeframe(frame, ip);
                     fprintf(stderr, "OP_EQUAL: trying to invoke '==' ...\n");
-                    vm_invoke_from_class(AS_INSTANCE(vm_peek(fiber, 1))->klass, CONST_STRING(state, "=="), 1, false, methods, false);
+                    vm_invoke_from_class(LitObject::as<LitInstance>(vm_peek(fiber, 1))->klass, CONST_STRING(state, "=="), 1, false, methods, false);
                     continue;
                 }
                 a = vm_pop(fiber);
@@ -13896,7 +13965,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             }
             op_case(CLOSURE)
             {
-                function = AS_FUNCTION(vm_readconstantlong(current_chunk, ip));
+                function = LitObject::as<LitFunction>(vm_readconstantlong(current_chunk, ip));
                 closure = lit_create_closure(state, function);
                 vm_push(fiber, closure->asValue());
                 for(i = 0; i < closure->upvalue_count; i++)
@@ -13938,10 +14007,10 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 {
                     vm_rterror("Attempt to index a null value");
                 }
-                name = lit_as_string(vm_peek(fiber, 0));
+                name = LitObject::as<LitString>(vm_peek(fiber, 0));
                 if(IS_INSTANCE(vobj))
                 {
-                    instobj = AS_INSTANCE(vobj);
+                    instobj = LitObject::as<LitInstance>(vobj);
 
                     if(!instobj->fields.get(name, &getval))
                     {
@@ -14046,7 +14115,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                     vm_rterror("Attempt to index a null value")
                 }
                 value = vm_peek(fiber, 1);
-                field_name = lit_as_string(vm_peek(fiber, 0));
+                field_name = LitObject::as<LitString>(vm_peek(fiber, 0));
                 if(IS_CLASS(instval))
                 {
                     klassobj = AS_CLASS(instval);
@@ -14079,7 +14148,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 }
                 else if(IS_INSTANCE(instval))
                 {
-                    instobj = AS_INSTANCE(instval);
+                    instobj = LitObject::as<LitInstance>(instval);
                     if(instobj->klass->methods.get(field_name, &setter) && IS_FIELD(setter))
                     {
                         field = AS_FIELD(setter);
@@ -14147,7 +14216,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             }
             op_case(PUSH_ARRAY_ELEMENT)
             {
-                values = &AS_ARRAY(vm_peek(fiber, 1))->values;
+                values = &LitObject::as<LitArray>(vm_peek(fiber, 1))->values;
                 arindex = values->m_count;
                 values->reserve(arindex + 1, NULL_VALUE);
                 values->m_values[arindex] = vm_peek(fiber, 0);
@@ -14159,11 +14228,11 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 operand = vm_peek(fiber, 2);
                 if(IS_MAP(operand))
                 {
-                    AS_MAP(operand)->values.set(lit_as_string(vm_peek(fiber, 1)), vm_peek(fiber, 0));
+                    AS_MAP(operand)->values.set(LitObject::as<LitString>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
                 }
                 else if(IS_INSTANCE(operand))
                 {
-                    AS_INSTANCE(operand)->fields.set(lit_as_string(vm_peek(fiber, 1)), vm_peek(fiber, 0));
+                    LitObject::as<LitInstance>(operand)->fields.set(LitObject::as<LitString>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
                 }
                 else
                 {
@@ -14299,7 +14368,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 {
                     continue;
                 }
-                values = &AS_ARRAY(slot)->values;
+                values = &LitObject::as<LitArray>(slot)->values;
                 lit_ensure_fiber_stack(state, fiber, values->m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
                 for(i = 0; i < values->m_count; i++)
                 {
@@ -14345,10 +14414,10 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 {
                     vm_rterror("Attempt to index a null value");
                 }
-                name = lit_as_string(vm_peek(fiber, 0));
+                name = LitObject::as<LitString>(vm_peek(fiber, 0));
                 if(IS_INSTANCE(vobj))
                 {
-                    if(!AS_INSTANCE(vobj)->fields.getSlot(name, &pval))
+                    if(!LitObject::as<LitInstance>(vobj)->fields.getSlot(name, &pval))
                     {
                         vm_rterror("Attempt to reference a null value");
                     }
@@ -14468,7 +14537,7 @@ static LitValue objfn_array_slice(LitVM* vm, LitValue instance, size_t argc, Lit
     int to;
     from = lit_check_number(vm, argv, argc, 0);
     to = lit_check_number(vm, argv, argc, 1);
-    return objfn_array_splice(vm, AS_ARRAY(instance), from, to);
+    return objfn_array_splice(vm, LitObject::as<LitArray>(instance), from, to);
 }
 
 static LitValue objfn_array_subscript(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14482,7 +14551,7 @@ static LitValue objfn_array_subscript(LitVM* vm, LitValue instance, size_t argc,
         {
             lit_runtime_error_exiting(vm, "array index must be a number");
         }
-        values = &AS_ARRAY(instance)->values;
+        values = &LitObject::as<LitArray>(instance)->values;
         index = lit_value_to_number(argv[0]);
         if(index < 0)
         {
@@ -14496,12 +14565,12 @@ static LitValue objfn_array_subscript(LitVM* vm, LitValue instance, size_t argc,
         if(IS_RANGE(argv[0]))
         {
             range = AS_RANGE(argv[0]);
-            return objfn_array_splice(vm, AS_ARRAY(instance), (int)range->from, (int)range->to);
+            return objfn_array_splice(vm, LitObject::as<LitArray>(instance), (int)range->from, (int)range->to);
         }
         lit_runtime_error_exiting(vm, "array index must be a number");
         return NULL_VALUE;
     }
-    values = &AS_ARRAY(instance)->values;
+    values = &LitObject::as<LitArray>(instance)->values;
     index = lit_value_to_number(argv[0]);
     if(index < 0)
     {
@@ -14541,10 +14610,10 @@ static LitValue objfn_array_compare(LitVM* vm, LitValue instance, size_t argc, L
     LitArray* other;
     (void)argc;
     fprintf(stderr, "call to objfn_array_compare\n");
-    self = AS_ARRAY(instance);
+    self = LitObject::as<LitArray>(instance);
     if(IS_ARRAY(argv[0]))
     {
-        other = AS_ARRAY(argv[0]);
+        other = LitObject::as<LitArray>(argv[0]);
         if(self->values.m_count == other->values.m_count)
         {
             for(i=0; i<self->values.m_count; i++)
@@ -14568,7 +14637,7 @@ static LitValue objfn_array_add(LitVM* vm, LitValue instance, size_t argc, LitVa
     (void)vm;
     for(i=0; i<argc; i++)
     {
-        AS_ARRAY(instance)->push(argv[i]);
+        LitObject::as<LitArray>(instance)->push(argv[i]);
     }
     return NULL_VALUE;
 }
@@ -14580,7 +14649,7 @@ static LitValue objfn_array_insert(LitVM* vm, LitValue instance, size_t argc, Li
     LitValue value;
     PCGenericArray<LitValue>* values;
     LIT_ENSURE_ARGS(2);
-    values = &AS_ARRAY(instance)->values;
+    values = &LitObject::as<LitArray>(instance)->values;
     index = lit_check_number(vm, argv, argc, 0);
 
     if(index < 0)
@@ -14614,8 +14683,8 @@ static LitValue objfn_array_addall(LitVM* vm, LitValue instance, size_t argc, Li
     {
         lit_runtime_error_exiting(vm, "expected array as the argument");
     }
-    array = AS_ARRAY(instance);
-    toadd = AS_ARRAY(argv[0]);
+    array = LitObject::as<LitArray>(instance);
+    toadd = LitObject::as<LitArray>(argv[0]);
     for(i = 0; i < toadd->values.m_count; i++)
     {
         array->push(toadd->values.m_values[i]);
@@ -14627,7 +14696,7 @@ static LitValue objfn_array_indexof(LitVM* vm, LitValue instance, size_t argc, L
 {
     LIT_ENSURE_ARGS(1)
 
-        int index = AS_ARRAY(instance)->indexOf(argv[0]);
+        int index = LitObject::as<LitArray>(instance)->indexOf(argv[0]);
     return index == -1 ? NULL_VALUE : lit_number_to_value(index);
 }
 
@@ -14637,7 +14706,7 @@ static LitValue objfn_array_remove(LitVM* vm, LitValue instance, size_t argc, Li
     int index;
     LitArray* array;
     LIT_ENSURE_ARGS(1);
-    array = AS_ARRAY(instance);
+    array = LitObject::as<LitArray>(instance);
     index = array->indexOf(argv[0]);
     if(index != -1)
     {
@@ -14654,13 +14723,13 @@ static LitValue objfn_array_removeat(LitVM* vm, LitValue instance, size_t argc, 
     {
         return NULL_VALUE;
     }
-    return AS_ARRAY(instance)->removeAt((size_t)index);
+    return LitObject::as<LitArray>(instance)->removeAt((size_t)index);
 }
 
 static LitValue objfn_array_contains(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     LIT_ENSURE_ARGS(1);
-    return BOOL_VALUE(AS_ARRAY(instance)->indexOf(argv[0]) != -1);
+    return BOOL_VALUE(LitObject::as<LitArray>(instance)->indexOf(argv[0]) != -1);
 }
 
 static LitValue objfn_array_clear(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14668,7 +14737,7 @@ static LitValue objfn_array_clear(LitVM* vm, LitValue instance, size_t argc, Lit
     (void)vm;
     (void)argc;
     (void)argv;
-    AS_ARRAY(instance)->values.m_count = 0;
+    LitObject::as<LitArray>(instance)->values.m_count = 0;
     return NULL_VALUE;
 }
 
@@ -14678,7 +14747,7 @@ static LitValue objfn_array_iterator(LitVM* vm, LitValue instance, size_t argc, 
     LitArray* array;
     (void)vm;
     LIT_ENSURE_ARGS(1);
-    array = AS_ARRAY(instance);
+    array = LitObject::as<LitArray>(instance);
     number = 0;
     if(IS_NUMBER(argv[0]))
     {
@@ -14697,7 +14766,7 @@ static LitValue objfn_array_iteratorvalue(LitVM* vm, LitValue instance, size_t a
     size_t index;
     PCGenericArray<LitValue>* values;
     index = lit_check_number(vm, argv, argc, 0);
-    values = &AS_ARRAY(instance)->values;
+    values = &LitObject::as<LitArray>(instance)->values;
     if(values->m_count <= index)
     {
         return NULL_VALUE;
@@ -14722,9 +14791,9 @@ static LitValue objfn_array_join(LitVM* vm, LitValue instance, size_t argc, LitV
     length = 0;
     if(argc > 0)
     {
-        joinee = lit_as_string(argv[0]);
+        joinee = LitObject::as<LitString>(argv[0]);
     }
-    values = &AS_ARRAY(instance)->values;
+    values = &LitObject::as<LitArray>(instance)->values;
     //LitString* strings[values.m_count];
     strings = LIT_ALLOCATE(vm->state, LitString*, values->m_count+1);
     for(i = 0; i < values->m_count; i++)
@@ -14768,7 +14837,7 @@ static LitValue objfn_array_join(LitVM* vm, LitValue instance, size_t argc, LitV
 static LitValue objfn_array_sort(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     PCGenericArray<LitValue>* values;
-    values = &AS_ARRAY(instance)->values;
+    values = &LitObject::as<LitArray>(instance)->values;
     if(argc == 1 && lit_is_callable_function(argv[0]))
     {
         util_custom_quick_sort(vm, values->m_values, values->m_count, argv[0]);
@@ -14790,7 +14859,7 @@ static LitValue objfn_array_clone(LitVM* vm, LitValue instance, size_t argc, Lit
     LitArray* array;
     PCGenericArray<LitValue>* new_values;
     state = vm->state;
-    values = &AS_ARRAY(instance)->values;
+    values = &LitObject::as<LitArray>(instance)->values;
     array = LitArray::make(state);
     new_values = &array->values;
     new_values->reserve(values->m_count, NULL_VALUE);
@@ -14821,7 +14890,7 @@ static LitValue objfn_array_tostring(LitVM* vm, LitValue instance, size_t argc, 
     LitString* stringified;
     LitString** values_converted;
     static const char* recstring = "(recursion)";
-    self = AS_ARRAY(instance);
+    self = LitObject::as<LitArray>(instance);
     values = &self->values;
     state = vm->state;
     if(values->m_count == 0)
@@ -14843,7 +14912,7 @@ static LitValue objfn_array_tostring(LitVM* vm, LitValue instance, size_t argc, 
     for(i = 0; i < value_amount; i++)
     {
         val = values->m_values[(has_more && i == value_amount - 1) ? values->m_count - 1 : i];
-        if(IS_ARRAY(val) && (AS_ARRAY(val) == self))
+        if(IS_ARRAY(val) && (LitObject::as<LitArray>(val) == self))
         {
             stringified = LitString::copy(state, recstring, strlen(recstring));
         }
@@ -14881,7 +14950,7 @@ static LitValue objfn_array_length(LitVM* vm, LitValue instance, size_t argc, Li
     (void)vm;
     (void)argc;
     (void)argv;
-    return lit_number_to_value(AS_ARRAY(instance)->values.m_count);
+    return lit_number_to_value(LitObject::as<LitArray>(instance)->values.m_count);
 }
 
 void lit_open_array_library(LitState* state)
@@ -14979,7 +15048,7 @@ static LitValue objfn_class_super(LitVM* vm, LitValue instance, size_t argc, Lit
     super = nullptr;
     if(IS_INSTANCE(instance))
     {
-        super = AS_INSTANCE(instance)->klass->super;
+        super = LitObject::as<LitInstance>(instance)->klass->super;
     }
     else
     {
@@ -15005,18 +15074,18 @@ static LitValue objfn_class_subscript(LitVM* vm, LitValue instance, size_t argc,
             lit_runtime_error_exiting(vm, "class index must be a string");
         }
 
-        klass->static_fields.set(lit_as_string(argv[0]), argv[1]);
+        klass->static_fields.set(LitObject::as<LitString>(argv[0]), argv[1]);
         return argv[1];
     }
     if(!IS_STRING(argv[0]))
     {
         lit_runtime_error_exiting(vm, "class index must be a string");
     }
-    if(klass->static_fields.get(lit_as_string(argv[0]), &value))
+    if(klass->static_fields.get(LitObject::as<LitString>(argv[0]), &value))
     {
         return value;
     }
-    if(klass->methods.get(lit_as_string(argv[0]), &value))
+    if(klass->methods.get(LitObject::as<LitString>(argv[0]), &value))
     {
         return value;
     }
@@ -15420,11 +15489,11 @@ bool util_attempt_to_require(LitVM* vm, LitValue* argv, size_t argc, const char*
         LitValue existing_module;
         if(vm->modules->values.get(name, &existing_module))
         {
-            LitModule* loaded_module = AS_MODULE(existing_module);
+            LitModule* loaded_module = LitObject::as<LitModule>(existing_module);
             if(loaded_module->ran)
             {
                 vm->fiber->stack_top -= argc;
-                argv[-1] = AS_MODULE(existing_module)->return_value;
+                argv[-1] = LitObject::as<LitModule>(existing_module)->return_value;
             }
             else
             {
@@ -15484,7 +15553,7 @@ LitValue util_invalid_constructor(LitVM* vm, LitValue instance, size_t argc, Lit
 {
     (void)argc;
     (void)argv;
-    lit_runtime_error_exiting(vm, "cannot create an instance of built-in type", AS_INSTANCE(instance)->klass->name);
+    lit_runtime_error_exiting(vm, "cannot create an instance of built-in type", LitObject::as<LitInstance>(instance)->klass->name);
     return NULL_VALUE;
 }
 
@@ -15697,7 +15766,7 @@ static LitValue objfn_fiber_constructor(LitVM* vm, LitValue instance, size_t arg
         lit_runtime_error_exiting(vm, "Fiber constructor expects a function as its argument");
     }
 
-    LitFunction* function = AS_FUNCTION(argv[0]);
+    LitFunction* function = LitObject::as<LitFunction>(argv[0]);
     LitModule* module = vm->fiber->module;
     LitFiber* fiber = lit_create_fiber(vm->state, module, function);
 
@@ -15850,9 +15919,6 @@ void lit_open_fiber_library(LitState* state)
     #define	S_ISREG(m)	(((m)&S_IFMT) == S_IFREG)	/* file */
 #endif
 
-typedef struct LitDirReader LitDirReader;
-typedef struct LitDirItem LitDirItem;
-
 struct LitDirReader
 {
     void* handle;
@@ -15911,15 +15977,12 @@ bool lit_dir_close(LitDirReader* rd)
 }
 
 
-
-typedef struct LitFileData LitFileData;
-typedef struct LitStdioHandle LitStdioHandle;
-
 struct LitFileData
 {
-    char* path;
-    FILE* handle;
-    bool isopen;
+    public:
+        char* path;
+        FILE* handle;
+        bool isopen;
 };
 
 struct LitStdioHandle
@@ -15930,20 +15993,18 @@ struct LitStdioHandle
     bool canwrite;
 };
 
-typedef void(*CleanupFunc)(LitState*, LitUserdata*, bool);
-
-static void* LIT_INSERT_DATA(LitVM* vm, LitValue instance, size_t typsz, CleanupFunc cleanup)
+static void* LIT_INSERT_DATA(LitVM* vm, LitValue instance, size_t typsz, LitUserdata::CleanupFuncType cleanup)
 {
     LitUserdata* userdata = lit_create_userdata(vm->state, typsz, false);
     userdata->cleanup_fn = cleanup;
-    AS_INSTANCE(instance)->fields.set(CONST_STRING(vm->state, "_data"), userdata->asValue());
+    LitObject::as<LitInstance>(instance)->fields.set(CONST_STRING(vm->state, "_data"), userdata->asValue());
     return userdata->data;
 }
 
 static void* LIT_EXTRACT_DATA(LitVM* vm, LitValue instance)
 {
     LitValue _d;
-    if(!AS_INSTANCE(instance)->fields.get(CONST_STRING(vm->state, "_data"), &_d))
+    if(!LitObject::as<LitInstance>(instance)->fields.get(CONST_STRING(vm->state, "_data"), &_d))
     {
         lit_runtime_error_exiting(vm, "failed to extract userdata");
     }
@@ -16108,7 +16169,7 @@ static LitValue objmethod_file_writestring(LitVM* vm, LitValue instance, size_t 
     {
         return NULL_VALUE;
     }
-    string = lit_as_string(argv[0]);
+    string = LitObject::as<LitString>(argv[0]);
     data = (LitFileData*)LIT_EXTRACT_DATA(vm, instance);
     lit_write_string(data->handle, string);
     return NULL_VALUE;
@@ -16515,7 +16576,7 @@ static LitValue objfn_map_subscript(LitVM* vm, LitValue instance, size_t argc, L
         lit_runtime_error_exiting(vm, "map index must be a string");
     }
     map = AS_MAP(instance);
-    index = lit_as_string(argv[0]);
+    index = LitObject::as<LitString>(argv[0]);
     if(argc == 2)
     {
         val = argv[1];
@@ -16882,7 +16943,7 @@ static size_t* extract_random_data(LitState* state, LitValue instance)
 
     LitValue data;
 
-    if(!AS_INSTANCE(instance)->fields.get(CONST_STRING(state, "_data"), &data))
+    if(!LitObject::as<LitInstance>(instance)->fields.get(CONST_STRING(state, "_data"), &data))
     {
         return 0;
     }
@@ -16893,7 +16954,7 @@ static size_t* extract_random_data(LitState* state, LitValue instance)
 static LitValue random_constructor(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     LitUserdata* userdata = lit_create_userdata(vm->state, sizeof(size_t), false);
-    AS_INSTANCE(instance)->fields.set(CONST_STRING(vm->state, "_data"), userdata->asValue());
+    LitObject::as<LitInstance>(instance)->fields.set(CONST_STRING(vm->state, "_data"), userdata->asValue());
 
     size_t* data = (size_t*)userdata->data;
 
@@ -17005,7 +17066,7 @@ static LitValue random_pick(LitVM* vm, LitValue instance, size_t argc, LitValue*
     {
         if(IS_ARRAY(argv[0]))
         {
-            LitArray* array = AS_ARRAY(argv[0]);
+            LitArray* array = LitObject::as<LitArray>(argv[0]);
 
             if(array->values.m_count == 0)
             {
@@ -17117,7 +17178,7 @@ static LitValue access_private(LitVM* vm, LitMap* map, LitString* name, LitValue
     {
         return NULL_VALUE;
     }
-    module = AS_MODULE(value);
+    module = LitObject::as<LitModule>(value);
 
     if(id == name)
     {
@@ -17147,7 +17208,7 @@ static LitValue objfn_module_privates(LitVM* vm, LitValue instance, size_t argc,
     LitMap* map;
     (void)argc;
     (void)argv;
-    module = IS_MODULE(instance) ? AS_MODULE(instance) : vm->fiber->module;
+    module = IS_MODULE(instance) ? LitObject::as<LitModule>(instance) : vm->fiber->module;
     map = module->private_names;
     if(map->index_fn == nullptr)
     {
@@ -17169,7 +17230,7 @@ static LitValue objfn_module_tostring(LitVM* vm, LitValue instance, size_t argc,
 {
     (void)argc;
     (void)argv;
-    return LitString::format(vm->state, "Module @", AS_MODULE(instance)->name->asValue())->asValue();
+    return LitString::format(vm->state, "Module @", LitObject::as<LitModule>(instance)->name->asValue())->asValue();
 }
 
 static LitValue objfn_module_name(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17177,7 +17238,7 @@ static LitValue objfn_module_name(LitVM* vm, LitValue instance, size_t argc, Lit
     (void)vm;
     (void)argc;
     (void)argv;
-    return AS_MODULE(instance)->name->asValue();
+    return LitObject::as<LitModule>(instance)->name->asValue();
 }
 
 void lit_open_module_library(LitState* state)
@@ -17258,7 +17319,7 @@ static LitValue objfn_object_tomap(LitVM* vm, LitValue instance, size_t argc, Li
     {
         lit_runtime_error_exiting(vm, "toMap() can only be used on instances");
     }
-    inst = AS_INSTANCE(instance);
+    inst = LitObject::as<LitInstance>(instance);
     map = LitMap::make(vm->state);
     {
         minst = LitMap::make(vm->state);
@@ -17292,29 +17353,29 @@ static LitValue objfn_object_subscript(LitVM* vm, LitValue instance, size_t argc
     {
         lit_runtime_error_exiting(vm, "cannot modify built-in types");
     }
-    inst = AS_INSTANCE(instance);
+    inst = LitObject::as<LitInstance>(instance);
     if(argc == 2)
     {
         if(!IS_STRING(argv[0]))
         {
             lit_runtime_error_exiting(vm, "object index must be a string");
         }
-        inst->fields.set(lit_as_string(argv[0]), argv[1]);
+        inst->fields.set(LitObject::as<LitString>(argv[0]), argv[1]);
         return argv[1];
     }
     if(!IS_STRING(argv[0]))
     {
         lit_runtime_error_exiting(vm, "object index must be a string");
     }
-    if(inst->fields.get(lit_as_string(argv[0]), &value))
+    if(inst->fields.get(LitObject::as<LitString>(argv[0]), &value))
     {
         return value;
     }
-    if(inst->klass->static_fields.get(lit_as_string(argv[0]), &value))
+    if(inst->klass->static_fields.get(LitObject::as<LitString>(argv[0]), &value))
     {
         return value;
     }
-    if(inst->klass->methods.get(lit_as_string(argv[0]), &value))
+    if(inst->klass->methods.get(LitObject::as<LitString>(argv[0]), &value))
     {
         return value;
     }
@@ -17330,7 +17391,7 @@ static LitValue objfn_object_iterator(LitVM* vm, LitValue instance, size_t argc,
     int index;
     LitInstance* self;
     LIT_ENSURE_ARGS(1);
-    self = AS_INSTANCE(instance);
+    self = LitObject::as<LitInstance>(instance);
     index = argv[0] == NULL_VALUE ? -1 : lit_value_to_number(argv[0]);
     value = self->fields.iterator(index);
     return value == -1 ? NULL_VALUE : lit_number_to_value(value);
@@ -17342,7 +17403,7 @@ static LitValue objfn_object_iteratorvalue(LitVM* vm, LitValue instance, size_t 
     size_t index;
     LitInstance* self;
     index = lit_check_number(vm, argv, argc, 0);
-    self = AS_INSTANCE(instance);
+    self = LitObject::as<LitInstance>(instance);
     return self->fields.iterKey(index);
 }
 
@@ -17561,12 +17622,12 @@ static LitValue objfn_string_plus(LitVM* vm, LitValue instance, size_t argc, Lit
     LitString* result;
     LitValue value;
     (void)argc;
-    selfstr = lit_as_string(instance);
+    selfstr = LitObject::as<LitString>(instance);
     value = argv[0];
     LitString* strval = nullptr;
     if(IS_STRING(value))
     {
-        strval = lit_as_string(value);
+        strval = LitObject::as<LitString>(value);
     }
     else
     {
@@ -17610,9 +17671,9 @@ static LitValue objfn_string_subscript(LitVM* vm, LitValue instance, size_t argc
     if(IS_RANGE(argv[0]))
     {
         LitRange* range = AS_RANGE(argv[0]);
-        return objfn_string_splice(vm, lit_as_string(instance), range->from, range->to);
+        return objfn_string_splice(vm, LitObject::as<LitString>(instance), range->from, range->to);
     }
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     index = lit_check_number(vm, argv, argc, 0);
     if(argc != 1)
     {
@@ -17637,10 +17698,10 @@ static LitValue objfn_string_compare(LitVM* vm, LitValue instance, size_t argc, 
     LitString* self;
     LitString* other;
     (void)argc;
-    self = lit_as_string(instance);
+    self = LitObject::as<LitString>(instance);
     if(IS_STRING(argv[0]))
     {
-        other = lit_as_string(argv[0]);
+        other = LitObject::as<LitString>(argv[0]);
         if(self->length() == other->length())
         {
             //fprintf(stderr, "string: same length(self=\"%s\" other=\"%s\")... strncmp=%d\n", self->chars, other->chars, strncmp(self->chars, other->chars, self->length));
@@ -17665,12 +17726,12 @@ static LitValue objfn_string_compare(LitVM* vm, LitValue instance, size_t argc, 
 
 static LitValue objfn_string_less(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
-    return BOOL_VALUE(strcmp(lit_as_string(instance)->chars, lit_check_string(vm, argv, argc, 0)) < 0);
+    return BOOL_VALUE(strcmp(LitObject::as<LitString>(instance)->chars, lit_check_string(vm, argv, argc, 0)) < 0);
 }
 
 static LitValue objfn_string_greater(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
-    return BOOL_VALUE(strcmp(lit_as_string(instance)->chars, lit_check_string(vm, argv, argc, 0)) > 0);
+    return BOOL_VALUE(strcmp(LitObject::as<LitString>(instance)->chars, lit_check_string(vm, argv, argc, 0)) > 0);
 }
 
 static LitValue objfn_string_tostring(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17687,7 +17748,7 @@ static LitValue objfn_string_tonumber(LitVM* vm, LitValue instance, size_t argc,
     (void)vm;
     (void)argc;
     (void)argv;
-    result = strtod(lit_as_string(instance)->chars, nullptr);
+    result = strtod(LitObject::as<LitString>(instance)->chars, nullptr);
     if(errno == ERANGE)
     {
         errno = 0;
@@ -17702,7 +17763,7 @@ static LitValue objfn_string_touppercase(LitVM* vm, LitValue instance, size_t ar
     char* buffer;
     LitString* rt;
     LitString* string;
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     (void)argc;
     (void)argv;
     buffer = LIT_ALLOCATE(vm->state, char, string->length() + 1);
@@ -17721,7 +17782,7 @@ static LitValue objfn_string_tolowercase(LitVM* vm, LitValue instance, size_t ar
     char* buffer;
     LitString* rt;
     LitString* string;
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     (void)argc;
     (void)argv;
     buffer = LIT_ALLOCATE(vm->state, char, string->length() + 1);
@@ -17741,7 +17802,7 @@ static LitValue objfn_string_tobyte(LitVM* vm, LitValue instance, size_t argc, L
     (void)vm;
     (void)argc;
     (void)argv;
-    selfstr = lit_as_string(instance);
+    selfstr = LitObject::as<LitString>(instance);
     iv = lit_ustring_decode((const uint8_t*)selfstr->chars, selfstr->length());
     return lit_number_to_value(iv);
 }
@@ -17755,7 +17816,7 @@ static LitValue objfn_string_contains(LitVM* vm, LitValue instance, size_t argc,
     (void)argc;
     (void)argv;
     icase = false;
-    selfstr = lit_as_string(instance);
+    selfstr = LitObject::as<LitString>(instance);
     sub = lit_check_object_string(vm, argv, argc, 0);
     if(argc > 1)
     {
@@ -17773,7 +17834,7 @@ static LitValue objfn_string_startswith(LitVM* vm, LitValue instance, size_t arg
     size_t i;
     LitString* sub;
     LitString* string;
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     sub = lit_check_object_string(vm, argv, argc, 0);
     if(sub == string)
     {
@@ -17799,7 +17860,7 @@ static LitValue objfn_string_endswith(LitVM* vm, LitValue instance, size_t argc,
     size_t start;
     LitString* sub;
     LitString* string;
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     sub = lit_check_object_string(vm, argv, argc, 0);
     if(sub == string)
     {
@@ -17835,9 +17896,9 @@ static LitValue objfn_string_replace(LitVM* vm, LitValue instance, size_t argc, 
     {
         lit_runtime_error_exiting(vm, "expected 2 string arguments");
     }
-    string = lit_as_string(instance);
-    what = lit_as_string(argv[0]);
-    with = lit_as_string(argv[1]);
+    string = LitObject::as<LitString>(instance);
+    what = LitObject::as<LitString>(argv[0]);
+    with = LitObject::as<LitString>(argv[1]);
     buffer_length = 0;
     for(i = 0; i < string->length(); i++)
     {
@@ -17877,7 +17938,7 @@ static LitValue objfn_string_substring(LitVM* vm, LitValue instance, size_t argc
     int from;
     from = lit_check_number(vm, argv, argc, 0);
     to = lit_check_number(vm, argv, argc, 1);
-    return objfn_string_splice(vm, lit_as_string(instance), from, to);
+    return objfn_string_splice(vm, LitObject::as<LitString>(instance), from, to);
 }
 
 
@@ -17886,14 +17947,14 @@ static LitValue objfn_string_length(LitVM* vm, LitValue instance, size_t argc, L
     (void)vm;
     (void)argc;
     (void)argv;
-    return lit_number_to_value(lit_ustring_length(lit_as_string(instance)));
+    return lit_number_to_value(lit_ustring_length(LitObject::as<LitString>(instance)));
 }
 
 static LitValue objfn_string_iterator(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     int index;
     LitString* string;
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     if(IS_NULL(argv[0]))
     {
         if(string->length() == 0)
@@ -17923,7 +17984,7 @@ static LitValue objfn_string_iteratorvalue(LitVM* vm, LitValue instance, size_t 
 {
     uint32_t index;
     LitString* string;
-    string = lit_as_string(instance);
+    string = LitObject::as<LitString>(instance);
     index = lit_check_number(vm, argv, argc, 0);
     if(index == UINT32_MAX)
     {
@@ -17959,7 +18020,7 @@ static LitValue objfn_string_format(LitVM* vm, LitValue instance, size_t argc, L
     LitValue rtv;
     char* buf;
     (void)pch;
-    selfstr = lit_as_string(instance);
+    selfstr = LitObject::as<LitString>(instance);
     selflen = selfstr->length();
     buf = sdsempty();
     buf = sdsMakeRoomFor(buf, selflen + 10);
@@ -17993,7 +18054,7 @@ static LitValue objfn_string_format(LitVM* vm, LitValue instance, size_t argc, L
                             {
                                 return NULL_VALUE;
                             }
-                            buf = sdscatlen(buf, lit_as_string(argv[ai])->chars, lit_as_string(argv[ai])->length());
+                            buf = sdscatlen(buf, LitObject::as<LitString>(argv[ai])->chars, LitObject::as<LitString>(argv[ai])->length());
                         }
                         break;
                     case 'd':
