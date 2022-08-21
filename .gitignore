@@ -1,3 +1,9 @@
+# vs shit
+Debug/*
+x86/*
+x64/*
+Release/*
+
 #utility stuff
 ed.sh
 # don't actually include run, run.exe, run.elf*, etc
