@@ -173,11 +173,8 @@
 #define LIT_FREE(state, type, pointer) \
     lit_reallocate(state, pointer, sizeof(type), 0)
 
-#define OBJECT_VALUE(obj) \
-    (LitValue)(LitObject::SIGN_BIT | LitObject::QNAN_BIT | (uint64_t)(uintptr_t)(obj))
-
 #define OBJECT_TYPE(value) \
-    (lit_as_object(value)->type)
+    (LitObject::asObject(value)->type)
 
 #define IS_BOOL(v) \
     (((v)&FALSE_VALUE) == FALSE_VALUE)
@@ -192,7 +189,7 @@
     (((v) & (LitObject::QNAN_BIT | LitObject::SIGN_BIT)) == (LitObject::QNAN_BIT | LitObject::SIGN_BIT))
 
 #define IS_OBJECTS_TYPE(value, t) \
-    (IS_OBJECT(value) && (lit_as_object(value) != nullptr) && (lit_as_object(value)->type == t))
+    (IS_OBJECT(value) && (LitObject::asObject(value) != nullptr) && (LitObject::asObject(value)->type == t))
 
 #define IS_STRING(value) \
     IS_OBJECTS_TYPE(value, LitObject::Type::String)
@@ -251,39 +248,38 @@
 
 
 #define lit_as_bool(v) ((v) == TRUE_VALUE)
-#define lit_as_object(v) ((LitObject*)(uintptr_t)((v) & ~(LitObject::SIGN_BIT | LitObject::QNAN_BIT)))
-#define lit_as_string(value) ((LitString*)lit_as_object(value))
+#define lit_as_string(value) ((LitString*)LitObject::asObject(value))
 #define lit_as_cstring(value) (lit_as_string(value)->chars)
-#define AS_FUNCTION(value) ((LitFunction*)lit_as_object(value))
-#define AS_NATIVE_FUNCTION(value) ((LitNativeFunction*)lit_as_object(value))
-#define AS_NATIVE_PRIMITIVE(value) ((LitNativePrimFunction*)lit_as_object(value))
-#define AS_NATIVE_METHOD(value) ((LitNativeMethod*)lit_as_object(value))
-#define AS_PRIMITIVE_METHOD(value) ((LitPrimitiveMethod*)lit_as_object(value))
-#define AS_MODULE(value) ((LitModule*)lit_as_object(value))
-#define AS_CLOSURE(value) ((LitClosure*)lit_as_object(value))
-#define AS_UPVALUE(value) ((LitUpvalue*)lit_as_object(value))
-#define AS_CLASS(value) ((LitClass*)lit_as_object(value))
-#define AS_INSTANCE(value) ((LitInstance*)lit_as_object(value))
-#define AS_ARRAY(value) ((LitArray*)lit_as_object(value))
-#define AS_MAP(value) ((LitMap*)lit_as_object(value))
-#define AS_BOUND_METHOD(value) ((LitBoundMethod*)lit_as_object(value))
-#define AS_USERDATA(value) ((LitUserdata*)lit_as_object(value))
-#define AS_RANGE(value) ((LitRange*)lit_as_object(value))
-#define AS_FIELD(value) ((LitField*)lit_as_object(value))
-#define AS_FIBER(value) ((LitFiber*)lit_as_object(value))
-#define AS_REFERENCE(value) ((LitReference*)lit_as_object(value))
+#define AS_FUNCTION(value) ((LitFunction*)LitObject::asObject(value))
+#define AS_NATIVE_FUNCTION(value) ((LitNativeFunction*)LitObject::asObject(value))
+#define AS_NATIVE_PRIMITIVE(value) ((LitNativePrimFunction*)LitObject::asObject(value))
+#define AS_NATIVE_METHOD(value) ((LitNativeMethod*)LitObject::asObject(value))
+#define AS_PRIMITIVE_METHOD(value) ((LitPrimitiveMethod*)LitObject::asObject(value))
+#define AS_MODULE(value) ((LitModule*)LitObject::asObject(value))
+#define AS_CLOSURE(value) ((LitClosure*)LitObject::asObject(value))
+#define AS_UPVALUE(value) ((LitUpvalue*)LitObject::asObject(value))
+#define AS_CLASS(value) ((LitClass*)LitObject::asObject(value))
+#define AS_INSTANCE(value) ((LitInstance*)LitObject::asObject(value))
+#define AS_ARRAY(value) ((LitArray*)LitObject::asObject(value))
+#define AS_MAP(value) ((LitMap*)LitObject::asObject(value))
+#define AS_BOUND_METHOD(value) ((LitBoundMethod*)LitObject::asObject(value))
+#define AS_USERDATA(value) ((LitUserdata*)LitObject::asObject(value))
+#define AS_RANGE(value) ((LitRange*)LitObject::asObject(value))
+#define AS_FIELD(value) ((LitField*)LitObject::asObject(value))
+#define AS_FIBER(value) ((LitFiber*)LitObject::asObject(value))
+#define AS_REFERENCE(value) ((LitReference*)LitObject::asObject(value))
 
 #define ALLOCATE_OBJECT(state, type, objectType) (type*)LitObject::make(state, sizeof(type), objectType)
-#define OBJECT_CONST_STRING(state, text) OBJECT_VALUE(LitString::copy((state), (text), strlen(text)))
+#define OBJECT_CONST_STRING(state, text) LitString::copy((state), (text), strlen(text))->asValue()
 #define CONST_STRING(state, text) LitString::copy((state), (text), strlen(text))
 
 #define INTERPRET_RUNTIME_FAIL ((LitInterpretResult){ LITRESULT_INVALID, NULL_VALUE })
 
 
 
-#define LIT_GET_FIELD(id) lit_get_field(vm->state, &AS_INSTANCE(instance)->fields, id)
-#define LIT_GET_MAP_FIELD(id) lit_get_map_field(vm->state, &AS_INSTANCE(instance)->fields, id)
-#define LIT_SET_FIELD(id, value) lit_set_field(vm->state, &AS_INSTANCE(instance)->fields, id, value)
+#define LIT_GET_FIELD(id) AS_INSTANCE(instance)->fields.getField(vm->state, id)
+#define LIT_GET_MAP_FIELD(id) AS_INSTANCE(instance).fields.getField(vm->state, id))
+#define LIT_SET_FIELD(id, value) AS_INSTANCE(instance)->fields.setField(vm->state, id, value)
 #define LIT_SET_MAP_FIELD(id, value) lit_set_map_field(vm->state, &AS_INSTANCE(instance)->fields, id, value)
 
 
@@ -324,12 +320,12 @@
     super_klass->static_fields.addAll(&klass->static_fields);
 
 #define LIT_END_CLASS_IGNORING()                            \
-    lit_set_global(state, klass_name, OBJECT_VALUE(klass)); \
+    lit_set_global(state, klass_name, klass->asValue()); \
     }
 
 
 #define LIT_END_CLASS()                                     \
-    lit_set_global(state, klass_name, OBJECT_VALUE(klass)); \
+    lit_set_global(state, klass_name, klass->asValue()); \
     if(klass->super == nullptr) \
     {                                                       \
         LIT_INHERIT_CLASS(state->objectvalue_class);             \
@@ -340,13 +336,13 @@
 #define LIT_BIND_STATIC_METHOD(name, method)                                                                        \
     {                                                                                                               \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                 \
-        klass->static_fields.set(nm, OBJECT_VALUE(lit_create_native_method(state, method, nm))); \
+        klass->static_fields.set(nm, lit_create_native_method(state, method, nm)->asValue()); \
     }
 
 #define LIT_BIND_STATIC_PRIMITIVE(name, method)                                                                        \
     {                                                                                                                  \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                    \
-        klass->static_fields.set(nm, OBJECT_VALUE(lit_create_primitive_method(state, method, nm))); \
+        klass->static_fields.set(nm, lit_create_primitive_method(state, method, nm)->asValue()); \
     }
 
 #define LIT_SET_STATIC_FIELD(name, field)                           \
@@ -359,40 +355,40 @@
     {                                                                                                                        \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
         klass->methods.set(nm,                                                                            \
-                      OBJECT_VALUE(lit_create_field(state, nullptr, (LitObject*)lit_create_native_method(state, setter, nm)))); \
+                      lit_create_field(state, nullptr, (LitObject*)lit_create_native_method(state, setter, nm))->asValue()); \
     }
 #define LIT_BIND_GETTER(name, getter)                                                                                        \
     {                                                                                                                        \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
         klass->methods.set(nm,                                                                            \
-                      OBJECT_VALUE(lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), nullptr))); \
+                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), nullptr)->asValue()); \
     }
 #define LIT_BIND_FIELD(name, getter, setter)                                                                        \
     {                                                                                                               \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                 \
         klass->methods.set(nm,                                                                   \
-                      OBJECT_VALUE(lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), \
-                                                    (LitObject*)lit_create_native_method(state, setter, nm))));     \
+                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), \
+                                                    (LitObject*)lit_create_native_method(state, setter, nm))->asValue());     \
     }
 
 #define LIT_BIND_STATIC_SETTER(name, setter)                                                                                 \
     {                                                                                                                        \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
         klass->static_fields.set(nm,                                                                      \
-                      OBJECT_VALUE(lit_create_field(state, nullptr, (LitObject*)lit_create_native_method(state, setter, nm)))); \
+                      lit_create_field(state, nullptr, (LitObject*)lit_create_native_method(state, setter, nm))->asValue()); \
     }
 #define LIT_BIND_STATIC_GETTER(name, getter)                                                                                 \
     {                                                                                                                        \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                          \
         klass->static_fields.set(nm,                                                                      \
-                      OBJECT_VALUE(lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), nullptr))); \
+                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), nullptr)->asValue()); \
     }
 #define LIT_BIND_STATIC_FIELD(name, getter, setter)                                                                 \
     {                                                                                                               \
         LitString* nm = LitString::copy(state, name, strlen(name));                                                 \
         klass->static_fields.set(nm,                                                             \
-                      OBJECT_VALUE(lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), \
-                                                    (LitObject*)lit_create_native_method(state, setter, nm))));     \
+                      lit_create_field(state, (LitObject*)lit_create_native_method(state, getter, nm), \
+                                                    (LitObject*)lit_create_native_method(state, setter, nm))->asValue());     \
     }
 
 
@@ -720,46 +716,6 @@ enum LitFunctionType
     LITFUNC_CONSTRUCTOR
 };
 
-
-
-/*
-rename me:
-struct ASTExpression
-struct ASTStatement
-struct ASTExprLiteral
-struct ASTExprBinary
-struct ASTExprUnary
-struct ASTExprVar
-struct ASTExprAssign
-struct ASTExprCall
-struct ASTExprIndexGet
-struct ASTExprIndexSet
-struct ASTExprLambda
-struct ASTExprArray
-struct ASTExprObject
-struct ASTExprSubscript
-struct ASTExprThis
-struct ASTExprSuper
-struct ASTExprRange
-struct ASTExprIfClause
-struct ASTExprInterpolation
-struct ASTExprReference
-struct ASTExprStatement
-struct ASTStmtBlock
-struct LitVarStatement
-struct ASTStmtIfClause
-struct ASTStmtWhileLoop
-struct ASTStmtForLoop
-struct ASTStmtContinue
-struct ASTStmtBreak
-struct ASTStmtFunction
-struct ASTStmtReturn
-struct ASTStmtMethod
-struct ASTStmtClass
-struct ASTStmtField
-
-*/
-
 struct /**/LitParser;
 struct /**/ASTExpression;
 struct /**/LitWriter;
@@ -935,11 +891,28 @@ struct LitObject
 
         static void releaseObject(LitState* state, LitObject* obj);
 
+        static inline LitObject* asObject(LitValue v)
+        {
+            return ((LitObject*)(uintptr_t)((v) & ~(LitObject::SIGN_BIT | LitObject::QNAN_BIT)));
+        }
+
+        static inline LitValue asValue(LitObject* obj)
+        {
+            return (LitValue)(LitObject::SIGN_BIT | LitObject::QNAN_BIT | (uint64_t)(uintptr_t)(obj));
+        }
+
+
     public:
         /* the type of this object */
         Type type;
         LitObject* next;
         bool marked;
+
+    public:
+        inline LitValue asValue()
+        {
+            return LitObject::asValue(this);
+        }
 };
 
 struct LitString: public LitObject
@@ -1038,7 +1011,7 @@ struct LitString: public LitObject
             char buffer[24];
             int length = sprintf(buffer, "%.14g", value);
 
-            return OBJECT_VALUE(LitString::copy(state, buffer, length));
+            return LitString::copy(state, buffer, length)->asValue();
         }
 
 
@@ -1056,7 +1029,7 @@ struct LitString: public LitObject
         *
         * it's extremely rudimentary, and the idea is to quickly join values.
         */
-        static LitValue format(LitState* state, const char* format, ...);
+        static LitString* format(LitState* state, const char* format, ...);
 
         static bool equal(LitState* state, LitString* a, LitString* b)
         {
@@ -1233,6 +1206,23 @@ struct LitTable: public PCGenericArray<LitTableEntry>
         }
 
     public:
+        void markForGC(LitVM* vm);
+
+        void setField(LitState* state, const char* name, LitValue value)
+        {
+            this->set(CONST_STRING(state, name), value);
+        }
+
+        LitValue getField(LitState* state, const char* name)
+        {
+            LitValue value;
+            if(!this->get(CONST_STRING(state, name), &value))
+            {
+                value = NULL_VALUE;
+            }
+            return value;
+        }
+
         bool set(LitString* key, LitValue value)
         {
             bool is_new;
@@ -1361,8 +1351,36 @@ struct LitTable: public PCGenericArray<LitTableEntry>
             }
         }
 
-        void markForGC(LitVM* vm);
+        int64_t iterator(int64_t number)
+        {
+            if(this->m_count == 0)
+            {
+                return -1;
+            }
+            if(number >= this->m_capacity)
+            {
+                return -1;
+            }
+            number++;
+            for(; number < (int64_t)this->m_capacity; number++)
+            {
+                if(this->m_values[number].key != nullptr)
+                {
+                    return number;
+                }
+            }
 
+            return -1;
+        }
+
+        LitValue iterKey(int64_t index)
+        {
+            if(this->m_capacity <= index)
+            {
+                return NULL_VALUE;
+            }
+            return this->m_values[index].key->asValue();
+        }
 
 };
 
@@ -1774,7 +1792,7 @@ struct ASTStmtBlock
     PCGenericArray<ASTStatement*> statements;
 };
 
-struct LitVarStatement
+struct ASTStmtVar
 {
     ASTStatement statement;
     const char* name;
@@ -1958,6 +1976,21 @@ struct LitMap: public LitObject
         bool get(LitString* key, LitValue* value)
         {
             return this->values.get(key, value);
+        }
+
+        void lit_set_map_field(LitState* state, const char* name, LitValue value)
+        {
+            this->values.set(CONST_STRING(state, name), value);
+        }
+
+        LitValue getField(LitState* state, const char* name)
+        {
+            LitValue value;
+            if(!this->values.get(CONST_STRING(state, name), &value))
+            {
+                value = NULL_VALUE;
+            }
+            return value;
         }
 
         bool remove(LitString* key)
@@ -2177,7 +2210,7 @@ struct LitState
 
         void pushRoot(LitObject* obj)
         {
-            pushValueRoot(OBJECT_VALUE(obj));
+            pushValueRoot(obj->asValue());
         }
 
         void pushValueRoot(LitValue value)
@@ -2359,7 +2392,7 @@ struct LitVM
             obj->marked = true;
         #ifdef LIT_LOG_MARKING
             printf("%p mark ", (void*)obj);
-            lit_print_value(OBJECT_VALUE(obj));
+            lit_print_value(obj->asValue());
             printf("\n");
         #endif
             if(this->gray_capacity < this->gray_count + 1)
@@ -2374,7 +2407,7 @@ struct LitVM
         {
             if(IS_OBJECT(value))
             {
-                markObject(lit_as_object(value));
+                markObject(LitObject::asObject(value));
             }
         }
 
@@ -2405,7 +2438,7 @@ struct LitVM
 
         #ifdef LIT_LOG_BLACKING
             printf("%p blacken ", (void*)obj);
-            lit_print_value(OBJECT_VALUE(obj));
+            lit_print_value(obj->asValue());
             printf("\n");
         #endif
             switch(obj->type)
@@ -2667,8 +2700,6 @@ LitString* lit_writer_get_string(LitWriter* wr);
 * utility functions
 */
 void util_custom_quick_sort(LitVM *vm, LitValue *l, int length, LitValue callee);
-int util_table_iterator(LitTable *table, int number);
-LitValue util_table_iterator_key(LitTable *table, int index);
 bool util_is_fiber_done(LitFiber *fiber);
 void util_run_fiber(LitVM *vm, LitFiber *fiber, LitValue *argv, size_t argc, bool catcher);
 void util_basic_quick_sort(LitState *state, LitValue *clist, int length);
@@ -2846,11 +2877,6 @@ void lit_ensure_number(LitVM* vm, LitValue value, const char* error);
 void lit_ensure_object_type(LitVM* vm, LitValue value, LitObject::Type type, const char* error);
 
 
-LitValue lit_get_field(LitState* state, LitTable* table, const char* name);
-LitValue lit_get_map_field(LitState* state, LitMap* map, const char* name);
-
-void lit_set_field(LitState* state, LitTable* table, const char* name, LitValue value);
-void lit_set_map_field(LitState* state, LitMap* map, const char* name, LitValue value);
 void lit_disassemble_module(LitState* state, LitModule* module, const char* source);
 void lit_disassemble_chunk(LitState* state, LitChunk* chunk, const char* name, const char* source);
 size_t lit_disassemble_instruction(LitState* state, LitChunk* chunk, size_t offset, const char* source);
@@ -2972,7 +2998,7 @@ ASTExprReference* lit_create_reference_expression(LitState* state, size_t line, 
 void lit_free_statement(LitState* state, ASTStatement* statement);
 ASTExprStatement* lit_create_expression_statement(LitState* state, size_t line, ASTExpression* expression);
 ASTStmtBlock* lit_create_block_statement(LitState* state, size_t line);
-LitVarStatement* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* init, bool constant);
+ASTStmtVar* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* init, bool constant);
 
 ASTStmtIfClause* lit_create_if_statement(LitState* state,
                                         size_t line,
@@ -3105,7 +3131,7 @@ void LitObject::releaseObject(LitState* state, LitObject* obj)
     LitClosure* closure;
 #ifdef LIT_LOG_ALLOCATION
     printf("(");
-    lit_print_value(OBJECT_VALUE(obj));
+    lit_print_value(obj->asValue());
     printf(") %p free %s\n", (void*)obj, lit_get_value_type(obj->type));
 #endif
 
@@ -3317,7 +3343,7 @@ LitString* LitString::copy(LitState* state, const char* chars, size_t length)
     return LitString::allocate(state, heap_chars, length, hash, true, true);
 }
 
-LitValue LitString::format(LitState* state, const char* format, ...)
+LitString* LitString::format(LitState* state, const char* format, ...)
 {
     char ch;
     size_t length;
@@ -3404,7 +3430,7 @@ LitValue LitString::format(LitState* state, const char* format, ...)
     result->hash = LitString::makeHash(result->chars, result->length());
     LitString::cache(state, result);
     state->allow_gc = was_allowed;
-    return OBJECT_VALUE(result);
+    return result;
 }
 
 
@@ -3417,14 +3443,14 @@ inline static void lit_bind_method(LitState* state, LitClass* klass, const char*
 {
     LitString* nm;
     nm = LitString::copy(state, name, strlen(name));
-    klass->methods.set(nm, OBJECT_VALUE(lit_create_native_method(state, method, nm)));
+    klass->methods.set(nm, lit_create_native_method(state, method, nm)->asValue());
 }
 
 inline static void lit_bind_primitive(LitState* state, LitClass* klass, const char* name, LitPrimitiveMethodFn method)
 {
     LitString* nm;
     nm = LitString::copy(state, name, strlen(name));
-    klass->methods.set(nm, OBJECT_VALUE(lit_create_primitive_method(state, method, nm)));
+    klass->methods.set(nm, lit_create_primitive_method(state, method, nm)->asValue());
 }
 
 inline static void lit_bind_constructor(LitState* state, LitClass* klass, LitNativeMethodFn method)
@@ -3434,7 +3460,7 @@ inline static void lit_bind_constructor(LitState* state, LitClass* klass, LitNat
     nm = LitString::copy(state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1);
     m = lit_create_native_method(state, method, nm);
     klass->init_method = (LitObject*)m;
-    klass->methods.set(nm, OBJECT_VALUE(m));
+    klass->methods.set(nm, m->asValue());
 }
 
 static void free_parameters(LitState* state, PCGenericArray<ASTExprFuncParam>* parameters)
@@ -3834,8 +3860,8 @@ void lit_free_statement(LitState* state, ASTStatement* statement)
             break;
         case ASTStatement::Type::VarDecl:
             {
-                lit_free_expression(state, ((LitVarStatement*)statement)->init);
-                lit_reallocate(state, statement, sizeof(LitVarStatement), 0);
+                lit_free_expression(state, ((ASTStmtVar*)statement)->init);
+                lit_reallocate(state, statement, sizeof(ASTStmtVar), 0);
             }
             break;
         case ASTStatement::Type::IfClause:
@@ -3949,10 +3975,10 @@ ASTStmtBlock* lit_create_block_statement(LitState* state, size_t line)
     return statement;
 }
 
-LitVarStatement* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* init, bool constant)
+ASTStmtVar* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* init, bool constant)
 {
-    LitVarStatement* statement;
-    statement = (LitVarStatement*)allocate_statement(state, line, sizeof(LitVarStatement), ASTStatement::Type::VarDecl);
+    ASTStmtVar* statement;
+    statement = (ASTStmtVar*)allocate_statement(state, line, sizeof(ASTStmtVar), ASTStatement::Type::VarDecl);
     statement->name = name;
     statement->length = length;
     statement->init = init;
@@ -4653,7 +4679,7 @@ static void resolve_statement(LitEmitter* emitter, ASTStatement* statement)
     {
         case ASTStatement::Type::VarDecl:
             {
-                LitVarStatement* stmt = (LitVarStatement*)statement;
+                ASTStmtVar* stmt = (ASTStmtVar*)statement;
                 mark_private_initialized(emitter, add_private(emitter, stmt->name, stmt->length, statement->line, stmt->constant));
             }
             break;
@@ -4882,7 +4908,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                             emit_op(emitter, expression->line, ref ? OP_REFERENCE_GLOBAL : OP_GET_GLOBAL);
                             emit_short(emitter, expression->line,
                                        add_constant(emitter, expression->line,
-                                                    OBJECT_VALUE(LitString::copy(emitter->state, expr->name, expr->length))));
+                                                    LitString::copy(emitter->state, expr->name, expr->length)->asValue()));
                         }
                         else
                         {
@@ -4935,7 +4961,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                                 emit_op(emitter, expression->line, OP_SET_GLOBAL);
                                 emit_short(emitter, expression->line,
                                            add_constant(emitter, expression->line,
-                                                        OBJECT_VALUE(LitString::copy(emitter->state, e->name, e->length))));
+                                                        LitString::copy(emitter->state, e->name, e->length)->asValue()));
                             }
                             else
                             {
@@ -4968,7 +4994,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                     ASTExprIndexGet* e = (ASTExprIndexGet*)expr->to;
                     emit_expression(emitter, e->where);
                     emit_expression(emitter, expr->value);
-                    emit_constant(emitter, emitter->last_line, OBJECT_VALUE(LitString::copy(emitter->state, e->name, e->length)));
+                    emit_constant(emitter, emitter->last_line, LitString::copy(emitter->state, e->name, e->length)->asValue());
                     emit_ops(emitter, emitter->last_line, OP_SET_FIELD, OP_POP);
                 }
                 else if(expr->to->type == ASTExpression::Type::Subscript)
@@ -5036,7 +5062,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                                         (uint8_t)expr->args.m_count);
                         emit_short(emitter, emitter->last_line,
                                    add_constant(emitter, emitter->last_line,
-                                                OBJECT_VALUE(LitString::copy(emitter->state, e->name, e->length))));
+                                                LitString::copy(emitter->state, e->name, e->length)->asValue()));
                     }
                     else
                     {
@@ -5046,7 +5072,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                         emit_varying_op(emitter, emitter->last_line,
                                         ((ASTExprSuper*)expr->callee)->ignore_result ? OP_INVOKE_SUPER_IGNORING : OP_INVOKE_SUPER,
                                         (uint8_t)expr->args.m_count);
-                        emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(e->method)));
+                        emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, e->method->asValue()));
                     }
                 }
                 else
@@ -5107,14 +5133,14 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                     if(!expr->ignore_emit)
                     {
                         emit_constant(emitter, emitter->last_line,
-                                      OBJECT_VALUE(LitString::copy(emitter->state, expr->name, expr->length)));
+                                      LitString::copy(emitter->state, expr->name, expr->length)->asValue());
                         emit_op(emitter, emitter->last_line, ref ? OP_REFERENCE_FIELD : OP_GET_FIELD);
                     }
                     patch_jump(emitter, expr->jump, emitter->last_line);
                 }
                 else if(!expr->ignore_emit)
                 {
-                    emit_constant(emitter, emitter->last_line, OBJECT_VALUE(LitString::copy(emitter->state, expr->name, expr->length)));
+                    emit_constant(emitter, emitter->last_line, LitString::copy(emitter->state, expr->name, expr->length)->asValue());
                     emit_op(emitter, emitter->last_line, ref ? OP_REFERENCE_FIELD : OP_GET_FIELD);
                 }
             }
@@ -5124,15 +5150,15 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 ASTExprIndexSet* expr = (ASTExprIndexSet*)expression;
                 emit_expression(emitter, expr->where);
                 emit_expression(emitter, expr->value);
-                emit_constant(emitter, emitter->last_line, OBJECT_VALUE(LitString::copy(emitter->state, expr->name, expr->length)));
+                emit_constant(emitter, emitter->last_line, LitString::copy(emitter->state, expr->name, expr->length)->asValue());
                 emit_op(emitter, emitter->last_line, OP_SET_FIELD);
             }
             break;
         case ASTExpression::Type::Lambda:
             {
                 ASTExprLambda* expr = (ASTExprLambda*)expression;
-                LitString* name = lit_as_string(LitString::format(emitter->state, "lambda @:@", OBJECT_VALUE(emitter->module->name),
-                                                              LitString::stringNumberToString(emitter->state, expression->line)));
+                LitString* name = LitString::format(emitter->state, "lambda @:@", emitter->module->name->asValue(),
+                                                              LitString::stringNumberToString(emitter->state, expression->line));
                 LitCompiler compiler;
                 init_compiler(emitter, &compiler, LITFUNC_REGULAR);
                 begin_scope(emitter);
@@ -5159,7 +5185,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 if(function->upvalue_count > 0)
                 {
                     emit_op(emitter, emitter->last_line, OP_CLOSURE);
-                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(function)));
+                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, function->asValue()));
                     for(size_t i = 0; i < function->upvalue_count; i++)
                     {
                         emit_bytes(emitter, emitter->last_line, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
@@ -5167,7 +5193,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                 }
                 else
                 {
-                    emit_constant(emitter, emitter->last_line, OBJECT_VALUE(function));
+                    emit_constant(emitter, emitter->last_line, function->asValue());
                 }
             }
             break;
@@ -5245,7 +5271,7 @@ static void emit_expression(LitEmitter* emitter, ASTExpression* expression)
                     emit_arged_op(emitter, expression->line, OP_GET_LOCAL, 0);
                     emit_arged_op(emitter, expression->line, OP_GET_UPVALUE, index);
                     emit_op(emitter, expression->line, OP_GET_SUPER_METHOD);
-                    emit_short(emitter, expression->line, add_constant(emitter, expression->line, OBJECT_VALUE(expr->method)));
+                    emit_short(emitter, expression->line, add_constant(emitter, expression->line, expr->method->asValue()));
                 }
             }
             break;
@@ -5327,8 +5353,8 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
     ASTStatement* s;
     PCGenericArray<ASTStatement*>* statements;
     LitString* name;
-    LitVarStatement* var;
-    LitVarStatement* varstmt;
+    ASTStmtVar* var;
+    ASTStmtVar* varstmt;
     ASTStmtForLoop* forstmt;
     ASTStmtWhileLoop* whilestmt;
     ASTStmtIfClause* ifstmt;
@@ -5390,7 +5416,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
             break;
         case ASTStatement::Type::VarDecl:
             {
-                varstmt = (LitVarStatement*)statement;
+                varstmt = (ASTStmtVar*)statement;
                 line = statement->line;
                 isprivate = emitter->compiler->enclosing == nullptr && emitter->compiler->scope_depth == 0;
                 index = isprivate ? resolve_private(emitter, varstmt->name, varstmt->length, statement->line) :
@@ -5579,7 +5605,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                     exit_jump = emit_jump(emitter, OP_JUMP_IF_NULL_POPPING, emitter->last_line);
                     begin_scope(emitter);
                     // var i = seq.iteratorValue(iter)
-                    var = (LitVarStatement*)forstmt->var;
+                    var = (ASTStmtVar*)forstmt->var;
                     localcnt = add_local(emitter, var->name, var->length, statement->line, false);
                     mark_local_initialized(emitter, localcnt);
                     emit_byte_or_short(emitter, emitter->last_line, OP_GET_LOCAL, OP_GET_LOCAL_LONG, sequence);
@@ -5684,7 +5710,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                 if(function->upvalue_count > 0)
                 {
                     emit_op(emitter, emitter->last_line, OP_CLOSURE);
-                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(function)));
+                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, function->asValue()));
                     for(i = 0; i < function->upvalue_count; i++)
                     {
                         emit_bytes(emitter, emitter->last_line, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
@@ -5692,12 +5718,12 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                 }
                 else
                 {
-                    emit_constant(emitter, emitter->last_line, OBJECT_VALUE(function));
+                    emit_constant(emitter, emitter->last_line, function->asValue());
                 }
                 if(isexport)
                 {
                     emit_op(emitter, emitter->last_line, OP_SET_GLOBAL);
-                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(name)));
+                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, name->asValue()));
                 }
                 else if(isprivate)
                 {
@@ -5747,14 +5773,14 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                 vararg = emit_parameters(emitter, &mthstmt->parameters, statement->line);
                 emit_statement(emitter, mthstmt->body);
                 end_scope(emitter, emitter->last_line);
-                function = end_compiler(emitter, lit_as_string(LitString::format(emitter->state, "@:@", OBJECT_VALUE(emitter->class_name), OBJECT_VALUE(mthstmt->name))));
+                function = end_compiler(emitter, LitString::format(emitter->state, "@:@", emitter->class_name->asValue(), mthstmt->name->asValue()));
                 function->arg_count = mthstmt->parameters.m_count;
                 function->max_slots += function->arg_count;
                 function->vararg = vararg;
                 if(function->upvalue_count > 0)
                 {
                     emit_op(emitter, emitter->last_line, OP_CLOSURE);
-                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(function)));
+                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, function->asValue()));
                     for(i = 0; i < function->upvalue_count; i++)
                     {
                         emit_bytes(emitter, emitter->last_line, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
@@ -5762,10 +5788,10 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                 }
                 else
                 {
-                    emit_constant(emitter, emitter->last_line, OBJECT_VALUE(function));
+                    emit_constant(emitter, emitter->last_line, function->asValue());
                 }
                 emit_op(emitter, emitter->last_line, mthstmt->is_static ? OP_STATIC_FIELD : OP_METHOD);
-                emit_short(emitter, emitter->last_line, add_constant(emitter, statement->line, OBJECT_VALUE(mthstmt->name)));
+                emit_short(emitter, emitter->last_line, add_constant(emitter, statement->line, mthstmt->name->asValue()));
 
             }
             break;
@@ -5776,10 +5802,10 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                 if(clstmt->parent != nullptr)
                 {
                     emit_op(emitter, emitter->last_line, OP_GET_GLOBAL);
-                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(clstmt->parent)));
+                    emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, clstmt->parent->asValue()));
                 }
                 emit_op(emitter, statement->line, OP_CLASS);
-                emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, OBJECT_VALUE(clstmt->name)));
+                emit_short(emitter, emitter->last_line, add_constant(emitter, emitter->last_line, clstmt->name->asValue()));
                 if(clstmt->parent != nullptr)
                 {
                     emit_op(emitter, emitter->last_line, OP_INHERIT);
@@ -5794,12 +5820,12 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                     s = clstmt->fields.m_values[i];
                     if(s->type == ASTStatement::Type::VarDecl)
                     {
-                        var = (LitVarStatement*)s;
+                        var = (ASTStmtVar*)s;
                         emit_expression(emitter, var->init);
                         emit_op(emitter, statement->line, OP_STATIC_FIELD);
                         emit_short(emitter, statement->line,
                                    add_constant(emitter, statement->line,
-                                                OBJECT_VALUE(LitString::copy(emitter->state, var->name, var->length))));
+                                                LitString::copy(emitter->state, var->name, var->length)->asValue()));
                     }
                     else
                     {
@@ -5827,7 +5853,7 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                     emit_statement(emitter, fieldstmt->getter);
                     end_scope(emitter, emitter->last_line);
                     getter = end_compiler(emitter,
-                        lit_as_string(LitString::format(emitter->state, "@:get @", OBJECT_VALUE(emitter->class_name), fieldstmt->name)));
+                        LitString::format(emitter->state, "@:get @", emitter->class_name->asValue(), fieldstmt->name));
                 }
                 if(fieldstmt->setter != nullptr)
                 {
@@ -5837,14 +5863,14 @@ static bool emit_statement(LitEmitter* emitter, ASTStatement* statement)
                     emit_statement(emitter, fieldstmt->setter);
                     end_scope(emitter, emitter->last_line);
                     setter = end_compiler(emitter,
-                        lit_as_string(LitString::format(emitter->state, "@:set @", OBJECT_VALUE(emitter->class_name), fieldstmt->name)));
+                        LitString::format(emitter->state, "@:set @", emitter->class_name->asValue(), fieldstmt->name));
                     setter->arg_count = 1;
                     setter->max_slots++;
                 }
                 field = lit_create_field(emitter->state, (LitObject*)getter, (LitObject*)setter);
-                emit_constant(emitter, statement->line, OBJECT_VALUE(field));
+                emit_constant(emitter, statement->line, field->asValue());
                 emit_op(emitter, statement->line, fieldstmt->is_static ? OP_STATIC_FIELD : OP_DEFINE_FIELD);
-                emit_short(emitter, statement->line, add_constant(emitter, statement->line, OBJECT_VALUE(fieldstmt->name)));
+                emit_short(emitter, statement->line, add_constant(emitter, statement->line, fieldstmt->name->asValue()));
             }
             break;
         default:
@@ -5934,7 +5960,7 @@ LitModule* lit_emit(LitEmitter* emitter, PCGenericArray<ASTStatement*>& statemen
     }
     if(isnew && !state->had_error)
     {
-        state->vm->modules->values.set(module_name, OBJECT_VALUE(module));
+        state->vm->modules->values.set(module_name, module->asValue());
     }
     module->ran = true;
     return module;
@@ -6703,7 +6729,7 @@ static void optimize_statement(LitOptimizer* optimizer, ASTStatement** slot)
                     break;
                 }
                 bool reverse = lit_value_to_number(from) > lit_value_to_number(to);
-                LitVarStatement* var = (LitVarStatement*)stmt->var;
+                ASTStmtVar* var = (ASTStmtVar*)stmt->var;
                 size_t line = range->expression.line;
                 // var i = from
                 var->init = range->from;
@@ -6728,7 +6754,7 @@ static void optimize_statement(LitOptimizer* optimizer, ASTStatement** slot)
 
         case ASTStatement::Type::VarDecl:
             {
-                LitVarStatement* stmt = (LitVarStatement*)statement;
+                ASTStmtVar* stmt = (ASTStmtVar*)statement;
                 LitVariable* variable = add_variable(optimizer, stmt->name, stmt->length, stmt->constant, slot);
                 optimize_expression(optimizer, &stmt->init);
                 if(stmt->constant && lit_is_optimization_enabled(LITOPTSTATE_CONSTANT_FOLDING))
@@ -7792,7 +7818,7 @@ static ASTExpression* parse_object(LitParser* parser, bool can_assign)
     {
         ignore_new_lines(parser);
         consume(parser, LITTOK_IDENTIFIER, "key string after '{'");
-        objexpr->keys.push(OBJECT_VALUE(LitString::copy(parser->state, parser->previous.start, parser->previous.length)));
+        objexpr->keys.push(LitString::copy(parser->state, parser->previous.start, parser->previous.length)->asValue());
         ignore_new_lines(parser);
         consume(parser, LITTOK_EQUAL, "'=' after key string");
         ignore_new_lines(parser);
@@ -9069,7 +9095,7 @@ static LitToken scan_string(LitScanner* scanner, bool interpolation)
         }
     }
     token = make_token(scanner, string_type);
-    token.value = OBJECT_VALUE(LitString::copy(state, (const char*)bytes.m_values, bytes.m_count));
+    token.value = LitString::copy(state, (const char*)bytes.m_values, bytes.m_count)->asValue();
     bytes.release();
     return token;
 }
@@ -9692,39 +9718,7 @@ void lit_ensure_object_type(LitVM* vm, LitValue value, LitObject::Type type, con
     }
 }
 
-LitValue lit_get_field(LitState* state, LitTable* table, const char* name)
-{
-    LitValue value;
 
-    if(!table->get(CONST_STRING(state, name), &value))
-    {
-        value = NULL_VALUE;
-    }
-
-    return value;
-}
-
-LitValue lit_get_map_field(LitState* state, LitMap* map, const char* name)
-{
-    LitValue value;
-
-    if(!map->values.get(CONST_STRING(state, name), &value))
-    {
-        value = NULL_VALUE;
-    }
-
-    return value;
-}
-
-void lit_set_field(LitState* state, LitTable* table, const char* name, LitValue value)
-{
-    table->set(CONST_STRING(state, name), value);
-}
-
-void lit_set_map_field(LitState* state, LitMap* map, const char* name, LitValue value)
-{
-    map->values.set(CONST_STRING(state, name), value);
-}
 
 
 static bool ensure_fiber(LitVM* vm, LitFiber* fiber)
@@ -9792,7 +9786,7 @@ static inline LitCallFrame* setup_call(LitState* state, LitFunction* callee, Lit
     lit_ensure_fiber_stack(state, fiber, callee->max_slots + (int)(fiber->stack_top - fiber->stack));
     frame = &fiber->frames[fiber->frame_count++];
     frame->slots = fiber->stack_top;
-    PUSH(OBJECT_VALUE(callee));
+    PUSH(callee->asValue());
     for(i = 0; i < argc; i++)
     {
         PUSH(argv[i]);
@@ -9810,7 +9804,7 @@ static inline LitCallFrame* setup_call(LitState* state, LitFunction* callee, Lit
             }
             if(vararg)
             {
-                PUSH(OBJECT_VALUE(LitArray::make(vm->state)));
+                PUSH(LitArray::make(vm->state)->asValue());
             }
         }
         else if(callee->vararg)
@@ -9824,7 +9818,7 @@ static inline LitCallFrame* setup_call(LitState* state, LitFunction* callee, Lit
             }
 
             fiber->stack_top -= varargc;
-            lit_push(vm, OBJECT_VALUE(array));
+            lit_push(vm, array->asValue());
         }
         else
         {
@@ -9836,7 +9830,7 @@ static inline LitCallFrame* setup_call(LitState* state, LitFunction* callee, Lit
         array = LitArray::make(vm->state);
         varargc = argc - function_arg_count + 1;
         array->values.push(*(fiber->stack_top - 1));
-        *(fiber->stack_top - 1) = OBJECT_VALUE(array);
+        *(fiber->stack_top - 1) = array->asValue();
     }
     frame->ip = callee->chunk.code;
     frame->closure = nullptr;
@@ -9964,10 +9958,10 @@ LitInterpretResult lit_call_method(LitState* state, LitValue instance, LitValue 
             case LitObject::Type::Class:
                 {
                     klass = AS_CLASS(callee);
-                    *slot = OBJECT_VALUE(lit_create_instance(vm->state, klass));
+                    *slot = lit_create_instance(vm->state, klass)->asValue();
                     if(klass->init_method != nullptr)
                     {
-                        lir = lit_call_method(state, *slot, OBJECT_VALUE(klass->init_method), argv, argc, ignfiber);
+                        lir = lit_call_method(state, *slot, klass->init_method->asValue(), argv, argc, ignfiber);
                     }
                     // TODO: when should this return *slot instead of lir?
                     fiber->stack_top = slot;
@@ -10121,7 +10115,7 @@ LitString* lit_to_string(LitState* state, LitValue valobj)
     frame->slots = fiber->stack_top;
     frame->result_ignored = false;
     frame->return_to_c = true;
-    PUSH(OBJECT_VALUE(function));
+    PUSH(function->asValue());
     PUSH(valobj);
     result = lit_interpret_fiber(state, fiber);
     if(result.type != LITRESULT_OK)
@@ -10143,7 +10137,7 @@ LitValue lit_call_new(LitVM* vm, const char* name, LitValue* args, size_t argc, 
     klass = AS_CLASS(value);
     if(klass->init_method == nullptr)
     {
-        return OBJECT_VALUE(lit_create_instance(vm->state, klass));
+        return lit_create_instance(vm->state, klass)->asValue();
     }
     return lit_call_method(vm->state, value, value, args, argc, ignfiber).result;
 }
@@ -10791,11 +10785,11 @@ LitString* lit_vformat_error(LitState* state, size_t line, LitError error, va_li
     buffer[buffer_size - 1] = '\0';
     if(line != 0)
     {
-        rt = lit_as_string(LitString::format(state, "[err # line #]: $", (double)error_id, (double)line, (const char*)buffer));
+        rt = LitString::format(state, "[err # line #]: $", (double)error_id, (double)line, (const char*)buffer);
     }
     else
     {
-        rt = lit_as_string(LitString::format(state, "[err #]: $", (double)error_id, (const char*)buffer));
+        rt = LitString::format(state, "[err #]: $", (double)error_id, (const char*)buffer);
     }
     free(buffer);
     return rt;
@@ -11059,7 +11053,7 @@ static void save_chunk(FILE* file, LitChunk* chunk)
 
         if(IS_OBJECT(constant))
         {
-            LitObject::Type type = lit_as_object(constant)->type;
+            LitObject::Type type = LitObject::asObject(constant)->type;
             lit_write_uint8_t(file, (uint8_t)(type) + 1);
 
             switch(type)
@@ -11137,12 +11131,12 @@ static void load_chunk(LitState* state, LitEmulatedFile* file, LitModule* module
             {
                 case LitObject::Type::String:
                     {
-                        chunk->constants.m_values[i] = OBJECT_VALUE(lit_read_estring(state, file));
+                        chunk->constants.m_values[i] = lit_read_estring(state, file)->asValue();
                     }
                     break;
                 case LitObject::Type::Function:
                     {
-                        chunk->constants.m_values[i] = OBJECT_VALUE(load_function(state, file, module));
+                        chunk->constants.m_values[i] = load_function(state, file, module)->asValue();
                     }
                     break;
                 default:
@@ -11224,7 +11218,7 @@ LitModule* lit_load_module(LitState* state, const char* input)
             }
         }
         module->main_function = load_function(state, &file, module);
-        state->vm->modules->values.set(module->name, OBJECT_VALUE(module));
+        state->vm->modules->values.set(module->name, module->asValue());
         if(j == 0)
         {
             first = module;
@@ -11336,9 +11330,9 @@ LitValue lit_get_function_name(LitVM* vm, LitValue instance)
                 field = AS_FIELD(instance);
                 if(field->getter != nullptr)
                 {
-                    return lit_get_function_name(vm, OBJECT_VALUE(field->getter));
+                    return lit_get_function_name(vm, field->getter->asValue());
                 }
-                return lit_get_function_name(vm, OBJECT_VALUE(field->setter));
+                return lit_get_function_name(vm, field->setter->asValue());
             }
             break;
         case LitObject::Type::NativePrimitive:
@@ -11373,10 +11367,10 @@ LitValue lit_get_function_name(LitVM* vm, LitValue instance)
     }
     if(name == nullptr)
     {
-        return OBJECT_VALUE(LitString::format(vm->state, "function #", *((double*)lit_as_object(instance))));
+        return LitString::format(vm->state, "function #", *((double*)LitObject::asObject(instance)))->asValue();
     }
 
-    return OBJECT_VALUE(LitString::format(vm->state, "function @", OBJECT_VALUE(name)));
+    return LitString::format(vm->state, "function @", name->asValue())->asValue();
 }
 
 LitUpvalue* lit_create_upvalue(LitState* state, LitValue* slot)
@@ -12405,7 +12399,7 @@ static void print_object(LitState* state, LitWriter* wr, LitValue value)
     LitValue* slot;
     LitObject* obj;
     LitUpvalue* upvalue;
-    obj = lit_as_object(value);
+    obj = LitObject::asObject(value);
     if(obj != nullptr)
     {
         switch(obj->type)
@@ -12961,7 +12955,7 @@ bool lit_handle_runtime_error(LitVM* vm, LitString* error_string)
     LitValue error;
     LitFiber* fiber;
     LitFiber* caller;
-    error = OBJECT_VALUE(error_string);
+    error = error_string->asValue();
     fiber = vm->fiber;
     while(fiber != nullptr)
     {
@@ -13116,7 +13110,7 @@ static bool call(LitVM* vm, LitFunction* function, LitClosure* closure, uint8_t 
             }
             if(vararg)
             {
-                lit_push(vm, OBJECT_VALUE(LitArray::make(vm->state)));
+                lit_push(vm, LitArray::make(vm->state)->asValue());
             }
         }
         else if(function->vararg)
@@ -13131,7 +13125,7 @@ static bool call(LitVM* vm, LitFunction* function, LitClosure* closure, uint8_t 
                 array->values.m_values[i] = vm->fiber->stack_top[(int)i - (int)vararg_count];
             }
             vm->fiber->stack_top -= vararg_count;
-            lit_push(vm, OBJECT_VALUE(array));
+            lit_push(vm, array->asValue());
         }
         else
         {
@@ -13144,7 +13138,7 @@ static bool call(LitVM* vm, LitFunction* function, LitClosure* closure, uint8_t 
         vararg_count = arg_count - function_arg_count + 1;
         vm->state->pushRoot((LitObject*)array);
         array->values.push(*(fiber->stack_top - 1));
-        *(fiber->stack_top - 1) = OBJECT_VALUE(array);
+        *(fiber->stack_top - 1) = array->asValue();
         vm->state->popRoot();
     }
     return true;
@@ -13240,10 +13234,10 @@ static bool call_value(LitVM* vm, LitValue callee, uint8_t arg_count)
                 {
                     klass = AS_CLASS(callee);
                     instance = lit_create_instance(vm->state, klass);
-                    vm->fiber->stack_top[-arg_count - 1] = OBJECT_VALUE(instance);
+                    vm->fiber->stack_top[-arg_count - 1] = instance->asValue();
                     if(klass->init_method != nullptr)
                     {
-                        return call_value(vm, OBJECT_VALUE(klass->init_method), arg_count);
+                        return call_value(vm, klass->init_method->asValue(), arg_count);
                     }
                     // Remove the arguments, so that they don't mess up the stack
                     // (default constructor has no arguments)
@@ -13355,7 +13349,7 @@ LitInterpretResult lit_interpret_module(LitState* state, LitModule* module)
     vm = state->vm;
     fiber = lit_create_fiber(state, module, module->main_function);
     vm->fiber = fiber;
-    lit_push(vm, OBJECT_VALUE(module->main_function));
+    lit_push(vm, module->main_function->asValue());
     result = lit_interpret_fiber(state, fiber);
     return result;
 }
@@ -13549,15 +13543,15 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             }
             op_case(ARRAY)
             {
-                vm_push(fiber, OBJECT_VALUE(LitArray::make(state)));
+                vm_push(fiber, LitArray::make(state)->asValue());
                 continue;
             }
             op_case(OBJECT)
             {
                 // TODO: use object, or map for literal '{...}' constructs?
                 // objects would be more general-purpose, but don't implement anything map-like.
-                //vm_push(fiber, OBJECT_VALUE(lit_create_instance(state, state->objectvalue_class)));
-                vm_push(fiber, OBJECT_VALUE(LitMap::make(state)));
+                //vm_push(fiber, lit_create_instance(state, state->objectvalue_class)->asValue());
+                vm_push(fiber, LitMap::make(state)->asValue());
 
                 continue;
             }
@@ -13569,7 +13563,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 {
                     vm_rterror("Range operands must be number");
                 }
-                vm_push(fiber, OBJECT_VALUE(lit_create_range(state, lit_value_to_number(a), lit_value_to_number(b))));
+                vm_push(fiber, lit_create_range(state, lit_value_to_number(a), lit_value_to_number(b))->asValue());
                 continue;
             }
             op_case(NEGATE)
@@ -13904,7 +13898,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             {
                 function = AS_FUNCTION(vm_readconstantlong(current_chunk, ip));
                 closure = lit_create_closure(state, function);
-                vm_push(fiber, OBJECT_VALUE(closure));
+                vm_push(fiber, closure->asValue());
                 for(i = 0; i < closure->upvalue_count; i++)
                 {
                     is_local = vm_readbyte(ip);
@@ -13930,11 +13924,11 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             {
                 name = vm_readstringlong(current_chunk, ip);
                 klassobj = lit_create_class(state, name);
-                vm_push(fiber, OBJECT_VALUE(klassobj));
+                vm_push(fiber, klassobj->asValue());
                 klassobj->super = state->objectvalue_class;
                 klassobj->super->methods.addAll(&klassobj->methods);
                 klassobj->super->static_fields.addAll(&klassobj->static_fields);
-                vm->globals->values.set(name, OBJECT_VALUE(klassobj));
+                vm->globals->values.set(name, klassobj->asValue());
                 continue;
             }
             op_case(GET_FIELD)
@@ -13963,13 +13957,13 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                                 }
                                 vm_drop(fiber);
                                 vm_writeframe(frame, ip);
-                                vm_callvalue(OBJECT_VALUE(AS_FIELD(getval)->getter), 0);
+                                vm_callvalue(AS_FIELD(getval)->getter->asValue(), 0);
                                 vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                                 continue;
                             }
                             else
                             {
-                                getval = OBJECT_VALUE(lit_create_bound_method(state, OBJECT_VALUE(instobj), getval));
+                                getval = lit_create_bound_method(state, instobj->asValue(), getval)->asValue();
                             }
                         }
                         else
@@ -13985,7 +13979,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                     {
                         if(IS_NATIVE_METHOD(getval) || IS_PRIMITIVE_METHOD(getval))
                         {
-                            getval = OBJECT_VALUE(lit_create_bound_method(state, OBJECT_VALUE(klassobj), getval));
+                            getval = lit_create_bound_method(state, klassobj->asValue(), getval)->asValue();
                         }
                         else if(IS_FIELD(getval))
                         {
@@ -13997,7 +13991,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                             }
                             vm_drop(fiber);
                             vm_writeframe(frame, ip);
-                            vm_callvalue(OBJECT_VALUE(field->getter), 0);
+                            vm_callvalue(field->getter->asValue(), 0);
                             vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                             continue;
                         }
@@ -14026,13 +14020,13 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                             }
                             vm_drop(fiber);
                             vm_writeframe(frame, ip);
-                            vm_callvalue(OBJECT_VALUE(AS_FIELD(getval)->getter), 0);
+                            vm_callvalue(AS_FIELD(getval)->getter->asValue(), 0);
                             vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                             continue;
                         }
                         else if(IS_NATIVE_METHOD(getval) || IS_PRIMITIVE_METHOD(getval))
                         {
-                            getval = OBJECT_VALUE(lit_create_bound_method(state, vobj, getval));
+                            getval = lit_create_bound_method(state, vobj, getval)->asValue();
                         }
                     }
                     else
@@ -14068,7 +14062,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                         vm_dropn(fiber, 2);
                         vm_push(fiber, value);
                         vm_writeframe(frame, ip);
-                        vm_callvalue(OBJECT_VALUE(field->setter), 1);
+                        vm_callvalue(field->setter->asValue(), 1);
                         vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                         continue;
                     }
@@ -14097,7 +14091,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                         vm_dropn(fiber, 2);
                         vm_push(fiber, value);
                         vm_writeframe(frame, ip);
-                        vm_callvalue(OBJECT_VALUE(field->setter), 1);
+                        vm_callvalue(field->setter->asValue(), 1);
                         vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                         continue;
                     }
@@ -14130,7 +14124,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                         vm_dropn(fiber, 2);
                         vm_push(fiber, value);
                         vm_writeframe(frame, ip);
-                        vm_callvalue(OBJECT_VALUE(field->setter), 1);
+                        vm_callvalue(field->setter->asValue(), 1);
                         vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                         continue;
                     }
@@ -14191,7 +14185,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 if((klassobj->init_method == nullptr || (klassobj->super != nullptr && klassobj->init_method == ((LitClass*)klassobj->super)->init_method))
                    && name->length() == 11 && memcmp(name->chars, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0)
                 {
-                    klassobj->init_method = lit_as_object(vm_peek(fiber, 0));
+                    klassobj->init_method = LitObject::asObject(vm_peek(fiber, 0));
                 }
                 klassobj->methods.set(name, vm_peek(fiber, 0));
                 vm_drop(fiber);
@@ -14238,7 +14232,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 instval = vm_pop(fiber);
                 if(klassobj->methods.get(method_name, &value))
                 {
-                    value = OBJECT_VALUE(lit_create_bound_method(state, instval, value));
+                    value = lit_create_bound_method(state, instval, value)->asValue();
                 }
                 else
                 {
@@ -14321,7 +14315,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                 name = vm_readstringlong(current_chunk, ip);
                 if(vm->globals->values.getSlot(name, &pval))
                 {
-                    vm_push(fiber, OBJECT_VALUE(lit_create_reference(state, pval)));
+                    vm_push(fiber, lit_create_reference(state, pval)->asValue());
                 }
                 else
                 {
@@ -14331,17 +14325,17 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             }
             op_case(REFERENCE_PRIVATE)
             {
-                vm_push(fiber, OBJECT_VALUE(lit_create_reference(state, &privates[vm_readshort(ip)])));
+                vm_push(fiber, lit_create_reference(state, &privates[vm_readshort(ip)])->asValue());
                 continue;
             }
             op_case(REFERENCE_LOCAL)
             {
-                vm_push(fiber, OBJECT_VALUE(lit_create_reference(state, &slots[vm_readshort(ip)])));
+                vm_push(fiber, lit_create_reference(state, &slots[vm_readshort(ip)])->asValue());
                 continue;
             }
             op_case(REFERENCE_UPVALUE)
             {
-                vm_push(fiber, OBJECT_VALUE(lit_create_reference(state, upvalues[vm_readbyte(ip)]->location)));
+                vm_push(fiber, lit_create_reference(state, upvalues[vm_readbyte(ip)]->location)->asValue());
                 continue;
             }
             op_case(REFERENCE_FIELD)
@@ -14366,7 +14360,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
                     vm_rterror("You can only reference fields of real instances");
                 }
                 vm_drop(fiber);// Pop field name
-                fiber->stack_top[-1] = OBJECT_VALUE(lit_create_reference(state, pval));
+                fiber->stack_top[-1] = lit_create_reference(state, pval)->asValue();
                 continue;
             }
             op_case(SET_REFERENCE)
@@ -14436,7 +14430,7 @@ static LitValue objfn_array_constructor(LitVM* vm, LitValue instance, size_t arg
     (void)instance;
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitArray::make(vm->state));
+    return LitArray::make(vm->state)->asValue();
 }
 
 static LitValue objfn_array_splice(LitVM* vm, LitArray* array, int from, int to)
@@ -14465,7 +14459,7 @@ static LitValue objfn_array_splice(LitVM* vm, LitArray* array, int from, int to)
     {
         new_array->values.push(array->values.m_values[from + i]);
     }
-    return OBJECT_VALUE(new_array);
+    return new_array->asValue();
 }
 
 static LitValue objfn_array_slice(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14568,17 +14562,16 @@ static LitValue objfn_array_compare(LitVM* vm, LitValue instance, size_t argc, L
     return FALSE_VALUE;
 }
 
-
 static LitValue objfn_array_add(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     size_t i;
+    (void)vm;
     for(i=0; i<argc; i++)
     {
         AS_ARRAY(instance)->push(argv[i]);
     }
     return NULL_VALUE;
 }
-
 
 static LitValue objfn_array_insert(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
@@ -14769,7 +14762,7 @@ static LitValue objfn_array_join(LitVM* vm, LitValue instance, size_t argc, LitV
         }
     }
     LIT_FREE(vm->state, LitString*, strings);
-    return OBJECT_VALUE(LitString::take(vm->state, chars, length, true));
+    return LitString::take(vm->state, chars, length, true)->asValue();
 }
 
 static LitValue objfn_array_sort(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14807,7 +14800,7 @@ static LitValue objfn_array_clone(LitVM* vm, LitValue instance, size_t argc, Lit
     {
         new_values->push(values->m_values[i]);
     }
-    return OBJECT_VALUE(array);
+    return array->asValue();
 }
 
 static LitValue objfn_array_tostring(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14880,7 +14873,7 @@ static LitValue objfn_array_tostring(LitVM* vm, LitValue instance, size_t argc, 
     // should be LitString::take, but it doesn't get picked up by the GC for some reason
     //rt = LitString::take(vm->state, buffer, olength);
     rt = LitString::take(vm->state, buffer, olength, true);
-    return OBJECT_VALUE(rt);
+    return rt->asValue();
 }
 
 static LitValue objfn_array_length(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14927,7 +14920,7 @@ static LitValue objfn_class_tostring(LitVM* vm, LitValue instance, size_t argc, 
 {
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitString::format(vm->state, "class @", OBJECT_VALUE(AS_CLASS(instance)->name)));
+    return LitString::format(vm->state, "class @", AS_CLASS(instance)->name->asValue())->asValue();
 }
 
 static LitValue objfn_class_iterator(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -14943,7 +14936,7 @@ static LitValue objfn_class_iterator(LitVM* vm, LitValue instance, size_t argc, 
     index = argv[0] == NULL_VALUE ? -1 : lit_value_to_number(argv[0]);
     mthcap = (int)klass->methods.m_capacity;
     fields = index >= mthcap;
-    value = util_table_iterator(fields ? &klass->static_fields : &klass->methods, fields ? index - mthcap : index);
+    value = (fields ? &klass->static_fields : &klass->methods)->iterator(fields ? index - mthcap : index);
     if(value == -1)
     {
         if(fields)
@@ -14952,7 +14945,7 @@ static LitValue objfn_class_iterator(LitVM* vm, LitValue instance, size_t argc, 
         }
         index++;
         fields = true;
-        value = util_table_iterator(&klass->static_fields, index - mthcap);
+        value = klass->static_fields.iterator(index - mthcap);
     }
     if(value == -1)
     {
@@ -14973,7 +14966,7 @@ static LitValue objfn_class_iteratorvalue(LitVM* vm, LitValue instance, size_t a
     klass = AS_CLASS(instance);
     mthcap = klass->methods.m_capacity;
     fields = index >= mthcap;
-    return util_table_iterator_key(fields ? &klass->static_fields : &klass->methods, fields ? index - mthcap : index);
+    return (fields ? &klass->static_fields : &klass->methods)->iterKey(fields ? index - mthcap : index);
 }
 
 
@@ -14996,7 +14989,7 @@ static LitValue objfn_class_super(LitVM* vm, LitValue instance, size_t argc, Lit
     {
         return NULL_VALUE;
     }
-    return OBJECT_VALUE(super);
+    return super->asValue();
 }
 
 static LitValue objfn_class_subscript(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -15056,7 +15049,7 @@ static LitValue objfn_class_name(LitVM* vm, LitValue instance, size_t argc, LitV
     (void)vm;
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(AS_CLASS(instance)->name);
+    return AS_CLASS(instance)->name->asValue();
 }
 
 void lit_open_class_library(LitState* state)
@@ -15200,7 +15193,7 @@ void util_run_fiber(LitVM* vm, LitFiber* fiber, LitValue* argv, size_t argc, boo
         fiber->arg_count = argc;
         lit_ensure_fiber_stack(vm->state, fiber, frame->function->max_slots + 1 + (int)(fiber->stack_top - fiber->stack));
         frame->slots = fiber->stack_top;
-        lit_push(vm, OBJECT_VALUE(frame->function));
+        lit_push(vm, frame->function->asValue());
         vararg = frame->function->vararg;
         objfn_function_arg_count = frame->function->arg_count;
         to = objfn_function_arg_count - (vararg ? 1 : 0);
@@ -15212,7 +15205,7 @@ void util_run_fiber(LitVM* vm, LitFiber* fiber, LitValue* argv, size_t argc, boo
         if(vararg)
         {
             array = LitArray::make(vm->state);
-            lit_push(vm, OBJECT_VALUE(array));
+            lit_push(vm, array->asValue());
             vararg_count = argc - objfn_function_arg_count + 1;
             if(vararg_count > 0)
             {
@@ -15287,7 +15280,7 @@ bool util_interpret(LitVM* vm, LitModule* module)
     if(frame->ip == frame->function->chunk.code)
     {
         frame->slots = fiber->stack_top;
-        lit_push(vm, OBJECT_VALUE(frame->function));
+        lit_push(vm, frame->function->asValue());
     }
     return true;
 }
@@ -15499,7 +15492,7 @@ static LitValue objfn_number_tostring(LitVM* vm, LitValue instance, size_t argc,
 {
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitString::stringNumberToString(vm->state, lit_value_to_number(instance)));
+    return LitString::stringNumberToString(vm->state, lit_value_to_number(instance));
 }
 
 static LitValue objfn_number_tochar(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -15508,7 +15501,7 @@ static LitValue objfn_number_tochar(LitVM* vm, LitValue instance, size_t argc, L
     (void)argc;
     (void)argv;
     ch = lit_value_to_number(instance);
-    return OBJECT_VALUE(LitString::copy(vm->state, &ch, 1));
+    return LitString::copy(vm->state, &ch, 1)->asValue();
 }
 
 static LitValue objfn_bool_compare(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -15691,7 +15684,7 @@ void lit_open_core_library(LitState* state)
         lit_define_native(state, "println", cfn_println);
         //lit_define_native_primitive(state, "require", cfn_require);
         lit_define_native_primitive(state, "eval", cfn_eval);
-        lit_set_global(state, CONST_STRING(state, "globals"), OBJECT_VALUE(state->vm->globals));
+        lit_set_global(state, CONST_STRING(state, "globals"), state->vm->globals->asValue());
     }
 }
 
@@ -15710,7 +15703,7 @@ static LitValue objfn_fiber_constructor(LitVM* vm, LitValue instance, size_t arg
 
     fiber->parent = vm->fiber;
 
-    return OBJECT_VALUE(fiber);
+    return fiber->asValue();
 }
 
 
@@ -15737,7 +15730,7 @@ static LitValue objfn_fiber_current(LitVM* vm, LitValue instance, size_t argc, L
     (void)instance;
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(vm->fiber);
+    return vm->fiber->asValue();
 }
 
 
@@ -15770,7 +15763,7 @@ static bool objfn_fiber_yield(LitVM* vm, LitValue instance, size_t argc, LitValu
 
     vm->fiber = vm->fiber->parent;
     vm->fiber->stack_top -= fiber->arg_count;
-    vm->fiber->stack_top[-1] = argc == 0 ? NULL_VALUE : OBJECT_VALUE(lit_to_string(vm->state, argv[0]));
+    vm->fiber->stack_top[-1] = argc == 0 ? NULL_VALUE : lit_to_string(vm->state, argv[0])->asValue();
 
     argv[-1] = NULL_VALUE;
     return true;
@@ -15791,7 +15784,7 @@ static bool objfn_fiber_yeet(LitVM* vm, LitValue instance, size_t argc, LitValue
 
     vm->fiber = vm->fiber->parent;
     vm->fiber->stack_top -= fiber->arg_count;
-    vm->fiber->stack_top[-1] = argc == 0 ? NULL_VALUE : OBJECT_VALUE(lit_to_string(vm->state, argv[0]));
+    vm->fiber->stack_top[-1] = argc == 0 ? NULL_VALUE : lit_to_string(vm->state, argv[0])->asValue();
 
     argv[-1] = NULL_VALUE;
     return true;
@@ -15811,7 +15804,7 @@ static LitValue objfn_fiber_tostring(LitVM* vm, LitValue instance, size_t argc, 
 {
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitString::format(vm->state, "fiber@%p", &instance));
+    return LitString::format(vm->state, "fiber@%p", &instance)->asValue();
 
 }
 
@@ -15943,7 +15936,7 @@ static void* LIT_INSERT_DATA(LitVM* vm, LitValue instance, size_t typsz, Cleanup
 {
     LitUserdata* userdata = lit_create_userdata(vm->state, typsz, false);
     userdata->cleanup_fn = cleanup;
-    AS_INSTANCE(instance)->fields.set(CONST_STRING(vm->state, "_data"), OBJECT_VALUE(userdata));
+    AS_INSTANCE(instance)->fields.set(CONST_STRING(vm->state, "_data"), userdata->asValue());
     return userdata->data;
 }
 
@@ -16164,7 +16157,7 @@ static LitValue objmethod_file_readall(LitVM* vm, LitValue instance, size_t argc
     }
     result->hash = LitString::makeHash(result->chars, actuallength);
     LitString::cache(vm->state, result);
-    return OBJECT_VALUE(result);
+    return result->asValue();
 }
 
 static LitValue objmethod_file_readline(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16184,7 +16177,7 @@ static LitValue objmethod_file_readline(LitVM* vm, LitValue instance, size_t arg
         LIT_FREE(vm->state, char, line);
         return NULL_VALUE;
     }
-    return OBJECT_VALUE(LitString::take(vm->state, line, strlen(line) - 1, false));
+    return LitString::take(vm->state, line, strlen(line) - 1, false)->asValue();
 }
 
 static LitValue objmethod_file_readbyte(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16232,7 +16225,7 @@ static LitValue objmethod_file_readstring(LitVM* vm, LitValue instance, size_t a
     LitFileData* data = (LitFileData*)LIT_EXTRACT_DATA(vm, instance);
     LitString* string = lit_read_string(vm->state, data->handle);
 
-    return string == nullptr ? NULL_VALUE : OBJECT_VALUE(string);
+    return string == nullptr ? NULL_VALUE : string->asValue();
 }
 
 static LitValue objmethod_file_getlastmodified(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16291,7 +16284,7 @@ static LitValue objfunction_directory_listfiles(LitVM* vm, LitValue instance, si
         DIR* dir = opendir(lit_check_string(vm, argv, argc, 0));
         if(dir == nullptr)
         {
-            return OBJECT_VALUE(array);
+            return array->asValue();
         }
         while((ep = readdir(dir)))
         {
@@ -16303,7 +16296,7 @@ static LitValue objfunction_directory_listfiles(LitVM* vm, LitValue instance, si
         closedir(dir);
     }
     #endif
-    return OBJECT_VALUE(array);
+    return array->asValue();
 }
 
 static LitValue objfunction_directory_listdirs(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16334,7 +16327,7 @@ static LitValue objfunction_directory_listdirs(LitVM* vm, LitValue instance, siz
         }
         lit_dir_close(&rd);
     }
-    return OBJECT_VALUE(array);
+    return array->asValue();
 }
 
 static void free_handle(LitState* state, LitUserdata* userdata, bool mark)
@@ -16368,8 +16361,8 @@ static void make_handle(LitState* state, LitValue fileval, const char* name, FIL
         userhnd->cleanup_fn = free_handle;
         varname = CONST_STRING(state, name);
         descname = CONST_STRING(state, name);
-        args[0] = OBJECT_VALUE(userhnd);
-        args[1] = OBJECT_VALUE(descname);
+        args[0] = userhnd->asValue();
+        args[1] = descname->asValue();
         res = lit_call(state, fileval, args, 2, false);
         //fprintf(stderr, "make_handle(%s, hnd=%p): res.type=%d, res.result=%s\n", name, hnd, res.type, lit_get_value_type(res.result));
         lit_set_global(state, varname, res.result);
@@ -16501,43 +16494,14 @@ void lit_open_gc_library(LitState* state)
 
 
 
-int util_table_iterator(LitTable* table, int number)
-{
-    if(table->m_count == 0)
-    {
-        return -1;
-    }
-    if(number >= (int)table->m_capacity)
-    {
-        return -1;
-    }
-    number++;
-    for(; number < table->m_capacity; number++)
-    {
-        if(table->m_values[number].key != nullptr)
-        {
-            return number;
-        }
-    }
 
-    return -1;
-}
-
-LitValue util_table_iterator_key(LitTable* table, int index)
-{
-    if(table->m_capacity <= index)
-    {
-        return NULL_VALUE;
-    }
-    return OBJECT_VALUE(table->m_values[index].key);
-}
 
 static LitValue objfn_map_constructor(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     (void)instance;
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitMap::make(vm->state));
+    return LitMap::make(vm->state)->asValue();
 }
 
 static LitValue objfn_map_subscript(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16601,7 +16565,7 @@ static LitValue objfn_map_iterator(LitVM* vm, LitValue instance, size_t argc, Li
     int index;
     int value;
     index = argv[0] == NULL_VALUE ? -1 : lit_value_to_number(argv[0]);
-    value = util_table_iterator(&AS_MAP(instance)->values, index);
+    value = AS_MAP(instance)->values.iterator(index);
     return value == -1 ? NULL_VALUE : lit_number_to_value(value);
 }
 
@@ -16609,7 +16573,7 @@ static LitValue objfn_map_iteratorvalue(LitVM* vm, LitValue instance, size_t arg
 {
     size_t index;
     index = lit_check_number(vm, argv, argc, 0);
-    return util_table_iterator_key(&AS_MAP(instance)->values, index);
+    return AS_MAP(instance)->values.iterKey(index);
 }
 
 static LitValue objfn_map_clone(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16621,7 +16585,7 @@ static LitValue objfn_map_clone(LitVM* vm, LitValue instance, size_t argc, LitVa
     state = vm->state;
     map = LitMap::make(state);
     AS_MAP(instance)->values.addAll(&map->values);
-    return OBJECT_VALUE(map);
+    return map->asValue();
 }
 
 static LitValue objfn_map_tostring(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16731,7 +16695,7 @@ static LitValue objfn_map_tostring(LitVM* vm, LitValue instance, size_t argc, Li
     buffer[olength] = '\0';
     LIT_FREE(vm->state, LitString*, keys);
     LIT_FREE(vm->state, LitString*, values_converted);
-    return OBJECT_VALUE(LitString::take(vm->state, buffer, olength, false));
+    return LitString::take(vm->state, buffer, olength, false)->asValue();
 }
 
 static LitValue objfn_map_length(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -16929,7 +16893,7 @@ static size_t* extract_random_data(LitState* state, LitValue instance)
 static LitValue random_constructor(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     LitUserdata* userdata = lit_create_userdata(vm->state, sizeof(size_t), false);
-    AS_INSTANCE(instance)->fields.set(CONST_STRING(vm->state, "_data"), OBJECT_VALUE(userdata));
+    AS_INSTANCE(instance)->fields.set(CONST_STRING(vm->state, "_data"), userdata->asValue());
 
     size_t* data = (size_t*)userdata->data;
 
@@ -16943,7 +16907,7 @@ static LitValue random_constructor(LitVM* vm, LitValue instance, size_t argc, Li
         *data = time(nullptr);
     }
 
-    return OBJECT_VALUE(instance);
+    return instance;
 }
 
 static LitValue random_setSeed(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17157,7 +17121,7 @@ static LitValue access_private(LitVM* vm, LitMap* map, LitString* name, LitValue
 
     if(id == name)
     {
-        return OBJECT_VALUE(module);
+        return module->asValue();
     }
 
     if(module->private_names->values.get(name, &value))
@@ -17188,9 +17152,9 @@ static LitValue objfn_module_privates(LitVM* vm, LitValue instance, size_t argc,
     if(map->index_fn == nullptr)
     {
         map->index_fn = access_private;
-        map->values.set(CONST_STRING(vm->state, "_module"), OBJECT_VALUE(module));
+        map->values.set(CONST_STRING(vm->state, "_module"), module->asValue());
     }
-    return OBJECT_VALUE(map);
+    return map->asValue();
 }
 
 static LitValue objfn_module_current(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17198,14 +17162,14 @@ static LitValue objfn_module_current(LitVM* vm, LitValue instance, size_t argc, 
     (void)instance;
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(vm->fiber->module);
+    return vm->fiber->module->asValue();
 }
 
 static LitValue objfn_module_tostring(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitString::format(vm->state, "Module @", OBJECT_VALUE(AS_MODULE(instance)->name)));
+    return LitString::format(vm->state, "Module @", AS_MODULE(instance)->name->asValue())->asValue();
 }
 
 static LitValue objfn_module_name(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17213,7 +17177,7 @@ static LitValue objfn_module_name(LitVM* vm, LitValue instance, size_t argc, Lit
     (void)vm;
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(AS_MODULE(instance)->name);
+    return AS_MODULE(instance)->name->asValue();
 }
 
 void lit_open_module_library(LitState* state)
@@ -17222,7 +17186,7 @@ void lit_open_module_library(LitState* state)
     {
         LIT_INHERIT_CLASS(state->objectvalue_class);
         lit_bind_constructor(state, klass, util_invalid_constructor);
-        LIT_SET_STATIC_FIELD("loaded", OBJECT_VALUE(state->vm->modules));
+        LIT_SET_STATIC_FIELD("loaded", state->vm->modules->asValue());
         LIT_BIND_STATIC_GETTER("privates", objfn_module_privates);
         LIT_BIND_STATIC_GETTER("current", objfn_module_current);
         lit_bind_method(state, klass, "toString", objfn_module_tostring);
@@ -17239,7 +17203,7 @@ static LitValue objfn_object_class(LitVM* vm, LitValue instance, size_t argc, Li
 {
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(vm->state->getClassFor(instance));
+    return vm->state->getClassFor(instance)->asValue();
 }
 
 static LitValue objfn_object_super(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17252,14 +17216,14 @@ static LitValue objfn_object_super(LitVM* vm, LitValue instance, size_t argc, Li
     {
         return NULL_VALUE;
     }
-    return OBJECT_VALUE(cl);
+    return cl->asValue();
 }
 
 static LitValue objfn_object_tostring(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
 {
     (void)argc;
     (void)argv;
-    return OBJECT_VALUE(LitString::format(vm->state, "@ instance", OBJECT_VALUE(vm->state->getClassFor(instance)->name)));
+    return LitString::format(vm->state, "@ instance", vm->state->getClassFor(instance)->name->asValue())->asValue();
 }
 
 static void fillmap(LitState* state, LitMap* destmap, LitTable* fromtbl, bool includenullkeys)
@@ -17274,7 +17238,7 @@ static void fillmap(LitState* state, LitMap* destmap, LitTable* fromtbl, bool in
         if(key != nullptr)
         {
             val = fromtbl->m_values[i].value;
-            destmap->set(key, OBJECT_VALUE(val));
+            destmap->set(key, val);
         }
     }
 }
@@ -17310,12 +17274,12 @@ static LitValue objfn_object_tomap(LitVM* vm, LitValue instance, size_t argc, Li
             mclmethods = LitMap::make(vm->state);
             fillmap(vm->state, mclmethods, &(inst->klass->methods), false);
         }
-        mclass->set(CONST_STRING(vm->state, "statics"), OBJECT_VALUE(mclstatics));
-        mclass->set(CONST_STRING(vm->state, "methods"), OBJECT_VALUE(mclmethods));
+        mclass->set(CONST_STRING(vm->state, "statics"), mclstatics->asValue());
+        mclass->set(CONST_STRING(vm->state, "methods"), mclmethods->asValue());
     }
-    map->set(CONST_STRING(vm->state, "instance"), OBJECT_VALUE(minst));
-    map->set(CONST_STRING(vm->state, "class"), OBJECT_VALUE(mclass));
-    return OBJECT_VALUE(map);
+    map->set(CONST_STRING(vm->state, "instance"), minst->asValue());
+    map->set(CONST_STRING(vm->state, "class"), mclass->asValue());
+    return map->asValue();
 }
 
 static LitValue objfn_object_subscript(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17368,7 +17332,7 @@ static LitValue objfn_object_iterator(LitVM* vm, LitValue instance, size_t argc,
     LIT_ENSURE_ARGS(1);
     self = AS_INSTANCE(instance);
     index = argv[0] == NULL_VALUE ? -1 : lit_value_to_number(argv[0]);
-    value = util_table_iterator(&self->fields, index);
+    value = self->fields.iterator(index);
     return value == -1 ? NULL_VALUE : lit_number_to_value(value);
 }
 
@@ -17379,7 +17343,7 @@ static LitValue objfn_object_iteratorvalue(LitVM* vm, LitValue instance, size_t 
     LitInstance* self;
     index = lit_check_number(vm, argv, argc, 0);
     self = AS_INSTANCE(instance);
-    return util_table_iterator_key(&self->fields, index);
+    return self->fields.iterKey(index);
 }
 
 void lit_open_object_library(LitState* state)
@@ -17441,7 +17405,7 @@ static LitValue objfn_range_tostring(LitVM* vm, LitValue instance, size_t argc, 
     (void)argv;
     LitRange* range;
     range = AS_RANGE(instance);
-    return OBJECT_VALUE(LitString::format(vm->state, "Range(#, #)", range->from, range->to));
+    return LitString::format(vm->state, "Range(#, #)", range->from, range->to)->asValue();
 }
 
 static LitValue objfn_range_from(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17612,7 +17576,7 @@ static LitValue objfn_string_plus(LitVM* vm, LitValue instance, size_t argc, Lit
     result->append(selfstr);
     result->append(strval);
     LitString::cache(vm->state, result);
-    return OBJECT_VALUE(result);
+    return result->asValue();
 }
 
 static LitValue objfn_string_splice(LitVM* vm, LitString* string, int from, int to)
@@ -17635,7 +17599,7 @@ static LitValue objfn_string_splice(LitVM* vm, LitString* string, int from, int 
     }
     from = lit_uchar_offset(string->chars, from);
     to = lit_uchar_offset(string->chars, to);
-    return OBJECT_VALUE(lit_ustring_from_range(vm->state, string, from, to - from + 1));
+    return lit_ustring_from_range(vm->state, string, from, to - from + 1)->asValue();
 }
 
 static LitValue objfn_string_subscript(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17664,7 +17628,7 @@ static LitValue objfn_string_subscript(LitVM* vm, LitValue instance, size_t argc
         }
     }
     c = lit_ustring_code_point_at(vm->state, string, lit_uchar_offset(string->chars, index));
-    return c == nullptr ? NULL_VALUE : OBJECT_VALUE(c);
+    return c == nullptr ? NULL_VALUE : c->asValue();
 }
 
 
@@ -17748,7 +17712,7 @@ static LitValue objfn_string_touppercase(LitVM* vm, LitValue instance, size_t ar
     }
     buffer[i] = 0;
     rt = LitString::take(vm->state, buffer, string->length(), false);
-    return OBJECT_VALUE(rt);
+    return rt->asValue();
 }
 
 static LitValue objfn_string_tolowercase(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17767,7 +17731,7 @@ static LitValue objfn_string_tolowercase(LitVM* vm, LitValue instance, size_t ar
     }
     buffer[i] = 0;
     rt = LitString::take(vm->state, buffer, string->length(), false);
-    return OBJECT_VALUE(rt);
+    return rt->asValue();
 }
 
 static LitValue objfn_string_tobyte(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17904,7 +17868,7 @@ static LitValue objfn_string_replace(LitVM* vm, LitValue instance, size_t argc, 
         }
     }
     buffer[buffer_length] = '\0';
-    return OBJECT_VALUE(LitString::take(vm->state, buffer, buffer_length, false));
+    return LitString::take(vm->state, buffer, buffer_length, false)->asValue();
 }
 
 static LitValue objfn_string_substring(LitVM* vm, LitValue instance, size_t argc, LitValue* argv)
@@ -17965,7 +17929,7 @@ static LitValue objfn_string_iteratorvalue(LitVM* vm, LitValue instance, size_t 
     {
         return false;
     }
-    return OBJECT_VALUE(lit_ustring_code_point_at(vm->state, string, index));
+    return lit_ustring_code_point_at(vm->state, string, index)->asValue();
 }
 
 
@@ -18084,7 +18048,7 @@ static LitValue objfn_string_format(LitVM* vm, LitValue instance, size_t argc, L
             buf = sdscatlen(buf, &ch, 1);
         }
     }
-    rtv = OBJECT_VALUE(LitString::copy(vm->state, buf, sdslen(buf)));
+    rtv = LitString::copy(vm->state, buf, sdslen(buf))->asValue();
     sdsfree(buf);
     return rtv;
 }
@@ -18577,7 +18541,7 @@ int main(int argc, const char* argv[])
                 arg_array->values.push(OBJECT_CONST_STRING(state, arg_string));
             }
 
-            lit_set_global(state, CONST_STRING(state, "args"), OBJECT_VALUE(arg_array));
+            lit_set_global(state, CONST_STRING(state, "args"), arg_array->asValue());
             break;
         }
         else if(arg[0] == '-')
@@ -18603,7 +18567,7 @@ int main(int argc, const char* argv[])
             {
                 arg_array = LitArray::make(state);
             }
-            lit_set_global(state, CONST_STRING(state, "args"), OBJECT_VALUE(arg_array));
+            lit_set_global(state, CONST_STRING(state, "args"), arg_array->asValue());
             for(i = 0; i < num_files_to_run; i++)
             {
                 file = files_to_run[i];
