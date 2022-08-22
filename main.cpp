@@ -294,88 +294,7 @@
     }
 
 
-#define LIT_BEGIN_CLASS(name) \
-    { \
-        LitString* klass_name = LitString::copy(state, name, strlen(name)); \
-        LitClass* klass = lit_create_class(state, klass_name);
 
-#define LIT_INHERIT_CLASS(super_klass) \
-    klass->super = (LitClass*)super_klass; \
-    if(klass->init_method == nullptr) \
-    { \
-        klass->init_method = super_klass->init_method; \
-    } \
-    super_klass->methods.addAll(&klass->methods); \
-    super_klass->static_fields.addAll(&klass->static_fields);
-
-#define LIT_END_CLASS_IGNORING() \
-    lit_set_global(state, klass_name, klass->asValue()); \
-    }
-
-
-#define LIT_END_CLASS() \
-    lit_set_global(state, klass_name, klass->asValue()); \
-    if(klass->super == nullptr) \
-    { \
-        LIT_INHERIT_CLASS(state->objectvalue_class); \
-    } \
-    }
-
-
-
-#define LIT_BIND_STATIC_METHOD(name, method) \
-    { \
-        klass->setStaticMethod(name, method); \
-    }
-
-#define LIT_BIND_STATIC_PRIMITIVE(name, method) \
-    { \
-        klass->setStaticPrimitive(name, method); \
-    }
-
-#define LIT_SET_STATIC_FIELD(name, field) \
-    { \
-        klass->static_fields.setField(name, field); \
-    }
-
-#define LIT_BIND_SETTER(name, setter) \
-    { \
-        LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->methods.set(nm, \
-                      LitField::make(state, nullptr, (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
-    }
-#define LIT_BIND_GETTER(name, getter) \
-    { \
-        klass->setGetter(name, getter); \
-    }
-
-#define LIT_BIND_FIELD(name, getter, setter) \
-    { \
-        LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->methods.set(nm, \
-                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), \
-                                                    (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
-    }
-
-#define LIT_BIND_STATIC_SETTER(name, setter) \
-    { \
-        LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->static_fields.set(nm, \
-                      LitField::make(state, nullptr, (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
-    }
-#define LIT_BIND_STATIC_GETTER(name, getter) \
-    { \
-        LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->static_fields.set(nm, \
-                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), nullptr)->asValue()); \
-    }
-#define LIT_BIND_STATIC_FIELD(name, getter, setter) \
-    { \
-        LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->static_fields.set(nm, \
-                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), \
-                                                    (LitObject*)LitNativeMethod::make(state, setter, nm))->asValue()); \
-    }
 
 
 enum class LitError
@@ -1725,9 +1644,6 @@ struct ASTStatement
         size_t line = 0;
 };
 
-
-
-
 struct LitToken
 {
     const char* start;
@@ -1832,9 +1748,7 @@ struct LitPreprocessor
             this->defined.release();
             this->open_ifs.release();
         }
-
 };
-
 
 struct LitPrivate
 {
@@ -2248,6 +2162,25 @@ struct LitField: public LitObject
 struct LitClass: public LitObject
 {
     public:
+        static LitClass* make(LitState* state, LitString* name)
+        {
+            LitClass* klass;
+            klass = LitObject::make<LitClass>(state, LitObject::Type::Class);
+            klass->name = name;
+            klass->init_method = nullptr;
+            klass->super = nullptr;
+            klass->methods.init(state);
+            klass->static_fields.init(state);
+            return klass;
+        }
+
+        static LitClass* make(LitState* state, std::string_view name)
+        {
+            auto nm = LitString::copy(state, name.data(), name.size());
+            return LitClass::make(state, nm);
+        }
+
+    public:
         /* the name of this class */
         LitString* name;
         /* the constructor object */
@@ -2265,6 +2198,81 @@ struct LitClass: public LitObject
     public:
 
     public:
+        void inheritFrom(LitClass* superclass)
+        {
+            this->super = superclass;
+            if(this->init_method == nullptr)
+            {
+                this->init_method = superclass->init_method;
+            }
+            superclass->methods.addAll(&this->methods); \
+            superclass->static_fields.addAll(&this->static_fields);
+        }
+
+        void bindConstructor(LitNativeMethod::FuncType method)
+        {
+            auto nm = LitString::copy(m_state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1);
+            auto m = LitNativeMethod::make(m_state, method, nm);
+            this->init_method = (LitObject*)m;
+            this->methods.set(nm, m->asValue());
+        }
+
+
+        void setField(const char* name, LitValue val)
+        {
+            this->static_fields.setField(name, val);
+        }
+
+        void bindField(LitString* nm, LitNativeMethod::FuncType fnget, LitNativeMethod::FuncType fnset)
+        {
+            this->methods.set(nm,
+                LitField::make(m_state,
+                    (LitObject*)LitNativeMethod::make(m_state, fnget, nm),
+                    (LitObject*)LitNativeMethod::make(m_state, fnset, nm))->asValue());
+        }
+
+        void bindField(std::string_view sv, LitNativeMethod::FuncType fnget, LitNativeMethod::FuncType fnset)
+        {
+            bindField(LitString::copy(m_state, sv.data(), sv.size()), fnget, fnset);
+        }
+
+
+        void bindMethod(LitString* nm, LitNativeMethod::FuncType method)
+        {
+            this->methods.set(nm, LitNativeMethod::make(m_state, method, name)->asValue());
+        }
+
+        void bindMethod(std::string_view sv, LitNativeMethod::FuncType method)
+        {
+            auto nm = LitString::copy(m_state, sv.data(), sv.size());
+            bindMethod(nm, method);
+        }
+
+
+        void bindPrimitive(LitString* nm, LitPrimitiveMethod::FuncType method)
+        {
+            this->methods.set(nm, LitPrimitiveMethod::make(m_state, method, nm)->asValue());
+        }
+
+        void bindPrimitive(std::string_view sv, LitPrimitiveMethod::FuncType method)
+        {
+            auto nm = LitString::copy(m_state, sv.data(), sv.size());
+            bindPrimitive(nm, method);
+        }
+
+        void setStaticField(LitString* nm, LitNativeMethod::FuncType fnget, LitNativeMethod::FuncType fnset)
+        {
+            this->static_fields.set(nm,
+                LitField::make(m_state,
+                    (LitObject*)LitNativeMethod::make(m_state, fnget, nm),
+                    (LitObject*)LitNativeMethod::make(m_state, fnset, nm))->asValue());
+        }
+
+        void setStaticField(std::string_view sv, LitNativeMethod::FuncType fnget, LitNativeMethod::FuncType fnset)
+        {
+            setStaticField(LitString::copy(m_state, sv.data(), sv.size()), fnget, fnset);
+        }
+
         void setStaticMethod(LitString* nm, LitNativeMethod::FuncType fn)
         {
             LitTable::setNativeMethod(this->static_fields, nm, fn);
@@ -2285,11 +2293,34 @@ struct LitClass: public LitObject
             LitTable::setFunctionValue<LitPrimitiveMethod>(this->static_fields, sv, fn);
         }
 
-/*
-        LitString* nm = LitString::copy(state, name, strlen(name)); \
-        klass->methods.set(nm, \
-                      LitField::make(state, (LitObject*)LitNativeMethod::make(state, getter, nm), nullptr)->asValue()); \
-*/
+        void setStaticSetter(LitString* nm, LitNativeMethod::FuncType fn)
+        {
+            this->static_fields.set(nm,
+                LitField::make(m_state,
+                    nullptr,
+                    (LitObject*)LitNativeMethod::make(m_state, fn, nm))->asValue());
+        }
+
+        void setStaticSetter(std::string_view sv, LitNativeMethod::FuncType fn)
+        {
+            auto nm = LitString::copy(m_state, sv.data(), sv.size());
+            return setStaticSetter(nm, fn);
+        }
+
+        void setStaticGetter(LitString* nm, LitNativeMethod::FuncType fn)
+        {
+            this->static_fields.set(nm,
+                LitField::make(m_state,
+                    (LitObject*)LitNativeMethod::make(m_state, fn, nm),
+                    nullptr)->asValue());
+        }
+
+        void setStaticGetter(std::string_view sv, LitNativeMethod::FuncType fn)
+        {
+            auto nm = LitString::copy(m_state, sv.data(), sv.size());
+            return setStaticGetter(nm, fn);
+        }
+
         void setGetter(LitString* nm, LitNativeMethod::FuncType fn)
         {
             this->methods.set(nm, LitField::make(this->m_state, LitNativeMethod::make(m_state, fn, nm), nullptr)->asValue());
@@ -2300,6 +2331,18 @@ struct LitClass: public LitObject
             auto nm = LitString::copy(this->m_state, sv.data(), sv.size());
             setGetter(nm, fn);
         }
+
+        void setSetter(LitString* nm, LitNativeMethod::FuncType fn)
+        {
+            this->methods.set(nm, LitField::make(this->m_state, nullptr, LitNativeMethod::make(m_state, fn, nm))->asValue());
+        }
+
+        void setSetter(std::string_view sv, LitNativeMethod::FuncType fn)
+        {
+            auto nm = LitString::copy(this->m_state, sv.data(), sv.size());
+            setSetter(nm, fn);
+        }
+
 };
 
 struct LitInstance: public LitObject
@@ -3011,7 +3054,6 @@ LitNativePrimFunction* lit_create_native_primitive(LitState* state, LitNativePri
 LitModule* lit_create_module(LitState* state, LitString* name);
 LitFiber* lit_create_fiber(LitState* state, LitModule* module, LitFunction* function);
 void lit_ensure_fiber_stack(LitState* state, LitFiber* fiber, size_t needed);
-LitClass* lit_create_class(LitState* state, LitString* name);
 LitInstance* lit_create_instance(LitState* state, LitClass* klass);
 LitBoundMethod* lit_create_bound_method(LitState* state, LitValue receiver, LitValue method);
 LitUserdata* lit_create_userdata(LitState* state, size_t size, bool ispointeronly);
@@ -3668,25 +3710,6 @@ LitString* LitString::format(LitState* state, const char* format, ...)
 */
 
 
-inline static void lit_bind_method(LitState* state, LitClass* klass, const char* name, LitNativeMethod::FuncType method)
-{
-    auto nm = LitString::copy(state, name);
-    klass->methods.set(nm, LitNativeMethod::make(state, method, name)->asValue());
-}
-
-inline static void lit_bind_primitive(LitState* state, LitClass* klass, const char* name, LitPrimitiveMethod::FuncType method)
-{
-    auto nm = LitString::copy(state, name);
-    klass->methods.set(nm, LitPrimitiveMethod::make(state, method, nm)->asValue());
-}
-
-inline static void lit_bind_constructor(LitState* state, LitClass* klass, LitNativeMethod::FuncType method)
-{
-    auto nm = LitString::copy(state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1);
-    auto m = LitNativeMethod::make(state, method, nm);
-    klass->init_method = (LitObject*)m;
-    klass->methods.set(nm, m->asValue());
-}
 
 static void free_parameters(LitState* state, PCGenericArray<ASTExprFuncParam>* parameters)
 {
@@ -11701,18 +11724,6 @@ LitModule* lit_create_module(LitState* state, LitString* name)
     return module;
 }
 
-LitClass* lit_create_class(LitState* state, LitString* name)
-{
-    LitClass* klass;
-    klass = LitObject::make<LitClass>(state, LitObject::Type::Class);
-    klass->name = name;
-    klass->init_method = nullptr;
-    klass->super = nullptr;
-    klass->methods.init(state);
-    klass->static_fields.init(state);
-    return klass;
-}
-
 LitInstance* lit_create_instance(LitState* state, LitClass* klass)
 {
     LitInstance* instance;
@@ -13992,7 +14003,7 @@ LitInterpretResult lit_interpret_fiber(LitState* state, LitFiber* fiber)
             op_case(CLASS)
             {
                 name = vm_readstringlong(current_chunk, ip);
-                klassobj = lit_create_class(state, name);
+                klassobj = LitClass::make(state, name);
                 vm_push(fiber, klassobj->asValue());
                 klassobj->super = state->objectvalue_class;
                 klassobj->super->methods.addAll(&klassobj->methods);
@@ -14955,32 +14966,33 @@ static LitValue objfn_array_length(LitVM* vm, LitValue instance, size_t argc, Li
 
 void lit_open_array_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Array");
+    LitClass* klass = LitClass::make(state, "Array");;
     {
-        LIT_INHERIT_CLASS(state->objectvalue_class);
-        lit_bind_constructor(state, klass, objfn_array_constructor);
-        lit_bind_method(state, klass, "[]", objfn_array_subscript);
-        lit_bind_method(state, klass, "==", objfn_array_compare);
-        lit_bind_method(state, klass, "add", objfn_array_add);
-        lit_bind_method(state, klass, "push", objfn_array_add);
-        lit_bind_method(state, klass, "insert", objfn_array_insert);
-        lit_bind_method(state, klass, "slice", objfn_array_slice);
-        lit_bind_method(state, klass, "addAll", objfn_array_addall);
-        lit_bind_method(state, klass, "remove", objfn_array_remove);
-        lit_bind_method(state, klass, "removeAt", objfn_array_removeat);
-        lit_bind_method(state, klass, "indexOf", objfn_array_indexof);
-        lit_bind_method(state, klass, "contains", objfn_array_contains);
-        lit_bind_method(state, klass, "clear", objfn_array_clear);
-        lit_bind_method(state, klass, "iterator", objfn_array_iterator);
-        lit_bind_method(state, klass, "iteratorValue", objfn_array_iteratorvalue);
-        lit_bind_method(state, klass, "join", objfn_array_join);
-        lit_bind_method(state, klass, "sort", objfn_array_sort);
-        lit_bind_method(state, klass, "clone", objfn_array_clone);
-        lit_bind_method(state, klass, "toString", objfn_array_tostring);
-        LIT_BIND_GETTER("length", objfn_array_length);
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(objfn_array_constructor);
+        klass->bindMethod("[]", objfn_array_subscript);
+        klass->bindMethod("==", objfn_array_compare);
+        klass->bindMethod("add", objfn_array_add);
+        klass->bindMethod("push", objfn_array_add);
+        klass->bindMethod("insert", objfn_array_insert);
+        klass->bindMethod("slice", objfn_array_slice);
+        klass->bindMethod("addAll", objfn_array_addall);
+        klass->bindMethod("remove", objfn_array_remove);
+        klass->bindMethod("removeAt", objfn_array_removeat);
+        klass->bindMethod("indexOf", objfn_array_indexof);
+        klass->bindMethod("contains", objfn_array_contains);
+        klass->bindMethod("clear", objfn_array_clear);
+        klass->bindMethod("iterator", objfn_array_iterator);
+        klass->bindMethod("iteratorValue", objfn_array_iteratorvalue);
+        klass->bindMethod("join", objfn_array_join);
+        klass->bindMethod("sort", objfn_array_sort);
+        klass->bindMethod("clone", objfn_array_clone);
+        klass->bindMethod("toString", objfn_array_tostring);
+        klass->setGetter("length", objfn_array_length);;
         state->arrayvalue_class = klass;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 
@@ -15123,20 +15135,21 @@ static LitValue objfn_class_name(LitVM* vm, LitValue instance, size_t argc, LitV
 
 void lit_open_class_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Class");
+    LitClass* klass = LitClass::make(state, "Class");;
     {
-        lit_bind_method(state, klass, "[]", objfn_class_subscript);
-        lit_bind_method(state, klass, "==", objfn_class_compare);
-        lit_bind_method(state, klass, "toString", objfn_class_tostring);
-        LIT_BIND_STATIC_METHOD("toString", objfn_class_tostring);
-        LIT_BIND_STATIC_METHOD("iterator", objfn_class_iterator);
-        LIT_BIND_STATIC_METHOD("iteratorValue", objfn_class_iteratorvalue);
-        LIT_BIND_GETTER("super", objfn_class_super);
-        LIT_BIND_STATIC_GETTER("super", objfn_class_super);
-        LIT_BIND_STATIC_GETTER("name", objfn_class_name);
+        klass->bindMethod("[]", objfn_class_subscript);
+        klass->bindMethod("==", objfn_class_compare);
+        klass->bindMethod("toString", objfn_class_tostring);
+        klass->setStaticMethod("toString", objfn_class_tostring);;
+        klass->setStaticMethod("iterator", objfn_class_iterator);;
+        klass->setStaticMethod("iteratorValue", objfn_class_iteratorvalue);;
+        klass->setGetter("super", objfn_class_super);;
+        klass->setStaticGetter("super", objfn_class_super);
+        klass->setStaticGetter("name", objfn_class_name);
         state->classvalue_class = klass;
     }
-    LIT_END_CLASS_IGNORING();
+    lit_set_global(state, klass->name, klass->asValue());;
+
 }
 
 
@@ -15724,27 +15737,29 @@ void lit_open_core_library(LitState* state)
         lit_open_function_library(state);
     }
     {
-        LIT_BEGIN_CLASS("Number");
+        LitClass* klass = LitClass::make(state, "Number");;
         {
-            LIT_INHERIT_CLASS(state->objectvalue_class);
-            lit_bind_constructor(state, klass, util_invalid_constructor);
-            lit_bind_method(state, klass, "toString", objfn_number_tostring);
-            lit_bind_method(state, klass, "toChar", objfn_number_tochar);
-            LIT_BIND_GETTER("chr", objfn_number_tochar);
+            klass->inheritFrom(state->objectvalue_class);
+            klass->bindConstructor(util_invalid_constructor);
+            klass->bindMethod("toString", objfn_number_tostring);
+            klass->bindMethod("toChar", objfn_number_tochar);
+            klass->setGetter("chr", objfn_number_tochar);;
             state->numbervalue_class = klass;
         }
-        LIT_END_CLASS();
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
     }
     {
-        LIT_BEGIN_CLASS("Bool");
+        LitClass* klass = LitClass::make(state, "Bool");;
         {
-            LIT_INHERIT_CLASS(state->objectvalue_class);
-            lit_bind_constructor(state, klass, util_invalid_constructor);
-            lit_bind_method(state, klass, "==", objfn_bool_compare);
-            lit_bind_method(state, klass, "toString", objfn_bool_tostring);
+            klass->inheritFrom(state->objectvalue_class);
+            klass->bindConstructor(util_invalid_constructor);
+            klass->bindMethod("==", objfn_bool_compare);
+            klass->bindMethod("toString", objfn_bool_tostring);
             state->boolvalue_class = klass;
         }
-        LIT_END_CLASS();
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
     }
     {
         lit_define_native(state, "time", cfn_time);
@@ -15879,22 +15894,26 @@ static LitValue objfn_fiber_tostring(LitVM* vm, LitValue instance, size_t argc, 
 
 void lit_open_fiber_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Fiber");
+    LitClass* klass = LitClass::make(state, "Fiber");;
     {
-        LIT_INHERIT_CLASS(state->objectvalue_class);
-        lit_bind_constructor(state, klass, objfn_fiber_constructor);
-        lit_bind_method(state, klass, "toString", objfn_fiber_tostring);
-        lit_bind_primitive(state, klass, "run", objfn_fiber_run);
-        lit_bind_primitive(state, klass, "try", objfn_fiber_try);
-        LIT_BIND_GETTER("done", objfn_fiber_done);
-        LIT_BIND_GETTER("error", objfn_fiber_error);
-        LIT_BIND_STATIC_PRIMITIVE("yield", objfn_fiber_yield);
-        LIT_BIND_STATIC_PRIMITIVE("yeet", objfn_fiber_yeet);
-        LIT_BIND_STATIC_PRIMITIVE("abort", objfn_fiber_abort);
-        LIT_BIND_STATIC_GETTER("current", objfn_fiber_current);
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(objfn_fiber_constructor);
+        klass->bindMethod("toString", objfn_fiber_tostring);
+        klass->bindPrimitive("run", objfn_fiber_run);
+        klass->bindPrimitive("try", objfn_fiber_try);
+        klass->setGetter("done", objfn_fiber_done);;
+        klass->setGetter("error", objfn_fiber_error);;
+        klass->setStaticPrimitive("yield", objfn_fiber_yield);;
+        klass->setStaticPrimitive("yeet", objfn_fiber_yeet);;
+        klass->setStaticPrimitive("abort", objfn_fiber_abort);;
+        klass->setStaticGetter("current", objfn_fiber_current);
         state->fibervalue_class = klass;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue());
+    if(klass->super == nullptr)
+    {
+        klass->inheritFrom(state->objectvalue_class);
+    }
 }
 
 
@@ -16446,39 +16465,40 @@ static void make_stdhandles(LitState* state)
 void lit_open_file_library(LitState* state)
 {
     {
-        LIT_BEGIN_CLASS("File");
+        LitClass* klass = LitClass::make(state, "File");;
         {
-            LIT_BIND_STATIC_METHOD("exists", objmethod_file_exists);
-            LIT_BIND_STATIC_METHOD("getLastModified", objmethod_file_getlastmodified);
-            lit_bind_constructor(state, klass, objmethod_file_constructor);
-            lit_bind_method(state, klass, "close", objmethod_file_close);
-            lit_bind_method(state, klass, "write", objmethod_file_write);
-            lit_bind_method(state, klass, "writeByte", objmethod_file_writebyte);
-            lit_bind_method(state, klass, "writeShort", objmethod_file_writeshort);
-            lit_bind_method(state, klass, "writeNumber", objmethod_file_writenumber);
-            lit_bind_method(state, klass, "writeBool", objmethod_file_writebool);
-            lit_bind_method(state, klass, "writeString", objmethod_file_writestring);
-            lit_bind_method(state, klass, "readAll", objmethod_file_readall);
-            lit_bind_method(state, klass, "readLine", objmethod_file_readline);
-            lit_bind_method(state, klass, "readByte", objmethod_file_readbyte);
-            lit_bind_method(state, klass, "readShort", objmethod_file_readshort);
-            lit_bind_method(state, klass, "readNumber", objmethod_file_readnumber);
-            lit_bind_method(state, klass, "readBool", objmethod_file_readbool);
-            lit_bind_method(state, klass, "readString", objmethod_file_readstring);
-            lit_bind_method(state, klass, "getLastModified", objmethod_file_getlastmodified);
-            LIT_BIND_GETTER("exists", objmethod_file_exists);
+            klass->setStaticMethod("exists", objmethod_file_exists);;
+            klass->setStaticMethod("getLastModified", objmethod_file_getlastmodified);;
+            klass->bindConstructor(objmethod_file_constructor);
+            klass->bindMethod("close", objmethod_file_close);
+            klass->bindMethod("write", objmethod_file_write);
+            klass->bindMethod("writeByte", objmethod_file_writebyte);
+            klass->bindMethod("writeShort", objmethod_file_writeshort);
+            klass->bindMethod("writeNumber", objmethod_file_writenumber);
+            klass->bindMethod("writeBool", objmethod_file_writebool);
+            klass->bindMethod("writeString", objmethod_file_writestring);
+            klass->bindMethod("readAll", objmethod_file_readall);
+            klass->bindMethod("readLine", objmethod_file_readline);
+            klass->bindMethod("readByte", objmethod_file_readbyte);
+            klass->bindMethod("readShort", objmethod_file_readshort);
+            klass->bindMethod("readNumber", objmethod_file_readnumber);
+            klass->bindMethod("readBool", objmethod_file_readbool);
+            klass->bindMethod("readString", objmethod_file_readstring);
+            klass->bindMethod("getLastModified", objmethod_file_getlastmodified);
+            klass->setGetter("exists", objmethod_file_exists);;
         }
-        LIT_END_CLASS();
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
     }
     {
-        LIT_BEGIN_CLASS("Directory");
+        LitClass* klass = LitClass::make(state, "Directory");;
         {
-            LIT_BIND_STATIC_METHOD("exists", objfunction_directory_exists);
-            LIT_BIND_STATIC_METHOD("listFiles", objfunction_directory_listfiles);
-            LIT_BIND_STATIC_METHOD("listDirectories", objfunction_directory_listdirs);
+            klass->setStaticMethod("exists", objfunction_directory_exists);;
+            klass->setStaticMethod("listFiles", objfunction_directory_listfiles);;
+            klass->setStaticMethod("listDirectories", objfunction_directory_listdirs);;
         }
-        LIT_END_CLASS();
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
     }
+
     make_stdhandles(state);
 }
 
@@ -16501,15 +16521,16 @@ static LitValue objfn_function_name(LitVM* vm, LitValue instance, size_t argc, L
 
 void lit_open_function_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Function");
+     LitClass* klass = LitClass::make(state, "Function");;
     {
-        LIT_INHERIT_CLASS(state->objectvalue_class);
-        lit_bind_constructor(state, klass, util_invalid_constructor);
-        lit_bind_method(state, klass, "toString", objfn_function_tostring);
-        LIT_BIND_GETTER("name", objfn_function_name);
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(util_invalid_constructor);
+        klass->bindMethod("toString", objfn_function_tostring);
+        klass->setGetter("name", objfn_function_name);;
         state->functionvalue_class = klass;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 
@@ -16544,13 +16565,14 @@ static LitValue objfn_gc_trigger(LitVM* vm, LitValue instance, size_t arg_count,
 
 void lit_open_gc_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("GC");
+    LitClass* klass = LitClass::make(state, "GC");;
     {
-        LIT_BIND_STATIC_GETTER("memoryUsed", objfn_gc_memory_used);
-        LIT_BIND_STATIC_GETTER("nextRound", objfn_gc_next_round);
-        LIT_BIND_STATIC_METHOD("trigger", objfn_gc_trigger);
+        klass->setStaticGetter("memoryUsed", objfn_gc_memory_used);
+        klass->setStaticGetter("nextRound", objfn_gc_next_round);
+        klass->setStaticMethod("trigger", objfn_gc_trigger);;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 
@@ -16769,21 +16791,22 @@ static LitValue objfn_map_length(LitVM* vm, LitValue instance, size_t argc, LitV
 
 void lit_open_map_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Map");
+    LitClass* klass = LitClass::make(state, "Map");;
     {
-        LIT_INHERIT_CLASS(state->objectvalue_class);
-        lit_bind_constructor(state, klass, objfn_map_constructor);
-        lit_bind_method(state, klass, "[]", objfn_map_subscript);
-        lit_bind_method(state, klass, "addAll", objfn_map_addall);
-        lit_bind_method(state, klass, "clear", objfn_map_clear);
-        lit_bind_method(state, klass, "iterator", objfn_map_iterator);
-        lit_bind_method(state, klass, "iteratorValue", objfn_map_iteratorvalue);
-        lit_bind_method(state, klass, "clone", objfn_map_clone);
-        lit_bind_method(state, klass, "toString", objfn_map_tostring);
-        LIT_BIND_GETTER("length", objfn_map_length);
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(objfn_map_constructor);
+        klass->bindMethod("[]", objfn_map_subscript);
+        klass->bindMethod("addAll", objfn_map_addall);
+        klass->bindMethod("clear", objfn_map_clear);
+        klass->bindMethod("iterator", objfn_map_iterator);
+        klass->bindMethod("iteratorValue", objfn_map_iteratorvalue);
+        klass->bindMethod("clone", objfn_map_clone);
+        klass->bindMethod("toString", objfn_map_tostring);
+        klass->setGetter("length", objfn_map_length);;
         state->mapvalue_class = klass;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 #define _USE_MATH_DEFINES
@@ -17118,52 +17141,53 @@ static LitValue random_pick(LitVM* vm, LitValue instance, size_t argc, LitValue*
 void lit_open_math_library(LitState* state)
 {
     {
-        LIT_BEGIN_CLASS("Math");
+        LitClass* klass = LitClass::make(state, "Math");;
         {
-            LIT_SET_STATIC_FIELD("Pi", lit_number_to_value(M_PI));
-            LIT_SET_STATIC_FIELD("Tau", lit_number_to_value(M_PI * 2));
-            LIT_BIND_STATIC_METHOD("abs", math_abs);
-            LIT_BIND_STATIC_METHOD("sin", math_sin);
-            LIT_BIND_STATIC_METHOD("cos", math_cos);
-            LIT_BIND_STATIC_METHOD("tan", math_tan);
-            LIT_BIND_STATIC_METHOD("asin", math_asin);
-            LIT_BIND_STATIC_METHOD("acos", math_acos);
-            LIT_BIND_STATIC_METHOD("atan", math_atan);
-            LIT_BIND_STATIC_METHOD("atan2", math_atan2);
-            LIT_BIND_STATIC_METHOD("floor", math_floor);
-            LIT_BIND_STATIC_METHOD("ceil", math_ceil);
-            LIT_BIND_STATIC_METHOD("round", math_round);
-            LIT_BIND_STATIC_METHOD("min", math_min);
-            LIT_BIND_STATIC_METHOD("max", math_max);
-            LIT_BIND_STATIC_METHOD("mid", math_mid);
-            LIT_BIND_STATIC_METHOD("toRadians", math_toRadians);
-            LIT_BIND_STATIC_METHOD("toDegrees", math_toDegrees);
-            LIT_BIND_STATIC_METHOD("sqrt", math_sqrt);
-            LIT_BIND_STATIC_METHOD("log", math_log);
-            LIT_BIND_STATIC_METHOD("exp", math_exp);
+            klass->static_fields.setField("Pi", lit_number_to_value(M_PI));;
+            klass->static_fields.setField("Tau", lit_number_to_value(M_PI * 2));;
+            klass->setStaticMethod("abs", math_abs);;
+            klass->setStaticMethod("sin", math_sin);;
+            klass->setStaticMethod("cos", math_cos);;
+            klass->setStaticMethod("tan", math_tan);;
+            klass->setStaticMethod("asin", math_asin);;
+            klass->setStaticMethod("acos", math_acos);;
+            klass->setStaticMethod("atan", math_atan);;
+            klass->setStaticMethod("atan2", math_atan2);;
+            klass->setStaticMethod("floor", math_floor);;
+            klass->setStaticMethod("ceil", math_ceil);;
+            klass->setStaticMethod("round", math_round);;
+            klass->setStaticMethod("min", math_min);;
+            klass->setStaticMethod("max", math_max);;
+            klass->setStaticMethod("mid", math_mid);;
+            klass->setStaticMethod("toRadians", math_toRadians);;
+            klass->setStaticMethod("toDegrees", math_toDegrees);;
+            klass->setStaticMethod("sqrt", math_sqrt);;
+            klass->setStaticMethod("log", math_log);;
+            klass->setStaticMethod("exp", math_exp);;
         }
-        LIT_END_CLASS();
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
     }
     srand(time(nullptr));
     static_random_data = time(nullptr);
     {
-        LIT_BEGIN_CLASS("Random");
+        LitClass* klass = LitClass::make(state, "Random");;
         {
-            lit_bind_constructor(state, klass, random_constructor);
-            lit_bind_method(state, klass, "setSeed", random_setSeed);
-            lit_bind_method(state, klass, "int", random_int);
-            lit_bind_method(state, klass, "float", random_float);
-            lit_bind_method(state, klass, "chance", random_chance);
-            lit_bind_method(state, klass, "pick", random_pick);
-            LIT_BIND_STATIC_METHOD("setSeed", random_setSeed);
-            LIT_BIND_STATIC_METHOD("int", random_int);
-            LIT_BIND_STATIC_METHOD("float", random_float);
-            LIT_BIND_STATIC_METHOD("bool", random_bool);
-            LIT_BIND_STATIC_METHOD("chance", random_chance);
-            LIT_BIND_STATIC_METHOD("pick", random_pick);
+            klass->bindConstructor(random_constructor);
+            klass->bindMethod("setSeed", random_setSeed);
+            klass->bindMethod("int", random_int);
+            klass->bindMethod("float", random_float);
+            klass->bindMethod("chance", random_chance);
+            klass->bindMethod("pick", random_pick);
+            klass->setStaticMethod("setSeed", random_setSeed);;
+            klass->setStaticMethod("int", random_int);;
+            klass->setStaticMethod("float", random_float);;
+            klass->setStaticMethod("bool", random_bool);;
+            klass->setStaticMethod("chance", random_chance);;
+            klass->setStaticMethod("pick", random_pick);;
         }
-        LIT_END_CLASS()
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); }
     }
+
 }
 
 
@@ -17243,19 +17267,20 @@ static LitValue objfn_module_name(LitVM* vm, LitValue instance, size_t argc, Lit
 
 void lit_open_module_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Module");
+    LitClass* klass = LitClass::make(state, "Module");;
     {
-        LIT_INHERIT_CLASS(state->objectvalue_class);
-        lit_bind_constructor(state, klass, util_invalid_constructor);
-        LIT_SET_STATIC_FIELD("loaded", state->vm->modules->asValue());
-        LIT_BIND_STATIC_GETTER("privates", objfn_module_privates);
-        LIT_BIND_STATIC_GETTER("current", objfn_module_current);
-        lit_bind_method(state, klass, "toString", objfn_module_tostring);
-        LIT_BIND_GETTER("name", objfn_module_name);
-        LIT_BIND_GETTER("privates", objfn_module_privates);
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(util_invalid_constructor);
+        klass->static_fields.setField("loaded", state->vm->modules->asValue());;
+        klass->setStaticGetter("privates", objfn_module_privates);
+        klass->setStaticGetter("current", objfn_module_current);
+        klass->bindMethod("toString", objfn_module_tostring);
+        klass->setGetter("name", objfn_module_name);;
+        klass->setGetter("privates", objfn_module_privates);;
         state->modulevalue_class = klass;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 
@@ -17409,25 +17434,21 @@ static LitValue objfn_object_iteratorvalue(LitVM* vm, LitValue instance, size_t 
 
 void lit_open_object_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Object");
+    LitClass* klass = LitClass::make(state, "Object");;
     {
-        LIT_INHERIT_CLASS(state->classvalue_class);
-        LIT_BIND_GETTER("class", objfn_object_class);
-        LIT_BIND_GETTER("super", objfn_object_super);
-        lit_bind_method(state, klass, "[]", objfn_object_subscript);
-        #if 0
-        lit_bind_method(state, klass, "hasMethod", objfn_object_hasmethod);
-        
-        #endif
-        lit_bind_method(state, klass, "toString", objfn_object_tostring);
-        lit_bind_method(state, klass, "toMap", objfn_object_tomap);
-        lit_bind_method(state, klass, "iterator", objfn_object_iterator);
-        lit_bind_method(state, klass, "iteratorValue", objfn_object_iteratorvalue);
-
+        klass->inheritFrom(state->classvalue_class);
+        klass->setGetter("class", objfn_object_class);;
+        klass->setGetter("super", objfn_object_super);;
+        klass->bindMethod("[]", objfn_object_subscript);
+        klass->bindMethod("toString", objfn_object_tostring);
+        klass->bindMethod("toMap", objfn_object_tomap);
+        klass->bindMethod("iterator", objfn_object_iterator);
+        klass->bindMethod("iteratorValue", objfn_object_iteratorvalue);
         state->objectvalue_class = klass;
         state->objectvalue_class->super = state->classvalue_class;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 
@@ -17513,19 +17534,20 @@ static LitValue objfn_range_length(LitVM* vm, LitValue instance, size_t argc, Li
 
 void lit_open_range_library(LitState* state)
 {
-    LIT_BEGIN_CLASS("Range");
+    LitClass* klass = LitClass::make(state, "Range");;
     {
-        LIT_INHERIT_CLASS(state->objectvalue_class);
-        lit_bind_constructor(state, klass, util_invalid_constructor);
-        lit_bind_method(state, klass, "iterator", objfn_range_iterator);
-        lit_bind_method(state, klass, "iteratorValue", objfn_range_iteratorvalue);
-        lit_bind_method(state, klass, "toString", objfn_range_tostring);
-        LIT_BIND_FIELD("from", objfn_range_from, objfn_range_set_from);
-        LIT_BIND_FIELD("to", objfn_range_to, objfn_range_set_to);
-        LIT_BIND_GETTER("length", objfn_range_length);
-        state->rangevalue_class  = klass;
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(util_invalid_constructor);
+        klass->bindMethod("iterator", objfn_range_iterator);
+        klass->bindMethod("iteratorValue", objfn_range_iteratorvalue);
+        klass->bindMethod("toString", objfn_range_tostring);
+        klass->bindField("from", objfn_range_from, objfn_range_set_from);
+        klass->bindField("to", objfn_range_to, objfn_range_set_to);
+        klass->setGetter("length", objfn_range_length);;
+        state->rangevalue_class = klass;
     }
-    LIT_END_CLASS();
+    lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
+
 }
 
 
@@ -18117,37 +18139,37 @@ static LitValue objfn_string_format(LitVM* vm, LitValue instance, size_t argc, L
 void lit_open_string_library(LitState* state)
 {
     {
-        LIT_BEGIN_CLASS("String");
+        LitClass* klass = LitClass::make(state, "String");;
         {
-            LIT_INHERIT_CLASS(state->objectvalue_class);
-            lit_bind_constructor(state, klass, util_invalid_constructor);
-            lit_bind_method(state, klass, "+", objfn_string_plus);
-            lit_bind_method(state, klass, "[]", objfn_string_subscript);
-            lit_bind_method(state, klass, "<", objfn_string_less);
-            lit_bind_method(state, klass, ">", objfn_string_greater);
-            lit_bind_method(state, klass, "==", objfn_string_compare);
-            lit_bind_method(state, klass, "toString", objfn_string_tostring);
+            klass->inheritFrom(state->objectvalue_class);
+            klass->bindConstructor(util_invalid_constructor);
+            klass->bindMethod("+", objfn_string_plus);
+            klass->bindMethod("[]", objfn_string_subscript);
+            klass->bindMethod("<", objfn_string_less);
+            klass->bindMethod(">", objfn_string_greater);
+            klass->bindMethod("==", objfn_string_compare);
+            klass->bindMethod("toString", objfn_string_tostring);
             {
-                lit_bind_method(state, klass, "toNumber", objfn_string_tonumber);
-                LIT_BIND_GETTER("to_i", objfn_string_tonumber);
+                klass->bindMethod("toNumber", objfn_string_tonumber);
+                klass->setGetter("to_i", objfn_string_tonumber);;
             }
             /*
             * String.toUpper()
             * turns string to uppercase.
             */
             {
-                lit_bind_method(state, klass, "toUpperCase", objfn_string_touppercase);
-                lit_bind_method(state, klass, "toUpper", objfn_string_touppercase);
-                LIT_BIND_GETTER("upper", objfn_string_touppercase);
+                klass->bindMethod("toUpperCase", objfn_string_touppercase);
+                klass->bindMethod("toUpper", objfn_string_touppercase);
+                klass->setGetter("upper", objfn_string_touppercase);;
             }
             /*
             * String.toLower()
             * turns string to lowercase.
             */
             {
-                lit_bind_method(state, klass, "toLowerCase", objfn_string_tolowercase);
-                lit_bind_method(state, klass, "toLower", objfn_string_tolowercase);
-                LIT_BIND_GETTER("lower", objfn_string_tolowercase);
+                klass->bindMethod("toLowerCase", objfn_string_tolowercase);
+                klass->bindMethod("toLower", objfn_string_tolowercase);
+                klass->setGetter("lower", objfn_string_tolowercase);;
             }
             /*
             * String.toByte
@@ -18156,12 +18178,10 @@ void lit_open_string_library(LitState* state)
             * i.e., "foo".toByte == 102 (equiv: "foo"[0].toByte)
             */
             {
-                LIT_BIND_GETTER("toByte", objfn_string_tobyte);
+                klass->setGetter("toByte", objfn_string_tobyte);;
             }
-
             //TODO: byteAt
-            //lit_bind_method(state, klass, "byteAt", objfn_string_byteat);
-
+            //LIT_BIND_METHOD(state, klass, "byteAt", objfn_string_byteat);
             /*
             * String.contains(String str[, bool icase])
             * returns true if $self contains $str.
@@ -18169,37 +18189,35 @@ void lit_open_string_library(LitState* state)
             * this is faster than, eg, "FOO".lower.contains("BLAH".lower), since
             * only the characters searched are tolower()'d.
             */
-            lit_bind_method(state, klass, "contains", objfn_string_contains);
-
+            klass->bindMethod("contains", objfn_string_contains);
             /*
             * String.startsWith(String str)
             * returns true if $self starts with $str
             */
-            lit_bind_method(state, klass, "startsWith", objfn_string_startswith);
-
+            klass->bindMethod("startsWith", objfn_string_startswith);
             /*
             * String.endsWith(String str)
             * returns true if $self ends with $str
             */
-            lit_bind_method(state, klass, "endsWith", objfn_string_endswith);
-
+            klass->bindMethod("endsWith", objfn_string_endswith);
             /*
             * String.replace(String find, String rep)
             * replaces every $find with $rep
             */
-            lit_bind_method(state, klass, "replace", objfn_string_replace);
+            klass->bindMethod("replace", objfn_string_replace);
             {
-                lit_bind_method(state, klass, "substring", objfn_string_substring);
-                lit_bind_method(state, klass, "substr", objfn_string_substring);
+                klass->bindMethod("substring", objfn_string_substring);
+                klass->bindMethod("substr", objfn_string_substring);
             }
-            lit_bind_method(state, klass, "iterator", objfn_string_iterator);
-            lit_bind_method(state, klass, "iteratorValue", objfn_string_iteratorvalue);
-            LIT_BIND_GETTER("length", objfn_string_length);
-            lit_bind_method(state, klass, "format", objfn_string_format);
+            klass->bindMethod("iterator", objfn_string_iterator);
+            klass->bindMethod("iteratorValue", objfn_string_iteratorvalue);
+            klass->setGetter("length", objfn_string_length);;
+            klass->bindMethod("format", objfn_string_format);
             state->stringvalue_class = klass;
         }
-        LIT_END_CLASS();
+        lit_set_global(state, klass->name, klass->asValue()); if(klass->super == nullptr) { klass->inheritFrom(state->objectvalue_class); };
     }
+
 }
 
 
