@@ -121,15 +121,8 @@ function bf(src, input)
             // since Array.pop() isn't implemented yet ...
             // emulate by retrieving the last item, then removing it. since
             // that's what 'pop' basically does :^)
-            if(stack.pop)
-            {
-                instr = stack.pop() - 1
-            }
-            else
-            {
-                instr = stack[stack.length - 1] - 1
-                stack.removeAt(stack.length - 1)
-            }
+            instr = stack[stack.length - 1] - 1
+            stack.removeAt(stack.length - 1)
         }
         instr += 1
     }

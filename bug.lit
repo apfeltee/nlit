@@ -1,0 +1,18 @@
+
+class Foo
+{
+    function constructor()
+    {
+        this.name = "joe"
+    }
+
+    function getName()
+    {
+        return this.name
+    }
+}
+
+let f = Foo()
+println(f.name)
+
+
