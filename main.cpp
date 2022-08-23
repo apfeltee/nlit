@@ -2066,7 +2066,14 @@ struct LitVariable
     ASTStatement** declaration;
 };
 
-struct ASTExpression
+struct ASTNode
+{
+    public:
+        LitState* m_state;
+        size_t line = 0;
+};
+
+struct ASTExpression: public ASTNode
 {
     public:
         enum class Type
@@ -2097,17 +2104,25 @@ struct ASTExpression
         {
             ASTExpression* expr;
             expr = (ASTExpression*)lit_reallocate(state, nullptr, 0, size);
+            expr->m_state = state;
             expr->type = type;
             expr->line = line;
             return expr;
         }
 
+        static PCGenericArray<ASTExpression*>* makeList(LitState* state)
+        {
+            PCGenericArray<ASTExpression*>* expressions;
+            expressions = (PCGenericArray<ASTExpression*>*)lit_reallocate(state, nullptr, 0, sizeof(PCGenericArray<ASTExpression*>));
+            expressions->init(state);
+            return expressions;
+        }
+
     public:
         Type type = Type::Unspecified;
-        size_t line = 0;
 };
 
-struct ASTStatement
+struct ASTStatement: public ASTNode
 {
     public:
         enum class Type
@@ -2129,8 +2144,27 @@ struct ASTStatement
         };
 
     public:
+        static ASTStatement* make(LitState* state, uint64_t line, size_t size, ASTStatement::Type type)
+        {
+            ASTStatement* stmt;
+            stmt = (ASTStatement*)lit_reallocate(state, nullptr, 0, size);
+            stmt->m_state = state;
+            stmt->type = type;
+            stmt->line = line;
+            return stmt;
+        }
+
+        static PCGenericArray<ASTStatement*>* makeList(LitState* state)
+        {
+            PCGenericArray<ASTStatement*>* statements;
+            statements = (PCGenericArray<ASTStatement*>*)lit_reallocate(state, nullptr, 0, sizeof(PCGenericArray<ASTStatement*>));
+            statements->init(state);
+            return statements;
+        }
+
+    public:
         Type type = Type::Unspecified;
-        size_t line = 0;
+
 };
 
 struct LitToken
@@ -2184,6 +2218,8 @@ struct LitParser
         uint8_t statement_root_count;
 
     public:
+        void init(LitState* state);
+
         void release()
         {
         }
@@ -2210,10 +2246,21 @@ struct LitScanner
 
 struct LitOptimizer
 {
-    LitState* state;
-    PCGenericArray<LitVariable> variables;
-    int depth;
-    bool mark_used;
+    public:
+        LitState* state;
+        PCGenericArray<LitVariable> variables;
+        int depth;
+        bool mark_used;
+
+    public:
+        void init(LitState* state)
+        {
+            this->state = state;
+            this->depth = -1;
+            this->mark_used = false;
+            this->variables.init(state);
+        }
+
 };
 
 struct LitPreprocessor
@@ -2232,6 +2279,13 @@ struct LitPreprocessor
         PCGenericArray<LitValue> open_ifs;
 
     public:
+        void init(LitState* state)
+        {
+            this->state = state;
+            this->defined.init(state);
+            this->open_ifs.init(state);
+        }
+
         void release()
         {
             this->defined.release();
@@ -2261,63 +2315,56 @@ struct ASTParseRule
 };
 
 
-struct ASTExprLiteral
+struct ASTExprLiteral: public ASTExpression
 {
     public:
         static ASTExprLiteral* make(LitState* state, size_t line, LitValue value)
         {
-            ASTExprLiteral* expression;
-            expression = (ASTExprLiteral*)ASTExpression::make(state, line, sizeof(ASTExprLiteral), ASTExpression::Type::Literal);
-            expression->value = value;
-            return expression;
+            ASTExprLiteral* rt;
+            rt = (ASTExprLiteral*)ASTExpression::make(state, line, sizeof(ASTExprLiteral), ASTExpression::Type::Literal);
+            rt->value = value;
+            return rt;
         }
 
     public:
-        ASTExpression expression;
         LitValue value;
 };
 
-struct ASTExprBinary
+struct ASTExprBinary: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* left;
     ASTExpression* right;
     LitTokenType op;
     bool ignore_left;
 };
 
-struct ASTExprUnary
+struct ASTExprUnary: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* right;
     LitTokenType op;
 };
 
-struct ASTExprVar
+struct ASTExprVar: public ASTExpression
 {
-    ASTExpression expression;
     const char* name;
     size_t length;
 };
 
-struct ASTExprAssign
+struct ASTExprAssign: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* to;
     ASTExpression* value;
 };
 
-struct ASTExprCall
+struct ASTExprCall: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* callee;
     PCGenericArray<ASTExpression*> args;
-    ASTExpression* init;
+    ASTExpression* objexpr;
 };
 
-struct ASTExprIndexGet
+struct ASTExprIndexGet: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* where;
     const char* name;
     size_t length;
@@ -2326,9 +2373,8 @@ struct ASTExprIndexGet
     bool ignore_result;
 };
 
-struct ASTExprIndexSet
+struct ASTExprIndexSet: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* where;
     const char* name;
     size_t length;
@@ -2343,109 +2389,94 @@ struct ASTExprFuncParam
 };
 
 
-struct ASTExprLambda
+struct ASTExprLambda: public ASTExpression
 {
-    ASTExpression expression;
     PCGenericArray<ASTExprFuncParam> parameters;
     ASTStatement* body;
 };
 
-struct ASTExprArray
+struct ASTExprArray: public ASTExpression
 {
-    ASTExpression expression;
     PCGenericArray<ASTExpression*> values;
 };
 
-struct ASTExprObject
+struct ASTExprObject: public ASTExpression
 {
-    ASTExpression expression;
     PCGenericArray<LitValue> keys;
     PCGenericArray<ASTExpression*> values;
 };
 
-struct ASTExprSubscript
+struct ASTExprSubscript: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* array;
     ASTExpression* index;
 };
 
-struct ASTExprThis
+struct ASTExprThis: public ASTExpression
 {
-    ASTExpression expression;
 };
 
-struct ASTExprSuper
+struct ASTExprSuper: public ASTExpression
 {
-    ASTExpression expression;
     LitString* method;
     bool ignore_emit;
     bool ignore_result;
 };
 
-struct ASTExprRange
+struct ASTExprRange: public ASTExpression
 {
-    ASTExpression expression;
     ASTExpression* from;
     ASTExpression* to;
 };
 
-struct ASTExprIfClause
+struct ASTExprIfClause: public ASTStatement
 {
-    ASTStatement statement;
     ASTExpression* condition;
     ASTExpression* if_branch;
     ASTExpression* else_branch;
 };
 
-struct ASTExprInterpolation
+struct ASTExprInterpolation: public ASTExpression
 {
-    ASTExpression expression;
     PCGenericArray<ASTExpression*> expressions;
 };
 
-struct ASTExprReference
+struct ASTExprReference: public ASTExpression
 {
     public:
         static ASTExprReference* make(LitState* state, size_t line, ASTExpression* to)
         {
-            ASTExprReference* expression;
-            expression = (ASTExprReference*)ASTExpression::make(state, line, sizeof(ASTExprReference), ASTExpression::Type::Reference);
-            expression->to = to;
-            return expression;
+            ASTExprReference* expr;
+            expr = (ASTExprReference*)ASTExpression::make(state, line, sizeof(ASTExprReference), ASTExpression::Type::Reference);
+            expr->to = to;
+            return expr;
         }
 
     public:
-        ASTExpression expression;
         ASTExpression* to;
 };
 
-
-struct ASTExprStatement
+struct ASTExprStatement: public ASTStatement
 {
-    ASTStatement statement;
     ASTExpression* expression;
     bool pop;
 };
 
-struct ASTStmtBlock
+struct ASTStmtBlock: public ASTStatement
 {
-    ASTStatement statement;
     PCGenericArray<ASTStatement*> statements;
 };
 
-struct ASTStmtVar
+struct ASTStmtVar: public ASTStatement
 {
-    ASTStatement statement;
     const char* name;
     size_t length;
     bool constant;
-    ASTExpression* init;
+    ASTExpression* valexpr;
 };
 
-struct ASTStmtIfClause
+struct ASTStmtIfClause: public ASTStatement
 {
-    ASTStatement statement;
     ASTExpression* condition;
     ASTStatement* if_branch;
     ASTStatement* else_branch;
@@ -2453,17 +2484,15 @@ struct ASTStmtIfClause
     PCGenericArray<ASTStatement*>* elseif_branches;
 };
 
-struct ASTStmtWhileLoop
+struct ASTStmtWhileLoop: public ASTStatement
 {
-    ASTStatement statement;
     ASTExpression* condition;
     ASTStatement* body;
 };
 
-struct ASTStmtForLoop
+struct ASTStmtForLoop: public ASTStatement
 {
-    ASTStatement statement;
-    ASTExpression* init;
+    ASTExpression* exprinit;
     ASTStatement* var;
     ASTExpression* condition;
     ASTExpression* increment;
@@ -2471,19 +2500,16 @@ struct ASTStmtForLoop
     bool c_style;
 };
 
-struct ASTStmtContinue
+struct ASTStmtContinue: public ASTStatement
 {
-    ASTStatement statement;
 };
 
-struct ASTStmtBreak
+struct ASTStmtBreak: public ASTStatement
 {
-    ASTStatement statement;
 };
 
-struct ASTStmtFunction
+struct ASTStmtFunction: public ASTStatement
 {
-    ASTStatement statement;
     const char* name;
     size_t length;
     PCGenericArray<ASTExprFuncParam> parameters;
@@ -2491,32 +2517,28 @@ struct ASTStmtFunction
     bool exported;
 };
 
-struct ASTStmtReturn
+struct ASTStmtReturn: public ASTStatement
 {
-    ASTStatement statement;
     ASTExpression* expression;
 };
 
-struct ASTStmtMethod
+struct ASTStmtMethod: public ASTStatement
 {
-    ASTStatement statement;
     LitString* name;
     PCGenericArray<ASTExprFuncParam> parameters;
     ASTStatement* body;
     bool is_static;
 };
 
-struct ASTStmtClass
+struct ASTStmtClass: public ASTStatement
 {
-    ASTStatement statement;
     LitString* name;
     LitString* parent;
     PCGenericArray<ASTStatement*> fields;
 };
 
-struct ASTStmtField
+struct ASTStmtField: public ASTStatement
 {
-    ASTStatement statement;
     LitString* name;
     ASTStatement* getter;
     ASTStatement* setter;
@@ -3824,16 +3846,16 @@ struct LitEmitter
                                 }
                             }
                         }
-                        if(expr->init == nullptr)
+                        if(expr->objexpr == nullptr)
                         {
                             return;
                         }
-                        ASTExprObject* init = (ASTExprObject*)expr->init;
-                        for(size_t i = 0; i < init->values.m_count; i++)
+                        ASTExprObject* objinit = (ASTExprObject*)expr->objexpr;
+                        for(size_t i = 0; i < objinit->values.m_count; i++)
                         {
-                            ASTExpression* e = init->values.m_values[i];
+                            ASTExpression* e = objinit->values.m_values[i];
                             this->last_line = e->line;
-                            emit_constant(this->last_line, init->keys.m_values[i]);
+                            emit_constant(this->last_line, objinit->keys.m_values[i]);
                             emit_expression(e);
                             emit_op(this->last_line, OP_PUSH_OBJECT_FIELD);
                         }
@@ -4141,13 +4163,13 @@ struct LitEmitter
                         isprivate = this->compiler->enclosing == nullptr && this->compiler->scope_depth == 0;
                         index = isprivate ? resolve_private(varstmt->name, varstmt->length, statement->line) :
                                               add_local(varstmt->name, varstmt->length, statement->line, varstmt->constant);
-                        if(varstmt->init == nullptr)
+                        if(varstmt->valexpr == nullptr)
                         {
                             emit_op(line, OP_NULL);
                         }
                         else
                         {
-                            emit_expression(varstmt->init);
+                            emit_expression(varstmt->valexpr);
                         }
                         if(isprivate)
                         {
@@ -4256,9 +4278,9 @@ struct LitEmitter
                             {
                                 emit_statement(forstmt->var);
                             }
-                            else if(forstmt->init != nullptr)
+                            else if(forstmt->exprinit != nullptr)
                             {
-                                emit_expression(forstmt->init);
+                                emit_expression(forstmt->exprinit);
                             }
                             start = this->chunk->m_count;
                             exit_jump = 0;
@@ -4541,7 +4563,7 @@ struct LitEmitter
                             if(s->type == ASTStatement::Type::VarDecl)
                             {
                                 var = (ASTStmtVar*)s;
-                                emit_expression(var->init);
+                                emit_expression(var->valexpr);
                                 emit_op(statement->line, OP_STATIC_FIELD);
                                 emit_short(statement->line,
                                            add_constant(statement->line,
@@ -4610,6 +4632,30 @@ struct LitState
     public:
         using ErrorFuncType = void(*)(LitState*, const char*);
         using PrintFuncType = void(*)(LitState*, const char*);
+
+    public:
+        static void default_error(LitState* state, const char* message)
+        {
+            (void)state;
+            fflush(stdout);
+            fprintf(stderr, "%s%s%s\n", COLOR_RED, message, COLOR_RESET);
+            fflush(stderr);
+        }
+
+        static void default_printf(LitState* state, const char* message)
+        {
+            (void)state;
+            printf("%s", message);
+        }
+
+        static void init_api(LitState* state)
+        {
+            state->api_name = LitString::copy(state, "c", 1);
+            state->api_function = nullptr;
+            state->api_fiber = nullptr;
+        }
+
+        static LitState* make();
 
     public:
         /* how much was allocated in total? */
@@ -5236,9 +5282,6 @@ LitValue util_invalid_constructor(LitVM *vm, LitValue instance, size_t argc, Lit
 /**
 * state functions
 */
-/* creates a new state. */
-LitState* lit_new_state();
-
 char* lit_patch_file_name(char* file_name);
 
 /* call a function in an instance */
@@ -5324,8 +5367,6 @@ LitInterpretResult lit_find_and_call_method(LitState* state, LitValue callee, Li
 LitString* lit_to_string(LitState* state, LitValue object);
 LitValue lit_call_new(LitVM* vm, const char* name, LitValue* args, size_t arg_count, bool ignfiber);
 
-
-void lit_init_api(LitState* state);
 
 
 double lit_check_number(LitVM* vm, LitValue* args, uint8_t arg_count, uint8_t id);
@@ -5421,7 +5462,6 @@ void lit_set_optimization_level(LitOptimizationLevel level);
 
 const char* lit_get_optimization_name(LitOptimization optimization);
 const char* lit_get_optimization_description(LitOptimization optimization);
-void lit_init_preprocessor(LitState* state, LitPreprocessor* preprocessor);
 void lit_add_definition(LitState* state, const char* name);
 
 bool lit_preprocess(LitPreprocessor* preprocessor, char* source);
@@ -5453,7 +5493,7 @@ ASTExprInterpolation* lit_create_interpolation_expression(LitState* state, size_
 void lit_free_statement(LitState* state, ASTStatement* statement);
 ASTExprStatement* lit_create_expression_statement(LitState* state, size_t line, ASTExpression* expression);
 ASTStmtBlock* lit_create_block_statement(LitState* state, size_t line);
-ASTStmtVar* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* init, bool constant);
+ASTStmtVar* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* exprinit, bool constant);
 
 ASTStmtIfClause* lit_create_if_statement(LitState* state,
                                         size_t line,
@@ -5467,7 +5507,7 @@ ASTStmtWhileLoop* lit_create_while_statement(LitState* state, size_t line, ASTEx
 
 ASTStmtForLoop* lit_create_for_statement(LitState* state,
                                           size_t line,
-                                          ASTExpression* init,
+                                          ASTExpression* exprinit,
                                           ASTStatement* var,
                                           ASTExpression* condition,
                                           ASTExpression* increment,
@@ -5482,14 +5522,10 @@ ASTStmtClass* lit_create_class_statement(LitState* state, size_t line, LitString
 ASTStmtField*
 lit_create_field_statement(LitState* state, size_t line, LitString* name, ASTStatement* getter, ASTStatement* setter, bool is_static);
 
-PCGenericArray<ASTExpression*>* lit_allocate_expressions(LitState* state);
 void lit_free_allocated_expressions(LitState* state, PCGenericArray<ASTExpression*>* expressions);
 
-PCGenericArray<ASTStatement*>* lit_allocate_statements(LitState* state);
 void lit_free_allocated_statements(LitState* state, PCGenericArray<ASTStatement*>* statements);
 
-
-void lit_init_parser(LitState* state, LitParser* parser);
 
 static const int8_t stack_effects[] = {
 #define OPCODE(_, effect) effect,
@@ -5596,8 +5632,36 @@ OPCODE(SET_REFERENCE, -1)
 #undef OPCODE
 };
 
+static jmp_buf prs_jmpbuffer;
+static ASTParseRule rules[LITTOK_EOF + 1];
 
+
+static LitTokenType operators[]=
+{
+    LITTOK_PLUS, LITTOK_MINUS, LITTOK_STAR, LITTOK_PERCENT, LITTOK_SLASH,
+    LITTOK_SHARP, LITTOK_BANG, LITTOK_LESS, LITTOK_LESS_EQUAL, LITTOK_GREATER,
+    LITTOK_GREATER_EQUAL, LITTOK_EQUAL_EQUAL, LITTOK_LEFT_BRACKET, LITTOK_EOF
+};
+
+
+static bool did_setup_rules;
+static void setup_rules();
+static void sync(LitParser* parser);
 // typimpls 
+
+
+void LitParser::init(LitState* state)
+{
+    if(!did_setup_rules)
+    {
+        did_setup_rules = true;
+        setup_rules();
+    }
+    this->state = state;
+    this->had_error = false;
+    this->panic_mode = false;
+}
+
 
 size_t LitChunk::add_constant(LitValue constant)
 {
@@ -5792,6 +5856,48 @@ void LitState::init(LitVM* vm)
     vm->reset(this);
     vm->globals = LitMap::make(this);
     vm->modules = LitMap::make(this);
+}
+
+LitState* LitState::make()
+{
+    LitState* state;
+    state = (LitState*)malloc(sizeof(LitState));
+    state->classvalue_class = nullptr;
+    state->objectvalue_class = nullptr;
+    state->numbervalue_class = nullptr;
+    state->stringvalue_class = nullptr;
+    state->boolvalue_class = nullptr;
+    state->functionvalue_class = nullptr;
+    state->fibervalue_class = nullptr;
+    state->modulevalue_class = nullptr;
+    state->arrayvalue_class = nullptr;
+    state->mapvalue_class = nullptr;
+    state->rangevalue_class = nullptr;
+    state->bytes_allocated = 0;
+    state->next_gc = 256 * 1024;
+    state->allow_gc = false;
+    state->error_fn = default_error;
+    state->print_fn = default_printf;
+    state->had_error = false;
+    state->roots = nullptr;
+    state->root_count = 0;
+    state->root_capacity = 0;
+    state->last_module = nullptr;
+    state->debugwriter.initFile(state, stdout, true);
+    state->preprocessor = (LitPreprocessor*)malloc(sizeof(LitPreprocessor));
+    state->preprocessor->init(state);
+    state->scanner = (LitScanner*)malloc(sizeof(LitScanner));
+    state->parser = (LitParser*)malloc(sizeof(LitParser));
+    ((LitParser*)state->parser)->init(state);
+    state->emitter = (LitEmitter*)malloc(sizeof(LitEmitter));
+    state->emitter->init(state);
+    state->optimizer = (LitOptimizer*)malloc(sizeof(LitOptimizer));
+    state->optimizer->init(state);
+    state->vm = (LitVM*)malloc(sizeof(LitVM));
+    state->init(state->vm);
+    init_api(state);
+    lit_open_core_library(state);
+    return state;
 }
 
 int64_t LitState::release()
@@ -6292,7 +6398,7 @@ void lit_free_expression(LitState* state, ASTExpression* expression)
             ASTExprCall* expr = (ASTExprCall*)expression;
 
             lit_free_expression(state, expr->callee);
-            lit_free_expression(state, expr->init);
+            lit_free_expression(state, expr->objexpr);
 
             free_expressions(state, &expr->args);
 
@@ -6396,8 +6502,6 @@ void lit_free_expression(LitState* state, ASTExpression* expression)
 }
 
 
-
-
 ASTExprBinary* lit_create_binary_expression(LitState* state, size_t line, ASTExpression* left, ASTExpression* right, LitTokenType op)
 {
     ASTExprBinary* expression;
@@ -6441,7 +6545,7 @@ ASTExprCall* lit_create_call_expression(LitState* state, size_t line, ASTExpress
     ASTExprCall* expression;
     expression = (ASTExprCall*)ASTExpression::make(state, line, sizeof(ASTExprCall), ASTExpression::Type::Call);
     expression->callee = callee;
-    expression->init = nullptr;
+    expression->objexpr = nullptr;
     expression->args.init(state);
     return expression;
 }
@@ -6571,7 +6675,7 @@ void lit_free_statement(LitState* state, ASTStatement* statement)
             break;
         case ASTStatement::Type::VarDecl:
             {
-                lit_free_expression(state, ((ASTStmtVar*)statement)->init);
+                lit_free_expression(state, ((ASTStmtVar*)statement)->valexpr);
                 lit_reallocate(state, statement, sizeof(ASTStmtVar), 0);
             }
             break;
@@ -6599,7 +6703,7 @@ void lit_free_statement(LitState* state, ASTStatement* statement)
                 ASTStmtForLoop* stmt = (ASTStmtForLoop*)statement;
                 lit_free_expression(state, stmt->increment);
                 lit_free_expression(state, stmt->condition);
-                lit_free_expression(state, stmt->init);
+                lit_free_expression(state, stmt->exprinit);
 
                 lit_free_statement(state, stmt->var);
                 lit_free_statement(state, stmt->body);
@@ -6660,19 +6764,11 @@ void lit_free_statement(LitState* state, ASTStatement* statement)
     }
 }
 
-static ASTStatement* allocate_statement(LitState* state, uint64_t line, size_t size, ASTStatement::Type type)
-{
-    ASTStatement* stmt;
-    stmt = (ASTStatement*)lit_reallocate(state, nullptr, 0, size);
-    stmt->type = type;
-    stmt->line = line;
-    return stmt;
-}
 
 ASTExprStatement* lit_create_expression_statement(LitState* state, size_t line, ASTExpression* expression)
 {
     ASTExprStatement* statement;
-    statement = (ASTExprStatement*)allocate_statement(state, line, sizeof(ASTExprStatement), ASTStatement::Type::Expression);
+    statement = (ASTExprStatement*)ASTStatement::make(state, line, sizeof(ASTExprStatement), ASTStatement::Type::Expression);
     statement->expression = expression;
     statement->pop = true;
     return statement;
@@ -6681,18 +6777,18 @@ ASTExprStatement* lit_create_expression_statement(LitState* state, size_t line, 
 ASTStmtBlock* lit_create_block_statement(LitState* state, size_t line)
 {
     ASTStmtBlock* statement;
-    statement = (ASTStmtBlock*)allocate_statement(state, line, sizeof(ASTStmtBlock), ASTStatement::Type::Block);
+    statement = (ASTStmtBlock*)ASTStatement::make(state, line, sizeof(ASTStmtBlock), ASTStatement::Type::Block);
     statement->statements.init(state);
     return statement;
 }
 
-ASTStmtVar* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* init, bool constant)
+ASTStmtVar* lit_create_var_statement(LitState* state, size_t line, const char* name, size_t length, ASTExpression* exprinit, bool constant)
 {
     ASTStmtVar* statement;
-    statement = (ASTStmtVar*)allocate_statement(state, line, sizeof(ASTStmtVar), ASTStatement::Type::VarDecl);
+    statement = (ASTStmtVar*)ASTStatement::make(state, line, sizeof(ASTStmtVar), ASTStatement::Type::VarDecl);
     statement->name = name;
     statement->length = length;
-    statement->init = init;
+    statement->valexpr = exprinit;
     statement->constant = constant;
     return statement;
 }
@@ -6706,7 +6802,7 @@ ASTStmtIfClause* lit_create_if_statement(LitState* state,
                                         PCGenericArray<ASTStatement*>* elseif_branches)
 {
     ASTStmtIfClause* statement;
-    statement = (ASTStmtIfClause*)allocate_statement(state, line, sizeof(ASTStmtIfClause), ASTStatement::Type::IfClause);
+    statement = (ASTStmtIfClause*)ASTStatement::make(state, line, sizeof(ASTStmtIfClause), ASTStatement::Type::IfClause);
     statement->condition = condition;
     statement->if_branch = if_branch;
     statement->else_branch = else_branch;
@@ -6718,7 +6814,7 @@ ASTStmtIfClause* lit_create_if_statement(LitState* state,
 ASTStmtWhileLoop* lit_create_while_statement(LitState* state, size_t line, ASTExpression* condition, ASTStatement* body)
 {
     ASTStmtWhileLoop* statement;
-    statement = (ASTStmtWhileLoop*)allocate_statement(state, line, sizeof(ASTStmtWhileLoop), ASTStatement::Type::WhileLoop);
+    statement = (ASTStmtWhileLoop*)ASTStatement::make(state, line, sizeof(ASTStmtWhileLoop), ASTStatement::Type::WhileLoop);
     statement->condition = condition;
     statement->body = body;
     return statement;
@@ -6726,7 +6822,7 @@ ASTStmtWhileLoop* lit_create_while_statement(LitState* state, size_t line, ASTEx
 
 ASTStmtForLoop* lit_create_for_statement(LitState* state,
                                           size_t line,
-                                          ASTExpression* init,
+                                          ASTExpression* exprinit,
                                           ASTStatement* var,
                                           ASTExpression* condition,
                                           ASTExpression* increment,
@@ -6734,8 +6830,8 @@ ASTStmtForLoop* lit_create_for_statement(LitState* state,
                                           bool c_style)
 {
     ASTStmtForLoop* statement;
-    statement = (ASTStmtForLoop*)allocate_statement(state, line, sizeof(ASTStmtForLoop), ASTStatement::Type::ForLoop);
-    statement->init = init;
+    statement = (ASTStmtForLoop*)ASTStatement::make(state, line, sizeof(ASTStmtForLoop), ASTStatement::Type::ForLoop);
+    statement->exprinit = exprinit;
     statement->var = var;
     statement->condition = condition;
     statement->increment = increment;
@@ -6746,18 +6842,18 @@ ASTStmtForLoop* lit_create_for_statement(LitState* state,
 
 ASTStmtContinue* lit_create_continue_statement(LitState* state, size_t line)
 {
-    return (ASTStmtContinue*)allocate_statement(state, line, sizeof(ASTStmtContinue), ASTStatement::Type::ContinueClause);
+    return (ASTStmtContinue*)ASTStatement::make(state, line, sizeof(ASTStmtContinue), ASTStatement::Type::ContinueClause);
 }
 
 ASTStmtBreak* lit_create_break_statement(LitState* state, size_t line)
 {
-    return (ASTStmtBreak*)allocate_statement(state, line, sizeof(ASTStmtBreak), ASTStatement::Type::BreakClause);
+    return (ASTStmtBreak*)ASTStatement::make(state, line, sizeof(ASTStmtBreak), ASTStatement::Type::BreakClause);
 }
 
 ASTStmtFunction* lit_create_function_statement(LitState* state, size_t line, const char* name, size_t length)
 {
     ASTStmtFunction* function;
-    function = (ASTStmtFunction*)allocate_statement(state, line, sizeof(ASTStmtFunction), ASTStatement::Type::FunctionDecl);
+    function = (ASTStmtFunction*)ASTStatement::make(state, line, sizeof(ASTStmtFunction), ASTStatement::Type::FunctionDecl);
     function->name = name;
     function->length = length;
     function->body = nullptr;
@@ -6768,7 +6864,7 @@ ASTStmtFunction* lit_create_function_statement(LitState* state, size_t line, con
 ASTStmtReturn* lit_create_return_statement(LitState* state, size_t line, ASTExpression* expression)
 {
     ASTStmtReturn* statement;
-    statement = (ASTStmtReturn*)allocate_statement(state, line, sizeof(ASTStmtReturn), ASTStatement::Type::ReturnClause);
+    statement = (ASTStmtReturn*)ASTStatement::make(state, line, sizeof(ASTStmtReturn), ASTStatement::Type::ReturnClause);
     statement->expression = expression;
     return statement;
 }
@@ -6776,7 +6872,7 @@ ASTStmtReturn* lit_create_return_statement(LitState* state, size_t line, ASTExpr
 ASTStmtMethod* lit_create_method_statement(LitState* state, size_t line, LitString* name, bool is_static)
 {
     ASTStmtMethod* statement;
-    statement = (ASTStmtMethod*)allocate_statement(state, line, sizeof(ASTStmtMethod), ASTStatement::Type::MethodDecl);
+    statement = (ASTStmtMethod*)ASTStatement::make(state, line, sizeof(ASTStmtMethod), ASTStatement::Type::MethodDecl);
     statement->name = name;
     statement->body = nullptr;
     statement->is_static = is_static;
@@ -6787,7 +6883,7 @@ ASTStmtMethod* lit_create_method_statement(LitState* state, size_t line, LitStri
 ASTStmtClass* lit_create_class_statement(LitState* state, size_t line, LitString* name, LitString* parent)
 {
     ASTStmtClass* statement;
-    statement = (ASTStmtClass*)allocate_statement(state, line, sizeof(ASTStmtClass), ASTStatement::Type::ClassDecl);
+    statement = (ASTStmtClass*)ASTStatement::make(state, line, sizeof(ASTStmtClass), ASTStatement::Type::ClassDecl);
     statement->name = name;
     statement->parent = parent;
     statement->fields.init(state);
@@ -6797,7 +6893,7 @@ ASTStmtClass* lit_create_class_statement(LitState* state, size_t line, LitString
 ASTStmtField* lit_create_field_statement(LitState* state, size_t line, LitString* name, ASTStatement* getter, ASTStatement* setter, bool is_static)
 {
     ASTStmtField* statement;
-    statement = (ASTStmtField*)allocate_statement(state, line, sizeof(ASTStmtField), ASTStatement::Type::FieldDecl);
+    statement = (ASTStmtField*)ASTStatement::make(state, line, sizeof(ASTStmtField), ASTStatement::Type::FieldDecl);
     statement->name = name;
     statement->getter = getter;
     statement->setter = setter;
@@ -6805,13 +6901,6 @@ ASTStmtField* lit_create_field_statement(LitState* state, size_t line, LitString
     return statement;
 }
 
-PCGenericArray<ASTExpression*>* lit_allocate_expressions(LitState* state)
-{
-    PCGenericArray<ASTExpression*>* expressions;
-    expressions = (PCGenericArray<ASTExpression*>*)lit_reallocate(state, nullptr, 0, sizeof(PCGenericArray<ASTExpression*>));
-    expressions->init(state);
-    return expressions;
-}
 
 void lit_free_allocated_expressions(LitState* state, PCGenericArray<ASTExpression*>* expressions)
 {
@@ -6828,13 +6917,6 @@ void lit_free_allocated_expressions(LitState* state, PCGenericArray<ASTExpressio
     lit_reallocate(state, expressions, sizeof(PCGenericArray<ASTExpression*>), 0);
 }
 
-PCGenericArray<ASTStatement*>* lit_allocate_statements(LitState* state)
-{
-    PCGenericArray<ASTStatement*>* statements;
-    statements = (PCGenericArray<ASTStatement*>*)lit_reallocate(state, nullptr, 0, sizeof(PCGenericArray<ASTStatement*>));
-    statements->init(state);
-    return statements;
-}
 
 void lit_free_allocated_statements(LitState* state, PCGenericArray<ASTStatement*>* statements)
 {
@@ -6935,14 +7017,6 @@ void optdbg(const char* fmt, ...)
     #define optdbg(msg, ...)
 #endif
 
-
-void lit_init_optimizer(LitState* state, LitOptimizer* optimizer)
-{
-    optimizer->state = state;
-    optimizer->depth = -1;
-    optimizer->mark_used = false;
-    optimizer->variables.init(state);
-}
 
 static void opt_begin_scope(LitOptimizer* optimizer)
 {
@@ -7599,7 +7673,7 @@ static void optimize_statement(LitOptimizer* optimizer, ASTStatement** slot)
                 opt_begin_scope(optimizer);
                 // This is required, so that optimizer doesn't optimize out our i variable (and such)
                 optimizer->mark_used = true;
-                optimize_expression(optimizer, &stmt->init);
+                optimize_expression(optimizer, &stmt->exprinit);
                 optimize_expression(optimizer, &stmt->condition);
                 optimize_expression(optimizer, &stmt->increment);
                 optimize_statement(optimizer, &stmt->var);
@@ -7625,9 +7699,9 @@ static void optimize_statement(LitOptimizer* optimizer, ASTStatement** slot)
                 }
                 bool reverse = LitObject::toNumber(from) > LitObject::toNumber(to);
                 ASTStmtVar* var = (ASTStmtVar*)stmt->var;
-                size_t line = range->expression.line;
+                size_t line = range->line;
                 // var i = from
-                var->init = range->from;
+                var->valexpr = range->from;
                 // i <= to
                 stmt->condition = (ASTExpression*)lit_create_binary_expression(
                 state, line, (ASTExpression*)lit_create_var_expression(state, line, var->name, var->length), range->to, LITTOK_LESS_EQUAL);
@@ -7651,10 +7725,10 @@ static void optimize_statement(LitOptimizer* optimizer, ASTStatement** slot)
             {
                 ASTStmtVar* stmt = (ASTStmtVar*)statement;
                 LitVariable* variable = add_variable(optimizer, stmt->name, stmt->length, stmt->constant, slot);
-                optimize_expression(optimizer, &stmt->init);
+                optimize_expression(optimizer, &stmt->valexpr);
                 if(stmt->constant && lit_is_optimization_enabled(LITOPTSTATE_CONSTANT_FOLDING))
                 {
-                    LitValue value = evaluate_expression(optimizer, stmt->init);
+                    LitValue value = evaluate_expression(optimizer, stmt->valexpr);
 
                     if(value != LitObject::NullVal)
                     {
@@ -7860,21 +7934,7 @@ const char* lit_get_optimization_level_description(LitOptimizationLevel level)
 
 
 
-static jmp_buf prs_jmpbuffer;
-static ASTParseRule rules[LITTOK_EOF + 1];
 
-
-static LitTokenType operators[]=
-{
-    LITTOK_PLUS, LITTOK_MINUS, LITTOK_STAR, LITTOK_PERCENT, LITTOK_SLASH,
-    LITTOK_SHARP, LITTOK_BANG, LITTOK_LESS, LITTOK_LESS_EQUAL, LITTOK_GREATER,
-    LITTOK_GREATER_EQUAL, LITTOK_EQUAL_EQUAL, LITTOK_LEFT_BRACKET, LITTOK_EOF
-};
-
-
-static bool did_setup_rules;
-static void setup_rules();
-static void sync(LitParser* parser);
 
 static ASTStatement *parse_block(LitParser *parser);
 static ASTExpression *parse_precedence(LitParser *parser, LitPrecedence precedence, bool err);
@@ -8105,17 +8165,7 @@ static inline bool prs_is_at_end(LitParser* parser)
     return parser->current.type == LITTOK_EOF;
 }
 
-void lit_init_parser(LitState* state, LitParser* parser)
-{
-    if(!did_setup_rules)
-    {
-        did_setup_rules = true;
-        setup_rules();
-    }
-    parser->state = state;
-    parser->had_error = false;
-    parser->panic_mode = false;
-}
+
 
 static void string_error(LitParser* parser, LitToken* token, const char* message)
 {
@@ -8750,7 +8800,7 @@ static ASTExpression* parse_variable_expression_base(LitParser* parser, bool can
             {
                 call = lit_create_call_expression(parser->state, expression->line, expression);
             }
-            call->init = parse_object(parser, false);
+            call->objexpr = parse_object(parser, false);
         }
         else if(!had_args)
         {
@@ -8948,18 +8998,18 @@ static ASTStatement* parse_var_declaration(LitParser* parser)
     size_t line;
     size_t length;
     const char* name;
-    ASTExpression* init;
+    ASTExpression* vexpr;
     constant = parser->previous.type == LITTOK_CONST;
     line = parser->previous.line;
     consume(parser, LITTOK_IDENTIFIER, "variable name");
     name = parser->previous.start;
     length = parser->previous.length;
-    init = nullptr;
+    vexpr = nullptr;
     if(prs_match(parser, LITTOK_EQUAL))
     {
-        init = parse_expression(parser);
+        vexpr = parse_expression(parser);
     }
-    return (ASTStatement*)lit_create_var_statement(parser->state, line, name, length, init, constant);
+    return (ASTStatement*)lit_create_var_statement(parser->state, line, name, length, vexpr, constant);
 }
 
 static ASTStatement* parse_if(LitParser* parser)
@@ -8999,8 +9049,8 @@ static ASTStatement* parse_if(LitParser* parser)
         {
             if(elseif_conditions == nullptr)
             {
-                elseif_conditions = lit_allocate_expressions(parser->state);
-                elseif_branches = lit_allocate_statements(parser->state);
+                elseif_conditions = ASTExpression::makeList(parser->state);
+                elseif_branches = ASTStatement::makeList(parser->state);
             }
             invert = prs_match(parser, LITTOK_BANG);
             had_paren = prs_match(parser, LITTOK_LEFT_PAREN);
@@ -9039,11 +9089,11 @@ static ASTStatement* parse_for(LitParser* parser)
     ASTExpression* condition;
     ASTExpression* increment;
     ASTStatement* var;
-    ASTExpression* init;
+    ASTExpression* exprinit;
     line= parser->previous.line;
     had_paren = prs_match(parser, LITTOK_LEFT_PAREN);
     var = nullptr;
-    init = nullptr;
+    exprinit = nullptr;
     if(!check(parser, LITTOK_SEMICOLON))
     {
         if(prs_match(parser, LITTOK_VAR))
@@ -9052,7 +9102,7 @@ static ASTStatement* parse_for(LitParser* parser)
         }
         else
         {
-            init = parse_expression(parser);
+            exprinit = parse_expression(parser);
         }
     }
     c_style = !prs_match(parser, LITTOK_IN);
@@ -9078,7 +9128,7 @@ static ASTStatement* parse_for(LitParser* parser)
         consume(parser, LITTOK_RIGHT_PAREN, "')'");
     }
     ignore_new_lines(parser);
-    return (ASTStatement*)lit_create_for_statement(parser->state, line, init, var, condition, increment,
+    return (ASTStatement*)lit_create_for_statement(parser->state, line, exprinit, var, condition, increment,
                                                    parse_statement(parser), c_style);
 }
 
@@ -9471,13 +9521,6 @@ bool lit_parse(LitParser* parser, const char* file_name, const char* source, PCG
     return parser->had_error || parser->state->scanner->had_error;
 }
 
-
-void lit_init_preprocessor(LitState* state, LitPreprocessor* preprocessor)
-{
-    preprocessor->state = state;
-    preprocessor->defined.init(state);
-    preprocessor->open_ifs.init(state);
-}
 
 void lit_add_definition(LitState* state, const char* name)
 {
@@ -10403,13 +10446,6 @@ LitToken lit_scan_token(LitScanner* scanner)
 #define RETURN_RUNTIME_ERROR() return LitInterpretResult{ LITRESULT_RUNTIME_ERROR, LitObject::NullVal };
 
 
-
-void lit_init_api(LitState* state)
-{
-    state->api_name = LitString::copy(state, "c", 1);
-    state->api_function = nullptr;
-    state->api_fiber = nullptr;
-}
 
 
 LitValue lit_instance_get_method(LitState* state, LitValue callee, LitString* mthname)
@@ -12162,61 +12198,7 @@ void lit_enable_compilation_time_measurement()
     measure_compilation_time = true;
 }
 
-static void default_error(LitState* state, const char* message)
-{
-    (void)state;
-    fflush(stdout);
-    fprintf(stderr, "%s%s%s\n", COLOR_RED, message, COLOR_RESET);
-    fflush(stderr);
-}
 
-static void default_printf(LitState* state, const char* message)
-{
-    (void)state;
-    printf("%s", message);
-}
-
-LitState* lit_new_state()
-{
-    LitState* state;
-    state = (LitState*)malloc(sizeof(LitState));
-    state->classvalue_class = nullptr;
-    state->objectvalue_class = nullptr;
-    state->numbervalue_class = nullptr;
-    state->stringvalue_class = nullptr;
-    state->boolvalue_class = nullptr;
-    state->functionvalue_class = nullptr;
-    state->fibervalue_class = nullptr;
-    state->modulevalue_class = nullptr;
-    state->arrayvalue_class = nullptr;
-    state->mapvalue_class = nullptr;
-    state->rangevalue_class = nullptr;
-    state->bytes_allocated = 0;
-    state->next_gc = 256 * 1024;
-    state->allow_gc = false;
-    state->error_fn = default_error;
-    state->print_fn = default_printf;
-    state->had_error = false;
-    state->roots = nullptr;
-    state->root_count = 0;
-    state->root_capacity = 0;
-    state->last_module = nullptr;
-    state->debugwriter.initFile(state, stdout, true);
-    state->preprocessor = (LitPreprocessor*)malloc(sizeof(LitPreprocessor));
-    lit_init_preprocessor(state, state->preprocessor);
-    state->scanner = (LitScanner*)malloc(sizeof(LitScanner));
-    state->parser = (LitParser*)malloc(sizeof(LitParser));
-    lit_init_parser(state, (LitParser*)state->parser);
-    state->emitter = (LitEmitter*)malloc(sizeof(LitEmitter));
-    state->emitter->init(state);
-    state->optimizer = (LitOptimizer*)malloc(sizeof(LitOptimizer));
-    lit_init_optimizer(state, state->optimizer);
-    state->vm = (LitVM*)malloc(sizeof(LitVM));
-    state->init(state->vm);
-    lit_init_api(state);
-    lit_open_core_library(state);
-    return state;
-}
 
 
 static void free_statements(LitState* state, PCGenericArray<ASTStatement*>* statements)
@@ -18734,7 +18716,7 @@ int main(int argc, const char* argv[])
     LitInterpretResultType result;
     LitArray* arg_array;
     LitState* state;
-    state = lit_new_state();
+    state = LitState::make();
     lit_open_libraries(state);
     num_files_to_run = 0;
     result = LITRESULT_OK;
