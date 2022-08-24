@@ -699,7 +699,7 @@ struct LitCompiler
                 const char* start;
                 const char* current;
                 const char* file_name;
-                LitState* state;
+                LitState* m_state;
                 size_t braces[LIT_MAX_INTERPOLATION_NESTING];
                 size_t num_braces;
                 bool had_error;
@@ -711,7 +711,7 @@ struct LitCompiler
                     this->start = source;
                     this->current = source;
                     this->file_name = file_name;
-                    this->state = state;
+                    this->m_state = state;
                     this->num_braces = 0;
                     this->had_error = false;
                 }
@@ -733,7 +733,7 @@ struct LitCompiler
                     LitString* result;
                     this->had_error = true;
                     va_start(args, error);
-                    result = lit_vformat_error(this->state, this->line, error, args);
+                    result = lit_vformat_error(this->m_state, this->line, error, args);
                     va_end(args);
                     token.type = LITTOK_ERROR;
                     token.start = result->chars;
@@ -867,9 +867,9 @@ struct LitCompiler
                     PCGenericArray<uint8_t> bytes;
                     LitCompiler::Token token;
                     LitTokenType string_type;
-                    state = this->state;
+                    state = this->m_state;
                     string_type = LITTOK_STRING;
-                    bytes.init(this->state);
+                    bytes.init(this->m_state);
                     while(true)
                     {
                         c = advance();
@@ -1430,7 +1430,7 @@ struct LitCompiler
                 {
                     ASTStmtBlock* statement;
                     parser->begin_scope();
-                    statement = ASTStmtBlock::make(parser->state, parser->previous.line);
+                    statement = ASTStmtBlock::make(parser->m_state, parser->previous.line);
                     while(true)
                     {
                         parser->ignore_new_lines();
@@ -1507,7 +1507,7 @@ struct LitCompiler
                 static LitCompiler::ASTExpression* parse_number(LitCompiler::Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, parser->previous.line, parser->previous.value);
+                    return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value);
                 }
 
                 static LitCompiler::ASTExpression* parse_lambda(LitCompiler::Parser* parser, ASTExprLambda* lambda)
@@ -1575,13 +1575,13 @@ struct LitCompiler
                     if(parser->match(LITTOK_RIGHT_PAREN))
                     {
                         parser->consume(LITTOK_ARROW, "=> after lambda arguments");
-                        return parse_lambda(parser, ASTExprLambda::make(parser->state, parser->previous.line));
+                        return parse_lambda(parser, ASTExprLambda::make(parser->m_state, parser->previous.line));
                     }
                     start = parser->previous.start;
                     line = parser->previous.line;
                     if(parser->match(LITTOK_IDENTIFIER) || parser->match(LITTOK_DOT_DOT_DOT))
                     {
-                        LitState* state = parser->state;
+                        LitState* state = parser->m_state;
                         first_arg_start = parser->previous.start;
                         first_arg_length = parser->previous.length;
                         if(parser->match(LITTOK_COMMA) || (parser->match(LITTOK_RIGHT_PAREN) && parser->match(LITTOK_ARROW)))
@@ -1660,7 +1660,7 @@ struct LitCompiler
                     LitCompiler::ASTExpression* e;
                     ASTExprVar* ee;
                     ASTExprCall* expression;
-                    expression = ASTExprCall::make(parser->state, parser->previous.line, prev);
+                    expression = ASTExprCall::make(parser->m_state, parser->previous.line, prev);
                     while(!parser->check(LITTOK_RIGHT_PAREN))
                     {
                         e = parse_expression(parser);
@@ -1696,7 +1696,7 @@ struct LitCompiler
                     op = parser->previous.type;
                     line = parser->previous.line;
                     expression = parse_precedence(parser, LITPREC_UNARY, true);
-                    return (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->state, line, expression, op);
+                    return (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->m_state, line, expression, op);
                 }
 
                 static LitCompiler::ASTExpression* parse_binary(LitCompiler::Parser* parser, LitCompiler::ASTExpression* prev, bool can_assign)
@@ -1716,10 +1716,10 @@ struct LitCompiler
                     line = parser->previous.line;
                     rule = parser->get_rule(op);
                     expression = parse_precedence(parser, (LitPrecedence)(rule->precedence + 1), true);
-                    expression = (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->state, line, prev, expression, op);
+                    expression = (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->m_state, line, prev, expression, op);
                     if(invert)
                     {
-                        expression = (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->state, line, expression, LITTOK_BANG);
+                        expression = (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->m_state, line, expression, LITTOK_BANG);
                     }
                     return expression;
                 }
@@ -1731,7 +1731,7 @@ struct LitCompiler
                     LitTokenType op;
                     op = parser->previous.type;
                     line = parser->previous.line;
-                    return (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->state, line, prev, parse_precedence(parser, LITPREC_AND, true), op);
+                    return (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_AND, true), op);
                 }
 
                 static LitCompiler::ASTExpression* parse_or(LitCompiler::Parser* parser, LitCompiler::ASTExpression* prev, bool can_assign)
@@ -1741,7 +1741,7 @@ struct LitCompiler
                     LitTokenType op;
                     op = parser->previous.type;
                     line = parser->previous.line;
-                    return (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->state, line, prev, parse_precedence(parser, LITPREC_OR, true), op);
+                    return (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_OR, true), op);
                 }
 
                 static LitCompiler::ASTExpression* parse_null_filter(LitCompiler::Parser* parser, LitCompiler::ASTExpression* prev, bool can_assign)
@@ -1751,7 +1751,7 @@ struct LitCompiler
                     LitTokenType op;
                     op = parser->previous.type;
                     line = parser->previous.line;
-                    return (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->state, line, prev, parse_precedence(parser, LITPREC_NULL, true), op);
+                    return (LitCompiler::ASTExpression*)ASTExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_NULL, true), op);
                 }
 
                 static LitTokenType convert_compound_operator(LitTokenType op)
@@ -1835,15 +1835,15 @@ struct LitCompiler
                     rule = parser->get_rule(op);
                     if(op == LITTOK_PLUS_PLUS || op == LITTOK_MINUS_MINUS)
                     {
-                        expression = (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, line, LitObject::toValue(1));
+                        expression = (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, line, LitObject::toValue(1));
                     }
                     else
                     {
                         expression = parse_precedence(parser, (LitPrecedence)(rule->precedence + 1), true);
                     }
-                    binary = ASTExprBinary::make(parser->state, line, prev, expression, convert_compound_operator(op));
+                    binary = ASTExprBinary::make(parser->m_state, line, prev, expression, convert_compound_operator(op));
                     binary->ignore_left = true;// To make sure we don't free it twice
-                    return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->state, line, prev, (LitCompiler::ASTExpression*)binary);
+                    return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->m_state, line, prev, (LitCompiler::ASTExpression*)binary);
                 }
 
                 static LitCompiler::ASTExpression* parse_literal(LitCompiler::Parser* parser, bool can_assign)
@@ -1855,17 +1855,17 @@ struct LitCompiler
                     {
                         case LITTOK_TRUE:
                             {
-                                return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, line, LitObject::TrueVal);
+                                return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, line, LitObject::TrueVal);
                             }
                             break;
                         case LITTOK_FALSE:
                             {
-                                return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, line, LitObject::FalseVal);
+                                return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, line, LitObject::FalseVal);
                             }
                             break;
                         case LITTOK_NULL:
                             {
-                                return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, line, LitObject::NullVal);
+                                return (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, line, LitObject::NullVal);
                             }
                             break;
                         default:
@@ -1881,7 +1881,7 @@ struct LitCompiler
                 {
                     (void)can_assign;
                     LitCompiler::ASTExpression* expression;
-                    expression = (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, parser->previous.line, parser->previous.value);
+                    expression = (LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value);
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
                         return parse_subscript(parser, expression, can_assign);
@@ -1893,19 +1893,19 @@ struct LitCompiler
                 {
                     ASTExprInterpolation* expression;
                     (void)can_assign;
-                    expression = ASTExprInterpolation::make(parser->state, parser->previous.line);
+                    expression = ASTExprInterpolation::make(parser->m_state, parser->previous.line);
                     do
                     {
                         if(LitObject::as<LitString>(parser->previous.value)->length() > 0)
                         {
-                            expression->expressions.push((LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, parser->previous.line, parser->previous.value));
+                            expression->expressions.push((LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value));
                         }
                         expression->expressions.push(parse_expression(parser));
                     } while(parser->match(LITTOK_INTERPOLATION));
                     parser->consume(LITTOK_STRING, "end of interpolation");
                     if(LitObject::as<LitString>(parser->previous.value)->length() > 0)
                     {
-                        expression->expressions.push((LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->state, parser->previous.line, parser->previous.value));
+                        expression->expressions.push((LitCompiler::ASTExpression*)ASTExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value));
                     }
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
@@ -1918,13 +1918,13 @@ struct LitCompiler
                 {
                     (void)can_assign;
                     ASTExprObject* objexpr;
-                    objexpr = ASTExprObject::make(parser->state, parser->previous.line);
+                    objexpr = ASTExprObject::make(parser->m_state, parser->previous.line);
                     parser->ignore_new_lines();
                     while(!parser->check(LITTOK_RIGHT_BRACE))
                     {
                         parser->ignore_new_lines();
                         parser->consume(LITTOK_IDENTIFIER, "key string after '{'");
-                        objexpr->keys.push(LitString::copy(parser->state, parser->previous.start, parser->previous.length)->asValue());
+                        objexpr->keys.push(LitString::copy(parser->m_state, parser->previous.start, parser->previous.length)->asValue());
                         parser->ignore_new_lines();
                         parser->consume(LITTOK_EQUAL, "'=' after key string");
                         parser->ignore_new_lines();
@@ -1945,7 +1945,7 @@ struct LitCompiler
                     bool had_args;
                     ASTExprCall* call;
                     LitCompiler::ASTExpression* expression;
-                    expression = (LitCompiler::ASTExpression*)ASTExprVar::make(parser->state, parser->previous.line, parser->previous.start, parser->previous.length);
+                    expression = (LitCompiler::ASTExpression*)ASTExprVar::make(parser->m_state, parser->previous.line, parser->previous.start, parser->previous.length);
                     if(isnew)
                     {
                         had_args = parser->check(LITTOK_LEFT_PAREN);
@@ -1959,7 +1959,7 @@ struct LitCompiler
                         {
                             if(call == nullptr)
                             {
-                                call = ASTExprCall::make(parser->state, expression->line, expression);
+                                call = ASTExprCall::make(parser->m_state, expression->line, expression);
                             }
                             call->objexpr = parse_object(parser, false);
                         }
@@ -1976,7 +1976,7 @@ struct LitCompiler
                     }
                     if(can_assign && parser->match(LITTOK_EQUAL))
                     {
-                        return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->state, parser->previous.line, expression,
+                        return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->m_state, parser->previous.line, expression,
                                                                             parse_expression(parser));
                     }
                     return expression;
@@ -2012,9 +2012,9 @@ struct LitCompiler
                     length = parser->previous.length;
                     if(!ignored && can_assign && parser->match(LITTOK_EQUAL))
                     {
-                        return (LitCompiler::ASTExpression*)ASTExprIndexSet::make(parser->state, line, previous, name, length, parse_expression(parser));
+                        return (LitCompiler::ASTExpression*)ASTExprIndexSet::make(parser->m_state, line, previous, name, length, parse_expression(parser));
                     }
-                    expression = (LitCompiler::ASTExpression*)ASTExprIndexGet::make(parser->state, line, previous, name, length, false, ignored);
+                    expression = (LitCompiler::ASTExpression*)ASTExprIndexGet::make(parser->m_state, line, previous, name, length, false, ignored);
                     if(!ignored && parser->match(LITTOK_LEFT_BRACKET))
                     {
                         return parse_subscript(parser, expression, can_assign);
@@ -2027,7 +2027,7 @@ struct LitCompiler
                     (void)can_assign;
                     size_t line;
                     line = parser->previous.line;
-                    return (LitCompiler::ASTExpression*)ASTExprRange::make(parser->state, line, previous, parse_expression(parser));
+                    return (LitCompiler::ASTExpression*)ASTExprRange::make(parser->m_state, line, previous, parse_expression(parser));
                 }
 
                 static LitCompiler::ASTExpression* parse_ternary_or_question(LitCompiler::Parser* parser, LitCompiler::ASTExpression* previous, bool can_assign)
@@ -2042,20 +2042,20 @@ struct LitCompiler
                     {
                         ignored = parser->previous.type == LITTOK_SMALL_ARROW;
                         parser->consume(LITTOK_IDENTIFIER, ignored ? "property name after '->'" : "property name after '.'");
-                        return (LitCompiler::ASTExpression*)ASTExprIndexGet::make(parser->state, line, previous, parser->previous.start,
+                        return (LitCompiler::ASTExpression*)ASTExprIndexGet::make(parser->m_state, line, previous, parser->previous.start,
                                                                          parser->previous.length, true, ignored);
                     }
                     if_branch = parse_expression(parser);
                     parser->consume(LITTOK_COLON, "':' after expression");
                     else_branch = parse_expression(parser);
-                    return (LitCompiler::ASTExpression*)ASTExprIfClause::make(parser->state, line, previous, if_branch, else_branch);
+                    return (LitCompiler::ASTExpression*)ASTExprIfClause::make(parser->m_state, line, previous, if_branch, else_branch);
                 }
 
                 static LitCompiler::ASTExpression* parse_array(LitCompiler::Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
                     ASTExprArray* array;
-                    array = ASTExprArray::make(parser->state, parser->previous.line);
+                    array = ASTExprArray::make(parser->m_state, parser->previous.line);
                     parser->ignore_new_lines();
                     while(!parser->check(LITTOK_RIGHT_BRACKET))
                     {
@@ -2083,14 +2083,14 @@ struct LitCompiler
                     line = parser->previous.line;
                     index = parse_expression(parser);
                     parser->consume(LITTOK_RIGHT_BRACKET, "']' after subscript");
-                    expression = (LitCompiler::ASTExpression*)ASTExprSubscript::make(parser->state, line, previous, index);
+                    expression = (LitCompiler::ASTExpression*)ASTExprSubscript::make(parser->m_state, line, previous, index);
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
                         return parse_subscript(parser, expression, can_assign);
                     }
                     else if(can_assign && parser->match(LITTOK_EQUAL))
                     {
-                        return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->state, parser->previous.line, expression, parse_expression(parser));
+                        return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->m_state, parser->previous.line, expression, parse_expression(parser));
                     }
                     return expression;
                 }
@@ -2098,7 +2098,7 @@ struct LitCompiler
                 static LitCompiler::ASTExpression* parse_this(LitCompiler::Parser* parser, bool can_assign)
                 {
                     LitCompiler::ASTExpression* expression;
-                    expression = (LitCompiler::ASTExpression*)ASTExprThis::make(parser->state, parser->previous.line);
+                    expression = (LitCompiler::ASTExpression*)ASTExprThis::make(parser->m_state, parser->previous.line);
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
                         return parse_subscript(parser, expression, can_assign);
@@ -2117,14 +2117,14 @@ struct LitCompiler
                     if(!(parser->match(LITTOK_DOT) || parser->match(LITTOK_SMALL_ARROW)))
                     {
                         expression = (LitCompiler::ASTExpression*)ASTExprSuper::make(
-                        parser->state, line, LitString::copy(parser->state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1), false);
+                        parser->m_state, line, LitString::copy(parser->m_state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1), false);
                         parser->consume(LITTOK_LEFT_PAREN, "'(' after 'super'");
                         return parse_call(parser, expression, false);
                     }
                     ignoring = parser->previous.type == LITTOK_SMALL_ARROW;
                     parser->consume(LITTOK_IDENTIFIER, ignoring ? "super method name after '->'" : "super method name after '.'");
                     expression = (LitCompiler::ASTExpression*)ASTExprSuper::make(
-                    parser->state, line, LitString::copy(parser->state, parser->previous.start, parser->previous.length), ignoring);
+                    parser->m_state, line, LitString::copy(parser->m_state, parser->previous.start, parser->previous.length), ignoring);
                     if(parser->match(LITTOK_LEFT_PAREN))
                     {
                         return parse_call(parser, expression, false);
@@ -2139,10 +2139,10 @@ struct LitCompiler
                     ASTExprReference* expression;
                     line = parser->previous.line;
                     parser->ignore_new_lines();
-                    expression = ASTExprReference::make(parser->state, line, parse_precedence(parser, LITPREC_CALL, false));
+                    expression = ASTExprReference::make(parser->m_state, line, parse_precedence(parser, LITPREC_CALL, false));
                     if(parser->match(LITTOK_EQUAL))
                     {
-                        return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->state, line, (LitCompiler::ASTExpression*)expression, parse_expression(parser));
+                        return (LitCompiler::ASTExpression*)ASTExprAssign::make(parser->m_state, line, (LitCompiler::ASTExpression*)expression, parse_expression(parser));
                     }
                     return (LitCompiler::ASTExpression*)expression;
                 }
@@ -2170,7 +2170,7 @@ struct LitCompiler
                     {
                         vexpr = parse_expression(parser);
                     }
-                    return (LitCompiler::ASTExpression*)ASTStmtVar::make(parser->state, line, name, length, vexpr, constant);
+                    return (LitCompiler::ASTExpression*)ASTStmtVar::make(parser->m_state, line, name, length, vexpr, constant);
                 }
 
                 static LitCompiler::ASTExpression* parse_if(LitCompiler::Parser* parser)
@@ -2194,7 +2194,7 @@ struct LitCompiler
                     }
                     if(invert)
                     {
-                        condition = (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->state, condition->line, condition, LITTOK_BANG);
+                        condition = (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->m_state, condition->line, condition, LITTOK_BANG);
                     }
                     parser->ignore_new_lines();
                     if_branch = parse_statement(parser);
@@ -2210,8 +2210,8 @@ struct LitCompiler
                         {
                             if(elseif_conditions == nullptr)
                             {
-                                elseif_conditions = LitCompiler::ASTExpression::makeList(parser->state);
-                                elseif_branches = LitCompiler::ASTExpression::makeList(parser->state);
+                                elseif_conditions = LitCompiler::ASTExpression::makeList(parser->m_state);
+                                elseif_branches = LitCompiler::ASTExpression::makeList(parser->m_state);
                             }
                             invert = parser->match(LITTOK_BANG);
                             had_paren = parser->match(LITTOK_LEFT_PAREN);
@@ -2224,7 +2224,7 @@ struct LitCompiler
                             parser->ignore_new_lines();
                             if(invert)
                             {
-                                e = (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->state, condition->line, e, LITTOK_BANG);
+                                e = (LitCompiler::ASTExpression*)ASTExprUnary::make(parser->m_state, condition->line, e, LITTOK_BANG);
                             }
                             elseif_conditions->push(e);
                             elseif_branches->push(parse_statement(parser));
@@ -2238,7 +2238,7 @@ struct LitCompiler
                         parser->ignore_new_lines();
                         else_branch = parse_statement(parser);
                     }
-                    return (LitCompiler::ASTExpression*)ASTStmtIfClause::make(parser->state, line, condition, if_branch, else_branch, elseif_conditions, elseif_branches);
+                    return (LitCompiler::ASTExpression*)ASTStmtIfClause::make(parser->m_state, line, condition, if_branch, else_branch, elseif_conditions, elseif_branches);
                 }
 
                 static LitCompiler::ASTExpression* parse_for(LitCompiler::Parser* parser)
@@ -2289,7 +2289,7 @@ struct LitCompiler
                         parser->consume(LITTOK_RIGHT_PAREN, "')'");
                     }
                     parser->ignore_new_lines();
-                    return (LitCompiler::ASTExpression*)ASTStmtForLoop::make(parser->state, line, exprinit, var, condition, increment,
+                    return (LitCompiler::ASTExpression*)ASTStmtForLoop::make(parser->m_state, line, exprinit, var, condition, increment,
                                                                    parse_statement(parser), c_style);
                 }
 
@@ -2307,7 +2307,7 @@ struct LitCompiler
                     }
                     parser->ignore_new_lines();
                     body = parse_statement(parser);
-                    return (LitCompiler::ASTExpression*)ASTStmtWhileLoop::make(parser->state, line, condition, body);
+                    return (LitCompiler::ASTExpression*)ASTStmtWhileLoop::make(parser->m_state, line, condition, body);
                 }
 
                 static LitCompiler::ASTExpression* parse_function(LitCompiler::Parser* parser)
@@ -2332,9 +2332,9 @@ struct LitCompiler
                     if(parser->match(LITTOK_DOT))
                     {
                         parser->consume(LITTOK_IDENTIFIER, "function name");
-                        lambda = ASTExprLambda::make(parser->state, line);
+                        lambda = ASTExprLambda::make(parser->m_state, line);
                         to = ASTExprIndexSet::make(
-                        parser->state, line, (LitCompiler::ASTExpression*)ASTExprVar::make(parser->state, line, function_name, function_length),
+                        parser->m_state, line, (LitCompiler::ASTExpression*)ASTExprVar::make(parser->m_state, line, function_name, function_length),
                         parser->previous.start, parser->previous.length, (LitCompiler::ASTExpression*)lambda);
                         parser->consume(LITTOK_LEFT_PAREN, "'(' after function name");
                         compiler.init(parser);
@@ -2349,9 +2349,9 @@ struct LitCompiler
                         lambda->body = parse_statement(parser);
                         parser->end_scope();
                         parser->end_compiler(&compiler);
-                        return (LitCompiler::ASTExpression*)ASTExprStatement::make(parser->state, line, (LitCompiler::ASTExpression*)to);
+                        return (LitCompiler::ASTExpression*)ASTExprStatement::make(parser->m_state, line, (LitCompiler::ASTExpression*)to);
                     }
-                    function = ASTStmtFunction::make(parser->state, line, function_name, function_length);
+                    function = ASTStmtFunction::make(parser->m_state, line, function_name, function_length);
                     function->exported = isexport;
                     parser->consume(LITTOK_LEFT_PAREN, "'(' after function name");
                     compiler.init(parser);
@@ -2378,7 +2378,7 @@ struct LitCompiler
                     {
                         expression = parse_expression(parser);
                     }
-                    return (LitCompiler::ASTExpression*)ASTStmtReturn::make(parser->state, line, expression);
+                    return (LitCompiler::ASTExpression*)ASTStmtReturn::make(parser->m_state, line, expression);
                 }
 
                 static LitCompiler::ASTExpression* parse_field(LitCompiler::Parser* parser, LitString* name, bool is_static)
@@ -2415,7 +2415,7 @@ struct LitCompiler
                         parser->ignore_new_lines();
                         parser->consume(LITTOK_RIGHT_BRACE, "'}' after field declaration");
                     }
-                    return (LitCompiler::ASTExpression*)ASTStmtField::make(parser->state, line, name, getter, setter, is_static);
+                    return (LitCompiler::ASTExpression*)ASTStmtField::make(parser->m_state, line, name, getter, setter, is_static);
                 }
 
                 static LitCompiler::ASTExpression* parse_method(LitCompiler::Parser* parser, bool is_static)
@@ -2448,23 +2448,23 @@ struct LitCompiler
                         if(parser->previous.type == LITTOK_LEFT_BRACKET)
                         {
                             parser->consume(LITTOK_RIGHT_BRACKET, "']' after '[' in op method declaration");
-                            name = LitString::copy(parser->state, "[]", 2);
+                            name = LitString::copy(parser->m_state, "[]", 2);
                         }
                         else
                         {
-                            name = LitString::copy(parser->state, parser->previous.start, parser->previous.length);
+                            name = LitString::copy(parser->m_state, parser->previous.start, parser->previous.length);
                         }
                     }
                     else
                     {
                         parser->consume(LITTOK_IDENTIFIER, "method name");
-                        name = LitString::copy(parser->state, parser->previous.start, parser->previous.length);
+                        name = LitString::copy(parser->m_state, parser->previous.start, parser->previous.length);
                         if(parser->check(LITTOK_LEFT_BRACE) || parser->check(LITTOK_ARROW))
                         {
                             return parse_field(parser, name, is_static);
                         }
                     }
-                    method = ASTStmtMethod::make(parser->state, parser->previous.line, name, is_static);
+                    method = ASTStmtMethod::make(parser->m_state, parser->previous.line, name, is_static);
                     compiler.init(parser);
                     parser->begin_scope();
                     parser->consume(LITTOK_LEFT_PAREN, "'(' after method name");
@@ -2502,18 +2502,18 @@ struct LitCompiler
                         parser->consume(LITTOK_CLASS, "'class' after 'static'");
                     }
                     parser->consume(LITTOK_IDENTIFIER, "class name after 'class'");
-                    name = LitString::copy(parser->state, parser->previous.start, parser->previous.length);
+                    name = LitString::copy(parser->m_state, parser->previous.start, parser->previous.length);
                     super = nullptr;
                     if(parser->match(LITTOK_COLON))
                     {
                         parser->consume(LITTOK_IDENTIFIER, "super class name after ':'");
-                        super = LitString::copy(parser->state, parser->previous.start, parser->previous.length);
+                        super = LitString::copy(parser->m_state, parser->previous.start, parser->previous.length);
                         if(super == name)
                         {
                             parser->raiseError(LitError::LITERROR_SELF_INHERITED_CLASS);
                         }
                     }
-                    klass = ASTStmtClass::make(parser->state, line, name, super);
+                    klass = ASTStmtClass::make(parser->m_state, line, name, super);
                     parser->ignore_new_lines();
                     parser->consume(LITTOK_LEFT_BRACE, "'{' before class body");
                     parser->ignore_new_lines();
@@ -2582,11 +2582,11 @@ struct LitCompiler
                     }
                     else if(parser->match(LITTOK_CONTINUE))
                     {
-                        return (LitCompiler::ASTExpression*)ASTStmtContinue::make(parser->state, parser->previous.line);
+                        return (LitCompiler::ASTExpression*)ASTStmtContinue::make(parser->m_state, parser->previous.line);
                     }
                     else if(parser->match(LITTOK_BREAK))
                     {
-                        return (LitCompiler::ASTExpression*)ASTStmtBreak::make(parser->state, parser->previous.line);
+                        return (LitCompiler::ASTExpression*)ASTStmtBreak::make(parser->m_state, parser->previous.line);
                     }
                     else if(parser->match(LITTOK_FUNCTION) || parser->match(LITTOK_EXPORT))
                     {
@@ -2601,7 +2601,7 @@ struct LitCompiler
                         return parse_block(parser);
                     }
                     expression = parse_expression(parser);
-                    return expression == nullptr ? nullptr : (LitCompiler::ASTExpression*)ASTExprStatement::make(parser->state, parser->previous.line, expression);
+                    return expression == nullptr ? nullptr : (LitCompiler::ASTExpression*)ASTExprStatement::make(parser->m_state, parser->previous.line, expression);
                 }
 
                 static LitCompiler::ASTExpression* parse_declaration(LitCompiler::Parser* parser)
@@ -2621,7 +2621,7 @@ struct LitCompiler
 
 
             public:
-                LitState* state;
+                LitState* m_state;
                 bool had_error;
                 bool panic_mode;
                 Token previous;
@@ -2734,7 +2734,7 @@ struct LitCompiler
 
                 void errorAt(LitCompiler::Token* token, LitError error, va_list args)
                 {
-                    stringError(token, lit_vformat_error(this->state, token->line, error, args)->chars);
+                    stringError(token, lit_vformat_error(this->m_state, token->line, error, args)->chars);
                 }
 
                 void errorAtCurrent(LitError error, ...)
@@ -2758,7 +2758,7 @@ struct LitCompiler
                     this->previous = this->current;
                     while(true)
                     {
-                        this->current = getStateScanner(this->state)->scan_token();
+                        this->current = getStateScanner(this->m_state)->scan_token();
                         if(this->current.type != LITTOK_ERROR)
                         {
                             break;
@@ -2813,7 +2813,7 @@ struct LitCompiler
                     line = this->previous.type == LITTOK_NEW_LINE;
                     olen = (line ? 8 : this->previous.length);
                     otext = (line ? "new line" : this->previous.start);
-                    fmt = lit_format_error(this->state, this->current.line, LitError::LITERROR_EXPECTATION_UNMET, error, olen, otext)->chars;
+                    fmt = lit_format_error(this->m_state, this->current.line, LitError::LITERROR_EXPECTATION_UNMET, error, olen, otext)->chars;
                     stringError(&this->current,fmt);
                 }
 
@@ -2850,12 +2850,44 @@ struct LitCompiler
                         }
                     }
                 }
+
+                bool parse(const char* file_name, const char* source, LitCompiler::ASTExpression::List& statements)
+                {
+                    LitCompiler compiler;
+                    LitCompiler::ASTExpression* statement;
+                    this->had_error = false;
+                    this->panic_mode = false;
+                    this->getStateScanner(this->m_state)->init(this->m_state, file_name, source);
+                    compiler.init(this);
+                    this->advance();
+                    this->ignore_new_lines();
+                    if(!this->is_at_end())
+                    {
+                        do
+                        {
+                            statement = LitCompiler::Parser::parse_declaration(this);
+                            if(statement != nullptr)
+                            {
+                                statements.push(statement);
+                            }
+                            if(!this->match_new_line())
+                            {
+                                if(this->match(LITTOK_EOF))
+                                {
+                                    break;
+                                }
+                            }
+                        } while(!this->is_at_end());
+                    }
+                    return this->had_error || this->getStateScanner(this->m_state)->had_error;
+                }
+
         };
 
         struct Optimizer
         {
             public:
-                LitState* state;
+                LitState* m_state;
                 PCGenericArray<LitCompiler::ASTVariable> variables;
                 int depth;
                 bool mark_used;
@@ -2863,7 +2895,7 @@ struct LitCompiler
             public:
                 void init(LitState* state)
                 {
-                    this->state = state;
+                    this->m_state = state;
                     this->depth = -1;
                     this->mark_used = false;
                     this->variables.init(state);
