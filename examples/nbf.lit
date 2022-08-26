@@ -18,13 +18,14 @@ class Memory
     {
         if(i >= this.actualmem.length)
         {
-            this.actualmem.push(0)
+            while(i >= this.actualmem.length)
+                this.actualmem.push(0)
         }
         if(val != null)
         {
             this.actualmem[i] = val
         }
-        return this.actualmem[i]
+        return (this.actualmem[i] | 0)
     }
 }
 

@@ -161,7 +161,7 @@
 
 
 #define LIT_GROW_CAPACITY(capacity) \
-    ((capacity) < 8 ? 8 : (capacity)*2)
+    (((capacity) < 8) ? (8) : ((capacity) * 2))
 
 #define LIT_GROW_ARRAY(state, previous, type, old_count, count) \
     (type*)Memory::reallocate(state, previous, sizeof(type) * (old_count), sizeof(type) * (count))
@@ -206,6 +206,13 @@
         lit_runtime_error(vm, "expected maximum %i argument, got %i", count, argc); \
         return lit::Object::NullVal; \
     }
+
+
+#define PUSH(value) (*fiber->stack_top++ = value)
+
+#define RETURN_OK(r) return InterpretResult{ LITRESULT_OK, r };
+
+#define RETURN_RUNTIME_ERROR() return InterpretResult{ LITRESULT_RUNTIME_ERROR, Object::NullVal };
 
 namespace lit
 {
@@ -535,6 +542,7 @@ namespace lit
     struct /**/Writer;
     struct /**/State;
     struct /**/VM;
+    struct /**/Array;
     struct /**/Map;
     struct /**/Userdata;
     struct /**/String;
@@ -557,6 +565,10 @@ namespace lit
     String* lit_vformat_error(State* state, size_t line, Error error, va_list args);
     String* lit_format_error(State* state, size_t line, Error error, ...);
     int lit_closest_power_of_two(int n);
+    bool lit_handle_runtime_error(VM* vm, String* error_string);
+    bool lit_vruntime_error(VM* vm, const char* format, va_list args);
+    bool lit_runtime_error(VM* vm, const char* format, ...);
+    bool lit_runtime_error_exiting(VM* vm, const char* format, ...);
 
     class Memory
     {
@@ -624,6 +636,10 @@ namespace lit
             State* m_state = nullptr;
             //ElementT m_initialbuf[10];
 
+        private:
+            template<typename... ArgsT>
+            inline void raiseError(const char* fmt, ArgsT&&... args);
+
         public:
             inline PCGenericArray()
             {
@@ -663,11 +679,15 @@ namespace lit
             inline void push(const ElementT& value)
             {
                 size_t oldcap;
-                if(m_capacity < m_count + 1)
+                if(m_capacity < (m_count + 1))
                 {
                     oldcap = m_capacity;
                     m_capacity = LIT_GROW_CAPACITY(oldcap);
                     m_values = LIT_GROW_ARRAY(m_state, m_values, ElementT, oldcap, m_capacity);
+                    if(m_values == nullptr)
+                    {
+                        raiseError("GenericArray: FAILED to grow array!");
+                    }
                 }
                 m_values[m_count] = value;
                 m_count++;
@@ -704,6 +724,147 @@ namespace lit
             {
                 m_count--;
                 return m_values[m_count];
+            }
+    };
+
+    struct Writer
+    {
+        public:
+            using WriteByteFuncType = void(*)(Writer*, int);
+            using WriteStringFuncType = void(*)(Writer*, const char*, size_t);
+            using WriteFormatFuncType = void(*)(Writer*, const char*, va_list);
+
+        public:
+            static void stringAppend(String* ds, int byte);
+            static void stringAppend(String* ds, const char* str, size_t len);
+            static void stringAppendFormat(String* ds, const char* fmt, va_list va);
+
+            static void cb_writebyte(Writer* wr, int byte)
+            {
+                String* ds;
+                if(wr->stringmode)
+                {
+                    ds = (String*)wr->uptr;
+                    stringAppend(ds, byte);        
+                }
+                else
+                {
+                    fputc(byte, (FILE*)wr->uptr);
+                }
+            }
+
+            static void cb_writestring(Writer* wr, const char* string, size_t len)
+            {
+                String* ds;
+                if(wr->stringmode)
+                {
+                    ds = (String*)wr->uptr;
+                    stringAppend(ds, string, len);
+                }
+                else
+                {
+                    fwrite(string, sizeof(char), len, (FILE*)wr->uptr);
+                }
+            }
+
+            static void cb_writeformat(Writer* wr, const char* fmt, va_list va)
+            {
+                String* ds;
+                if(wr->stringmode)
+                {
+                    ds = (String*)wr->uptr;
+                    stringAppendFormat(ds, fmt, va);
+                }
+                else
+                {
+                    vfprintf((FILE*)wr->uptr, fmt, va);
+                }
+            }
+
+            static void initDefault(State* state, Writer* wr)
+            {
+                wr->m_state = state;
+                wr->forceflush = false;
+                wr->stringmode = false;
+                wr->fnbyte = cb_writebyte;
+                wr->fnstring = cb_writestring;
+                wr->fnformat = cb_writeformat;
+            }
+
+
+        public:
+            State* m_state;
+            /* the main pointer, that either holds a pointer to a String, or a FILE */
+            void* uptr;
+
+            /* if true, then uptr is a String, otherwise it's a FILE */
+            bool stringmode;
+
+            /* if true, and !stringmode, then calls fflush() after each i/o operations */
+            bool forceflush;
+
+            /* the callback that emits a single character */
+            WriteByteFuncType fnbyte;
+
+            /* the callback that emits a string */
+            WriteStringFuncType fnstring;
+
+            /* the callback that emits a format string (printf-style) */
+            WriteFormatFuncType fnformat;
+
+        public:
+            /*
+            * creates a Writer that writes to the given FILE.
+            * if $forceflush is true, then fflush() is called after each i/o operation.
+            */
+            void initFile(State* state, FILE* fh, bool forceflush)
+            {
+                initDefault(state, this);
+                this->uptr = fh;
+                this->forceflush = forceflush;
+            }
+
+            /*
+            * creates a Writer that writes to a buffer.
+            */
+            void initString(State* state);
+
+            /* emit a single byte */
+            void put(int byte)
+            {
+                this->fnbyte(this, byte);
+            }
+
+            void put(const char* str, size_t len)
+            {
+                this->fnstring(this, str, len);
+            }
+
+            /* emit a string */
+            void put(std::string_view sv)
+            {
+                this->fnstring(this, sv.data(), sv.size());
+            }
+
+            /* emit a printf-style formatted string */
+            void format(const char* fmt, ...)
+            {
+                va_list va;
+                va_start(va, fmt);
+                this->fnformat(this, fmt, va);
+                va_end(va);
+            }
+
+            /*
+            * returns a String* if this Writer was initiated via lit_writer_init_string, otherwise nullptr.
+            */
+            String* asString()
+            {
+                if(this->stringmode)
+                {
+                    return (String*)this->uptr;
+                }
+                return nullptr;
             }
     };
 
@@ -921,6 +1082,101 @@ namespace lit
             static inline bool isReference(Value value)
             {
                 return Object::isObjectType(value, Object::Type::Reference);
+            }
+
+            static bool isCallableFunction(Value value)
+            {
+                if(Object::isObject(value))
+                {
+                    Object::Type type = OBJECT_TYPE(value);
+                    return (
+                        (type == Object::Type::Closure) ||
+                        (type == Object::Type::Function) ||
+                        (type == Object::Type::NativeFunction) ||
+                        (type == Object::Type::NativePrimitive) ||
+                        (type == Object::Type::NativeMethod) ||
+                        (type == Object::Type::PrimitiveMethod) ||
+                        (type == Object::Type::BoundMethod)
+                    );
+                }
+                return false;
+            }
+
+            static String* functionName(VM* vm, Value instance);
+
+            static String* toString(State* state, Value valobj);
+
+            static const char* valueName(Value value)
+            {
+                static const char* object_type_names[] =
+                {
+                    "string",
+                    "function",
+                    "native_function",
+                    "native_primitive",
+                    "native_method",
+                    "primitive_method",
+                    "fiber",
+                    "module",
+                    "closure",
+                    "upvalue",
+                    "class",
+                    "instance",
+                    "bound_method",
+                    "array",
+                    "map",
+                    "userdata",
+                    "range",
+                    "field",
+                    "reference"
+                };
+                if(Object::isBool(value))
+                {
+                    return "bool";
+                }
+                else if(Object::isNull(value))
+                {
+                    return "null";
+                }
+                else if(Object::isNumber(value))
+                {
+                    return "number";
+                }
+                else if(Object::isObject(value))
+                {
+                    return object_type_names[(int)OBJECT_TYPE(value)];
+                }
+                return "unknown";
+            }
+
+            // a helper to get State from a VM pointer
+            static inline State* asState(VM* vm);
+
+            static void printArray(State* state, Writer* wr, Array* array, size_t size);
+
+            static void printMap(State* state, Writer* wr, Map* map, size_t size);
+
+            static void printObject(State* state, Writer* wr, Value value);
+
+            static void print(State* state, Writer* wr, Value value)
+            {
+
+                if(Object::isBool(value))
+                {
+                    wr->put(Object::asBool(value) ? "true" : "false");
+                }
+                else if(Object::isNull(value))
+                {
+                    wr->put("null");
+                }
+                else if(Object::isNumber(value))
+                {
+                    wr->format("%g", Object::toNumber(value));
+                }
+                else if(Object::isObject(value))
+                {
+                    printObject(state, wr, value);
+                }
             }
 
         public:
@@ -1364,8 +1620,8 @@ namespace lit
                                 }
                                 else
                                 {
-                                    //fprintf(stderr, "format: not a string, but a '%s'\n", lit_get_value_type(val));
-                                    //string = lit_to_string(state, val);
+                                    //fprintf(stderr, "format: not a string, but a '%s'\n", Object::valueName(val));
+                                    //string = Object::toString(state, val);
                                     goto default_ending_copying;
                                 }
                                 if(string != nullptr)
@@ -2130,154 +2386,6 @@ namespace lit
             }
     };
 
-    struct Writer
-    {
-        public:
-            using WriteByteFuncType = void(*)(Writer*, int);
-            using WriteStringFuncType = void(*)(Writer*, const char*, size_t);
-            using WriteFormatFuncType = void(*)(Writer*, const char*, va_list);
-
-        public:
-            static void cb_writebyte(Writer* wr, int byte)
-            {
-                String* ds;
-                if(wr->stringmode)
-                {
-                    ds = (String*)wr->uptr;
-                    ds->append(byte);        
-                }
-                else
-                {
-                    fputc(byte, (FILE*)wr->uptr);
-                }
-            }
-
-            static void cb_writestring(Writer* wr, const char* string, size_t len)
-            {
-                String* ds;
-                if(wr->stringmode)
-                {
-                    ds = (String*)wr->uptr;
-                    ds->append(string, len);
-                }
-                else
-                {
-                    fwrite(string, sizeof(char), len, (FILE*)wr->uptr);
-                }
-            }
-
-            static void cb_writeformat(Writer* wr, const char* fmt, va_list va)
-            {
-                String* ds;
-                if(wr->stringmode)
-                {
-                    ds = (String*)wr->uptr;
-                    ds->chars = sdscatvprintf(ds->chars, fmt, va);
-                }
-                else
-                {
-                    vfprintf((FILE*)wr->uptr, fmt, va);
-                }
-            }
-
-            static void initDefault(State* state, Writer* wr)
-            {
-                wr->m_state = state;
-                wr->forceflush = false;
-                wr->stringmode = false;
-                wr->fnbyte = cb_writebyte;
-                wr->fnstring = cb_writestring;
-                wr->fnformat = cb_writeformat;
-            }
-
-
-        public:
-            State* m_state;
-            /* the main pointer, that either holds a pointer to a String, or a FILE */
-            void* uptr;
-
-            /* if true, then uptr is a String, otherwise it's a FILE */
-            bool stringmode;
-
-            /* if true, and !stringmode, then calls fflush() after each i/o operations */
-            bool forceflush;
-
-            /* the callback that emits a single character */
-            WriteByteFuncType fnbyte;
-
-            /* the callback that emits a string */
-            WriteStringFuncType fnstring;
-
-            /* the callback that emits a format string (printf-style) */
-            WriteFormatFuncType fnformat;
-
-        public:
-            /*
-            * creates a Writer that writes to the given FILE.
-            * if $forceflush is true, then fflush() is called after each i/o operation.
-            */
-            void initFile(State* state, FILE* fh, bool forceflush)
-            {
-                initDefault(state, this);
-                this->uptr = fh;
-                this->forceflush = forceflush;
-            }
-
-            /*
-            * creates a Writer that writes to a buffer.
-            */
-            void initString(State* state)
-            {
-                initDefault(state, this);
-                this->stringmode = true;
-                this->uptr = String::allocEmpty(state, 0, false);
-            }
-
-            /* emit a single byte */
-            void put(int byte)
-            {
-                this->fnbyte(this, byte);
-            }
-
-            void put(const char* str, size_t len)
-            {
-                this->fnstring(this, str, len);
-            }
-
-            /* emit a string */
-            void put(std::string_view sv)
-            {
-                this->fnstring(this, sv.data(), sv.size());
-            }
-
-            /* emit a printf-style formatted string */
-            void format(const char* fmt, ...)
-            {
-                va_list va;
-                va_start(va, fmt);
-                this->fnformat(this, fmt, va);
-                va_end(va);
-            }
-
-            /*
-            * returns a String* if this Writer was initiated via lit_writer_init_string, otherwise nullptr.
-            */
-            String* asString()
-            {
-                if(this->stringmode)
-                {
-                    return (String*)this->uptr;
-                }
-                return nullptr;
-            }
-
-    };
-
-
-
-
-
-
     struct Local
     {
         const char* name;
@@ -2287,34 +2395,17 @@ namespace lit
         bool constant;
     };
 
-    struct CompilerUpvalue
-    {
-        uint8_t index;
-        bool isLocal;
-    };
-
-
-
     struct EmulatedFile
     {
         const char* source;
         size_t position;
     };
 
-
-
-
-
     struct Private
     {
         bool initialized;
         bool constant;
     };
-
-
-
-
-
 
     struct CallFrame
     {
@@ -2466,27 +2557,103 @@ namespace lit
                 return fiber;
             }
 
+            static bool ensureFiber(State* state, VM* vm, Fiber* fiber)
+            {
+                size_t newcapacity;
+                size_t osize;
+                size_t newsize;
+                if(fiber == nullptr)
+                {
+                    lit_runtime_error(vm, "no fiber to run on");
+                    return true;
+                }
+                if(fiber->frame_count == LIT_CALL_FRAMES_MAX)
+                {
+                    lit_runtime_error(vm, "fiber frame overflow");
+                    return true;
+                }
+                if(fiber->frame_count + 1 > fiber->frame_capacity)
+                {
+                    //newcapacity = fmin(LIT_CALL_FRAMES_MAX, fiber->frame_capacity * 2);
+                    newcapacity = (fiber->frame_capacity * 2) + 1;
+                    osize = (sizeof(CallFrame) * fiber->frame_capacity);
+                    newsize = (sizeof(CallFrame) * newcapacity);
+                    fiber->frames = (CallFrame*)Memory::reallocate(state, fiber->frames, osize, newsize);
+                    fiber->frame_capacity = newcapacity;
+                }
+                return false;
+            }
+
+            static bool ensureFiber(VM* vm, Fiber* fiber);
 
         public:
-            Fiber* parent;
-            Value* stack;
-            Value* stack_top;
-            size_t stack_capacity;
-            CallFrame* frames;
-            size_t frame_capacity;
-            size_t frame_count;
-            size_t arg_count;
-            Upvalue* open_upvalues;
-            Module* module;
-            Value error;
-            bool abort;
-            bool catcher;
+            Fiber* parent = nullptr;
+            Value* stack = nullptr;
+            Value* stack_top = nullptr;
+            size_t stack_capacity = 0;
+            CallFrame* frames = nullptr;
+            size_t frame_capacity = 0;
+            size_t frame_count = 0;
+            size_t arg_count = 0;
+            Upvalue* open_upvalues = nullptr;
+            Module* module = nullptr;
+            Value error = Object::NullVal;
+            bool abort = false;
+            bool catcher = false;
+
+        public:
+            void ensure_stack(size_t needed)
+            {
+                size_t i;
+                size_t capacity;
+                Value* old_stack;
+                Upvalue* upvalue;
+                if(this->stack_capacity >= needed)
+                {
+                    return;
+                }
+                capacity = (size_t)lit_closest_power_of_two((int)needed);
+                old_stack = this->stack;
+                this->stack = (Value*)Memory::reallocate(m_state, this->stack, sizeof(Value) * this->stack_capacity, sizeof(Value) * capacity);
+                this->stack_capacity = capacity;
+                if(this->stack != old_stack)
+                {
+                    for(i = 0; i < this->frame_capacity; i++)
+                    {
+                        CallFrame* frame = &this->frames[i];
+                        frame->slots = this->stack + (frame->slots - old_stack);
+                    }
+                    for(upvalue = this->open_upvalues; upvalue != nullptr; upvalue = upvalue->next)
+                    {
+                        upvalue->location = this->stack + (upvalue->location - old_stack);
+                    }
+                    this->stack_top = this->stack + (this->stack_top - old_stack);
+                }
+            }
+
     };
 
 
     struct Class: public Object
     {
         public:
+            static Value defaultfn_tostring(VM* vm, Value instance, size_t argc, Value* argv)
+            {
+                const char* fmtpat;
+                (void)argc;
+                (void)argv;
+                fmtpat = "<class @>";
+                // this assumes toString() wasn't overriden
+                if(!Object::isNull(instance))
+                {
+                    if(!Object::isClass(instance))
+                    {
+                        fmtpat = "<instance @>";
+                    }
+                }
+                return String::format(Object::asState(vm), fmtpat, Object::as<Class>(instance)->name->asValue())->asValue();
+            }
+
             static Class* make(State* state, String* name)
             {
                 Class* klass;
@@ -2496,6 +2663,10 @@ namespace lit
                 klass->super = nullptr;
                 klass->methods.init(state);
                 klass->static_fields.init(state);
+
+                klass->bindMethod("toString", defaultfn_tostring);
+                klass->setStaticMethod("toString", defaultfn_tostring);
+
                 return klass;
             }
 
@@ -2691,8 +2862,19 @@ namespace lit
 
     struct BoundMethod: public Object
     {
-        Value receiver;
-        Value method;
+        static BoundMethod* make(State* state, Value receiver, Value method)
+        {
+            BoundMethod* bound_method;
+            bound_method = Object::make<BoundMethod>(state, Object::Type::BoundMethod);
+            bound_method->receiver = receiver;
+            bound_method->method = method;
+            return bound_method;
+        }
+
+
+        public:
+            Value receiver;
+            Value method;
     };
 
     struct Array: public Object
@@ -2774,6 +2956,25 @@ namespace lit
             using CleanupFuncType = void(*)(State*, Userdata*, bool);
 
         public:
+            static Userdata* make(State* state, size_t size, bool ispointeronly)
+            {
+                Userdata* userdata;
+                userdata = Object::make<Userdata>(state, Object::Type::Userdata);
+                userdata->data = nullptr;
+                if(size > 0)
+                {
+                    if(!ispointeronly)
+                    {
+                        userdata->data = Memory::reallocate(state, nullptr, 0, size);
+                    }
+                }
+                userdata->size = size;
+                userdata->cleanup_fn = nullptr;
+                userdata->canfree = true;
+                return userdata;
+            }
+
+        public:
             void* data;
             size_t size;
             CleanupFuncType cleanup_fn;
@@ -2782,13 +2983,35 @@ namespace lit
 
     struct Range: public Object
     {
-        double from;
-        double to;
+        public:
+            static Range* make(State* state, double from, double to)
+            {
+                Range* range;
+                range = Object::make<Range>(state, Object::Type::Range);
+                range->from = from;
+                range->to = to;
+                return range;
+            }
+
+        public:
+            double from;
+            double to;
     };
 
     struct Reference: public Object
     {
-        Value* slot;
+        public:
+            static Reference* make(State* state, Value* slot)
+            {
+                Reference* reference;
+                reference = Object::make<Reference>(state, Object::Type::Reference);
+                reference->slot = slot;
+                return reference;
+            }
+
+
+        public:
+            Value* slot;
     };
 
     namespace AST
@@ -4231,17 +4454,23 @@ namespace lit
                     }
                     return make_error_token(Error::LITERROR_UNEXPECTED_CHAR, c);
                 }
-
         };
 
         struct Compiler
         {
             public:
+                struct CCUpvalue
+                {
+                    uint8_t index;
+                    bool isLocal;
+                };
+
+            public:
                 PCGenericArray<Local> locals;
                 int scope_depth;
                 Function* function;
                 FunctionType type;
-                CompilerUpvalue upvalues[UINT8_COUNT];
+                CCUpvalue upvalues[UINT8_COUNT];
                 Compiler* enclosing;
                 bool skip_return;
                 size_t loop_depth;
@@ -4281,7 +4510,6 @@ namespace lit
                     this->open_ifs.release();
                 }
         };
-
 
         struct Parser
         {
@@ -8331,6 +8559,14 @@ namespace lit
     }
     // endast
 
+    struct InterpretResult
+    {
+        /* the result of this interpret/call attempt */
+        InterpretResultType type;
+        /* the value returned from this interpret/call attempt */
+        Value result;
+    };
+
     struct State
     {
         public:
@@ -8409,6 +8645,8 @@ namespace lit
         public:
             void init(VM* vm);
             int64_t release();
+
+            Fiber* getVMFiber();
 
             void native_exit_jump()
             {
@@ -8635,6 +8873,41 @@ namespace lit
                 this->popRoots(2);
             }
 
+            Upvalue* captureUpvalue(Value* local);
+
+            InterpretResult execModule(Module* module);
+
+            InterpretResult execFiber(Fiber* fiber);
+
+            CallFrame* setupCall(Function* callee, Value* argv, uint8_t argc, bool ignfiber);
+
+            InterpretResult execCall(CallFrame* frame);
+
+            InterpretResult callFunction(Function* callee, Value* argv, uint8_t argc, bool ignfiber)
+            {
+                return execCall(this->setupCall(callee, argv, argc, ignfiber));
+            }
+
+            InterpretResult callClosure(Closure* callee, Value* argv, uint8_t argc, bool ignfiber)
+            {
+                CallFrame* frame;
+                frame = this->setupCall(callee->function, argv, argc, ignfiber);
+                if(frame == nullptr)
+                {
+                    RETURN_RUNTIME_ERROR();
+                }
+                frame->closure = callee;
+                return this->execCall(frame);
+            }
+
+            InterpretResult callMethod(Value instance, Value callee, Value* argv, uint8_t argc, bool ignfiber);
+
+            InterpretResult call(Value callee, Value* argv, uint8_t argc, bool ignfiber)
+            {
+                return this->callMethod(callee, callee, argv, argc, ignfiber);
+            }
+
+            InterpretResult findAndCallMethod(Value callee, String* method_name, Value* argv, uint8_t argc, bool ignfiber);
     };
 
     struct VM
@@ -8678,6 +8951,125 @@ namespace lit
                 this->modules = nullptr;
             }
 
+            inline void push(Value value)
+            {
+                *(fiber->stack_top) = value;
+                fiber->stack_top++;
+            }
+
+            inline Value pop()
+            {
+                Value rt;
+                rt = *(fiber->stack_top);
+                fiber->stack_top--;
+                return rt;
+            }
+
+            void closeUpvalues(const Value* last)
+            {
+                Fiber* fiber;
+                Upvalue* upvalue;
+                fiber = this->fiber;
+                while(fiber->open_upvalues != nullptr && fiber->open_upvalues->location >= last)
+                {
+                    upvalue = fiber->open_upvalues;
+                    upvalue->closed = *upvalue->location;
+                    upvalue->location = &upvalue->closed;
+                    fiber->open_upvalues = upvalue->next;
+                }
+            }
+
+            bool dispatchCall(Function* function, Closure* closure, uint8_t arg_count)
+            {
+                bool vararg;
+                size_t amount;
+                size_t i;
+                size_t osize;
+                size_t newcapacity;
+                size_t newsize;
+                size_t vararg_count;
+                size_t function_arg_count;
+                CallFrame* frame;
+                Fiber* fiber;
+                Array* array;
+                fiber = this->fiber;
+
+                #if 0
+                //if(fiber->frame_count == LIT_CALL_FRAMES_MAX)
+                //{
+                    //lit_runtime_error(this, "call stack overflow");
+                    //return true;
+                //}
+                #endif
+                if(fiber->frame_count + 1 > fiber->frame_capacity)
+                {
+                    //newcapacity = fmin(LIT_CALL_FRAMES_MAX, fiber->frame_capacity * 2);
+                    newcapacity = (fiber->frame_capacity * 2);
+                    newsize = (sizeof(CallFrame) * newcapacity);
+                    osize = (sizeof(CallFrame) * fiber->frame_capacity);
+                    fiber->frames = (CallFrame*)Memory::reallocate(this->m_state, fiber->frames, osize, newsize);
+                    fiber->frame_capacity = newcapacity;
+                }
+
+                function_arg_count = function->arg_count;
+                fiber->ensure_stack(function->max_slots + (int)(fiber->stack_top - fiber->stack));
+                frame = &fiber->frames[fiber->frame_count++];
+                frame->function = function;
+                frame->closure = closure;
+                frame->ip = function->chunk.code;
+                frame->slots = fiber->stack_top - arg_count - 1;
+                frame->result_ignored = false;
+                frame->return_to_c = false;
+                if(arg_count != function_arg_count)
+                {
+                    vararg = function->vararg;
+                    if(arg_count < function_arg_count)
+                    {
+                        amount = (int)function_arg_count - arg_count - (vararg ? 1 : 0);
+                        for(i = 0; i < amount; i++)
+                        {
+                            this->push(Object::NullVal);
+                        }
+                        if(vararg)
+                        {
+                            this->push(Array::make(this->m_state)->asValue());
+                        }
+                    }
+                    else if(function->vararg)
+                    {
+                        array = Array::make(this->m_state);
+                        vararg_count = arg_count - function_arg_count + 1;
+                        this->m_state->pushRoot((Object*)array);
+                        array->m_actualarray.reserve(vararg_count, Object::NullVal);
+                        this->m_state->popRoot();
+                        for(i = 0; i < vararg_count; i++)
+                        {
+                            array->m_actualarray.m_values[i] = this->fiber->stack_top[(int)i - (int)vararg_count];
+                        }
+                        this->fiber->stack_top -= vararg_count;
+                        this->push(array->asValue());
+                    }
+                    else
+                    {
+                        this->fiber->stack_top -= (arg_count - function_arg_count);
+                    }
+                }
+                else if(function->vararg)
+                {
+                    array = Array::make(this->m_state);
+                    vararg_count = arg_count - function_arg_count + 1;
+                    this->m_state->pushRoot((Object*)array);
+                    array->push(*(fiber->stack_top - 1));
+                    *(fiber->stack_top - 1) = array->asValue();
+                    this->m_state->popRoot();
+                }
+                return true;
+            }
+
+
+
+            bool callValue(Value callee, uint8_t arg_count);
+
             void markObject(Object* obj)
             {
                 if(obj == nullptr || obj->marked)
@@ -8687,7 +9079,7 @@ namespace lit
                 obj->marked = true;
             #ifdef LIT_LOG_MARKING
                 printf("%p mark ", (void*)obj);
-                lit_print_value(obj->asValue());
+                Object::print(obj->asValue());
                 printf("\n");
             #endif
                 if(this->gray_capacity < this->gray_count + 1)
@@ -8733,7 +9125,7 @@ namespace lit
 
             #ifdef LIT_LOG_BLACKING
                 printf("%p blacken ", (void*)obj);
-                lit_print_value(obj->asValue());
+                Object::print(obj->asValue());
                 printf("\n");
             #endif
                 switch(obj->type)
@@ -8954,14 +9346,6 @@ namespace lit
             }
     };
 
-    struct InterpretResult
-    {
-        /* the result of this interpret/call attempt */
-        InterpretResultType type;
-        /* the value returned from this interpret/call attempt */
-        Value result;
-    };
-
     void State::setVMGlobal(String* name, Value val)
     {
         this->vm->globals->values.set(name, val);
@@ -8977,14 +9361,6 @@ namespace lit
     * astfuncs
     */
 
-    void lit_ensure_fiber_stack(State* state, Fiber* fiber, size_t needed);
-    BoundMethod* lit_create_bound_method(State* state, Value receiver, Value method);
-    Userdata* lit_create_userdata(State* state, size_t size, bool ispointeronly);
-    Range* lit_create_range(State* state, double from, double to);
-    Reference* lit_create_reference(State* state, Value* slot);
-
-
-
     /**
     * utility functions
     */
@@ -8998,16 +9374,6 @@ namespace lit
     bool util_attempt_to_require_combined(VM *vm, Value *argv, size_t argc, const char *a, const char *b, bool ignore_previous);
     Value util_invalid_constructor(VM *vm, Value instance, size_t argc, Value *argv);
 
-
-    /**
-    * array functions 
-    */
-
-
-
-
-
-
     /**
     * state functions
     */
@@ -9016,15 +9382,6 @@ namespace lit
     /* call a function in an instance */
     InterpretResult lit_instance_call_method(State* state, Value callee, String* mthname, Value* argv, size_t argc);
     Value lit_instance_get_method(State* state, Value callee, String* mthname);
-
-    /* print a value to Writer */
-    void lit_print_value(State* state, Writer* wr, Value value);
-
-    /* returns the static string name of this type. does *not* represent class name, et al. just the ValueType name! */
-    const char* lit_get_value_type(Value value);
-
-    bool lit_is_callable_function(Value value);
-    Value lit_get_function_name(VM* vm, Value instance);
 
     /*
      * Please, do not provide a const string source to the compiler, because it will
@@ -9043,38 +9400,9 @@ namespace lit
 
     void lit_trace_vm_stack(VM* vm, Writer* wr);
 
-    static inline void lit_push(VM* vm, Value value)
-    {
-        *(vm->fiber->stack_top) = value;
-        vm->fiber->stack_top++;
-
-    }
-
-    static inline Value lit_pop(VM* vm)
-    {
-        Value rt;
-        rt = *(vm->fiber->stack_top);
-        vm->fiber->stack_top--;
-        return rt;
-    }
-
-    InterpretResult lit_interpret_module(State* state, Module* module);
-    InterpretResult lit_interpret_fiber(State* state, Fiber* fiber);
-    bool lit_handle_runtime_error(VM* vm, String* error_string);
-    bool lit_vruntime_error(VM* vm, const char* format, va_list args);
-    bool lit_runtime_error(VM* vm, const char* format, ...);
-    bool lit_runtime_error_exiting(VM* vm, const char* format, ...);
 
 
-    InterpretResult lit_call_function(State* state, Function* callee, Value* arguments, uint8_t argument_count, bool ignfiber);
-    InterpretResult lit_call_method(State* state, Value instance, Value callee, Value* arguments, uint8_t argument_count, bool ignfiber);
-    InterpretResult lit_call(State* state, Value callee, Value* arguments, uint8_t argument_count, bool ignfiber);
-    InterpretResult lit_find_and_call_method(State* state, Value callee, String* method_name, Value* arguments, uint8_t argument_count, bool ignfiber);
-
-    String* lit_to_string(State* state, Value object);
     Value lit_call_new(VM* vm, const char* name, Value* args, size_t arg_count, bool ignfiber);
-
-
 
     double lit_check_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id);
     double lit_get_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id, double def);
@@ -9141,122 +9469,16 @@ namespace lit
 
     void lit_open_gc_library(State* state);
 
-
-
-
     void lit_init_optimizer(State* state, AST::Optimizer* optimizer);
     void lit_add_definition(State* state, const char* name);
 
     bool lit_preprocess(AST::Preprocessor* preprocessor, char* source);
 
-
-
     static const int8_t stack_effects[] = {
     #define OPCODE(_, effect) effect,
-    OPCODE(POP, -1)
-    OPCODE(RETURN, 0)
-    OPCODE(CONSTANT, 1)
-    OPCODE(CONSTANT_LONG, 1)
-    OPCODE(TRUE, 1)
-    OPCODE(FALSE, 1)
-    OPCODE(NULL, 1)
-    OPCODE(ARRAY, 1)
-    OPCODE(OBJECT, 1)
-    OPCODE(RANGE, -1)
-    OPCODE(NEGATE, 0)
-    OPCODE(NOT, 0)
-
-    OPCODE(ADD, -1)
-    OPCODE(SUBTRACT, -1)
-    OPCODE(MULTIPLY, -1)
-    OPCODE(POWER, -1)
-    OPCODE(DIVIDE, -1)
-    OPCODE(FLOOR_DIVIDE, -1)
-    OPCODE(MOD, -1)
-    OPCODE(BAND, -1)
-    OPCODE(BOR, -1)
-    OPCODE(BXOR, -1)
-    OPCODE(LSHIFT, -1)
-    OPCODE(RSHIFT, -1)
-    OPCODE(BNOT, 0)
-
-    OPCODE(EQUAL, -1)
-    OPCODE(GREATER, -1)
-    OPCODE(GREATER_EQUAL, -1)
-    OPCODE(LESS, -1)
-    OPCODE(LESS_EQUAL, -1)
-
-    OPCODE(SET_GLOBAL, 0)
-    OPCODE(GET_GLOBAL, 1)
-
-    OPCODE(SET_LOCAL, 0)
-    OPCODE(GET_LOCAL, 1)
-    OPCODE(SET_LOCAL_LONG, 0)
-    OPCODE(GET_LOCAL_LONG, 1)
-
-    OPCODE(SET_PRIVATE, 0)
-    OPCODE(GET_PRIVATE, 1)
-    OPCODE(SET_PRIVATE_LONG, 0)
-    OPCODE(GET_PRIVATE_LONG, 1)
-
-    OPCODE(SET_UPVALUE, 0)
-    OPCODE(GET_UPVALUE, 1)
-
-    OPCODE(JUMP_IF_FALSE, -1)
-    OPCODE(JUMP_IF_NULL, 0)
-    OPCODE(JUMP_IF_NULL_POPPING, -1)
-    OPCODE(JUMP, 0)
-    OPCODE(JUMP_BACK, 0)
-    OPCODE(AND, -1)
-    OPCODE(OR, -1)
-    OPCODE(NULL_OR, -1)
-
-    OPCODE(CLOSURE, 1)
-    OPCODE(CLOSE_UPVALUE, -1)
-
-    OPCODE(CLASS, 1)
-    OPCODE(GET_FIELD, -1)
-    OPCODE(SET_FIELD, -2)
-
-    // [array] [index] -> [value]
-    OPCODE(SUBSCRIPT_GET, -1)
-    // [array] [index] [value] -> [value]
-    OPCODE(SUBSCRIPT_SET, -2)
-    // [array] [value] -> [array]
-    OPCODE(PUSH_ARRAY_ELEMENT, -1)
-    // [map] [slot] [value] -> [map]
-    OPCODE(PUSH_OBJECT_FIELD, -2)
-
-    // [class] [method] -> [class]
-    OPCODE(METHOD, -1)
-    // [class] [method] -> [class]
-    OPCODE(STATIC_FIELD, -1)
-    OPCODE(DEFINE_FIELD, -1)
-    OPCODE(INHERIT, 0)
-    // [instance] [class] -> [bool]
-    OPCODE(IS, -1)
-    OPCODE(GET_SUPER_METHOD, 0)
-
-    // Varying stack effect
-    OPCODE(CALL, 0)
-    OPCODE(INVOKE, 0)
-    OPCODE(INVOKE_SUPER, 0)
-    OPCODE(INVOKE_IGNORING, 0)
-    OPCODE(INVOKE_SUPER_IGNORING, 0)
-    OPCODE(POP_LOCALS, 0)
-    OPCODE(VARARG, 0)
-
-    OPCODE(REFERENCE_GLOBAL, 1)
-    OPCODE(REFERENCE_PRIVATE, 0)
-    OPCODE(REFERENCE_LOCAL, 1)
-    OPCODE(REFERENCE_UPVALUE, 1)
-    OPCODE(REFERENCE_FIELD, -1)
-
-    OPCODE(SET_REFERENCE, -1)
+    #include "opcode.inc"
     #undef OPCODE
     };
-
-
 
     static bool did_setup_rules;
 
@@ -9287,6 +9509,13 @@ namespace lit
 
     // typimpls 
 
+
+    template<typename Type>
+    template<typename... ArgsT>
+    inline void PCGenericArray<Type>::raiseError(const char* fmt, ArgsT&&... args)
+    {
+        lit_runtime_error(m_state->vm, fmt, std::forward<ArgsT>(args)...);
+    }
 
     void Memory::setBytesAllocated(State* state, int64_t toadd)
     {
@@ -9825,6 +10054,12 @@ namespace lit
         return this->constants.m_count - 1;
     }
 
+    // impl::fiber
+    bool Fiber::ensureFiber(VM* vm, Fiber* fiber)
+    {
+        return ensureFiber(vm->m_state, vm, fiber);
+    }
+
     // impl::state
     void State::init(VM* vm)
     {
@@ -9899,6 +10134,12 @@ namespace lit
         return amount;
     }
 
+    Fiber* State::getVMFiber()
+    {
+        return vm->fiber;
+    }
+
+
     void State::releaseObjects(Object* objects)
     {
         Object* obj;
@@ -9911,6 +10152,1626 @@ namespace lit
         }
         free(this->vm->gray_stack);
         this->vm->gray_capacity = 0;
+    }
+
+    Upvalue* State::captureUpvalue(Value* local)
+    {
+        Upvalue* upvalue;
+        Upvalue* created_upvalue;
+        Upvalue* previous_upvalue;
+        previous_upvalue = nullptr;
+        upvalue = this->vm->fiber->open_upvalues;
+        while(upvalue != nullptr && upvalue->location > local)
+        {
+            previous_upvalue = upvalue;
+            upvalue = upvalue->next;
+        }
+        if(upvalue != nullptr && upvalue->location == local)
+        {
+            return upvalue;
+        }
+        created_upvalue = Upvalue::make(this, local);
+        created_upvalue->next = upvalue;
+        if(previous_upvalue == nullptr)
+        {
+            this->vm->fiber->open_upvalues = created_upvalue;
+        }
+        else
+        {
+            previous_upvalue->next = created_upvalue;
+        }
+        return created_upvalue;
+    }
+
+    InterpretResult State::execModule(Module* module)
+    {
+        VM* vm;
+        Fiber* fiber;
+        InterpretResult result;
+        vm = this->vm;
+        fiber = Fiber::make(this, module, module->main_function);
+        vm->fiber = fiber;
+        vm->push(module->main_function->asValue());
+        result = this->execFiber(fiber);
+        return result;
+    }
+
+    CallFrame* State::setupCall(Function* callee, Value* argv, uint8_t argc, bool ignfiber)
+    {
+        bool vararg;
+        int amount;
+        size_t i;
+        size_t varargc;
+        size_t function_arg_count;
+        VM* vm;
+        Fiber* fiber;
+        CallFrame* frame;
+        Array* array;
+        (void)argc;
+        (void)varargc;
+        vm = this->vm;
+        fiber = vm->fiber;
+        if(callee == nullptr)
+        {
+            lit_runtime_error(vm, "attempt to call a null value");
+            return nullptr;
+        }
+        if(ignfiber)
+        {
+            if(fiber == nullptr)
+            {
+                fiber = this->api_fiber;
+            }
+        }
+        if(!ignfiber)
+        {
+            if(Fiber::ensureFiber(vm, fiber))
+            {
+                return nullptr;
+            }        
+        }
+        fiber->ensure_stack(callee->max_slots + (int)(fiber->stack_top - fiber->stack));
+        frame = &fiber->frames[fiber->frame_count++];
+        frame->slots = fiber->stack_top;
+        PUSH(callee->asValue());
+        for(i = 0; i < argc; i++)
+        {
+            PUSH(argv[i]);
+        }
+        function_arg_count = callee->arg_count;
+        if(argc != function_arg_count)
+        {
+            vararg = callee->vararg;
+            if(argc < function_arg_count)
+            {
+                amount = (int)function_arg_count - argc - (vararg ? 1 : 0);
+                for(i = 0; i < (size_t)amount; i++)
+                {
+                    PUSH(Object::NullVal);
+                }
+                if(vararg)
+                {
+                    PUSH(Array::make(vm->m_state)->asValue());
+                }
+            }
+            else if(callee->vararg)
+            {
+                array = Array::make(vm->m_state);
+                varargc = argc - function_arg_count + 1;
+                array->m_actualarray.reserve(varargc + 1, Object::NullVal);
+                for(i = 0; i < varargc; i++)
+                {
+                    array->m_actualarray.m_values[i] = fiber->stack_top[(int)i - (int)varargc];
+                }
+
+                fiber->stack_top -= varargc;
+                vm->push(array->asValue());
+            }
+            else
+            {
+                fiber->stack_top -= (argc - function_arg_count);
+            }
+        }
+        else if(callee->vararg)
+        {
+            array = Array::make(vm->m_state);
+            varargc = argc - function_arg_count + 1;
+            array->push(*(fiber->stack_top - 1));
+            *(fiber->stack_top - 1) = array->asValue();
+        }
+        frame->ip = callee->chunk.code;
+        frame->closure = nullptr;
+        frame->function = callee;
+        frame->result_ignored = false;
+        frame->return_to_c = true;
+        return frame;
+    }
+
+    InterpretResult State::findAndCallMethod(Value callee, String* method_name, Value* argv, uint8_t argc, bool ignfiber)
+    {
+        Class* klass;
+        VM* vm;
+        Fiber* fiber;
+        Value mthval;
+        vm = this->vm;
+        fiber = vm->fiber;
+        if(fiber == nullptr)
+        {
+            if(!ignfiber)
+            {
+                lit_runtime_error(vm, "no fiber to run on");
+                RETURN_RUNTIME_ERROR();
+            }
+        }
+        klass = this->getClassFor(callee);
+        if((Object::isInstance(callee) && Object::as<Instance>(callee)->fields.get(method_name, &mthval)) || klass->methods.get(method_name, &mthval))
+        {
+            return this->callMethod(callee, mthval, argv, argc, ignfiber);
+        }
+        return InterpretResult{ LITRESULT_INVALID, Object::NullVal };
+    }
+
+    InterpretResult State::execCall(CallFrame* frame)
+    {
+        Fiber* fiber;
+        InterpretResult result;
+        if(frame == nullptr)
+        {
+            RETURN_RUNTIME_ERROR();
+        }
+        fiber = this->vm->fiber;
+        result = this->execFiber(fiber);
+        if(fiber->error != Object::NullVal)
+        {
+            result.result = fiber->error;
+        }
+        return result;
+    }
+
+    InterpretResult State::callMethod(Value instance, Value callee, Value* argv, uint8_t argc, bool ignfiber)
+    {
+        uint8_t i;
+        VM* vm;
+        InterpretResult lir;
+        Object::Type type;
+        Class* klass;
+        Fiber* fiber;
+        Value* slot;
+        NativeMethod* natmethod;
+        BoundMethod* bound_method;
+        Value mthval;
+        Value result;
+        lir.result = Object::NullVal;
+        lir.type = LITRESULT_OK;
+        vm = this->vm;
+        if(Object::isObject(callee))
+        {
+            if(this->set_native_exit_jump())
+            {
+                RETURN_RUNTIME_ERROR();
+            }
+            type = OBJECT_TYPE(callee);
+
+            if(type == Object::Type::Function)
+            {
+                return this->callFunction(Object::as<Function>(callee), argv, argc, ignfiber);
+            }
+            else if(type == Object::Type::Closure)
+            {
+                return this->callClosure(Object::as<Closure>(callee), argv, argc, ignfiber);
+            }
+            fiber = vm->fiber;
+            if(ignfiber)
+            {
+                if(fiber == nullptr)
+                {
+                    fiber = this->api_fiber;
+                }
+            }
+            if(!ignfiber)
+            {
+                if(Fiber::ensureFiber(vm, fiber))
+                {
+                    RETURN_RUNTIME_ERROR();
+                }
+            }
+            fiber->ensure_stack(3 + argc + (int)(fiber->stack_top - fiber->stack));
+            slot = fiber->stack_top;
+            PUSH(instance);
+            if(type != Object::Type::Class)
+            {
+                for(i = 0; i < argc; i++)
+                {
+                    PUSH(argv[i]);
+                }
+            }
+            switch(type)
+            {
+                case Object::Type::NativeFunction:
+                    {
+                        Value result = Object::as<NativeFunction>(callee)->function(vm, argc, fiber->stack_top - argc);
+                        fiber->stack_top = slot;
+                        RETURN_OK(result);
+                    }
+                    break;
+                case Object::Type::NativePrimitive:
+                    {
+                        Object::as<NativePrimFunction>(callee)->function(vm, argc, fiber->stack_top - argc);
+                        fiber->stack_top = slot;
+                        RETURN_OK(Object::NullVal);
+                    }
+                    break;
+                case Object::Type::NativeMethod:
+                    {
+                        natmethod = Object::as<NativeMethod>(callee);
+                        result = natmethod->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
+                        fiber->stack_top = slot;
+                        RETURN_OK(result);
+                    }
+                    break;
+                case Object::Type::Class:
+                    {
+                        klass = Object::as<Class>(callee);
+                        *slot = Instance::make(vm->m_state, klass)->asValue();
+                        if(klass->init_method != nullptr)
+                        {
+                            lir = this->callMethod(*slot, klass->init_method->asValue(), argv, argc, ignfiber);
+                        }
+                        // TODO: when should this return *slot instead of lir?
+                        fiber->stack_top = slot;
+                        //RETURN_OK(*slot);
+                        return lir;
+                    }
+                    break;
+                case Object::Type::BoundMethod:
+                    {
+                        bound_method = Object::as<BoundMethod>(callee);
+                        mthval = bound_method->method;
+                        *slot = bound_method->receiver;
+                        if(Object::isNativeMethod(mthval))
+                        {
+                            result = Object::as<NativeMethod>(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
+                            fiber->stack_top = slot;
+                            RETURN_OK(result);
+                        }
+                        else if(Object::isPrimitiveMethod(mthval))
+                        {
+                            Object::as<PrimitiveMethod>(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
+
+                            fiber->stack_top = slot;
+                            RETURN_OK(Object::NullVal);
+                        }
+                        else
+                        {
+                            fiber->stack_top = slot;
+                            return this->callFunction(Object::as<Function>(mthval), argv, argc, ignfiber);
+                        }
+                    }
+                    break;
+                case Object::Type::PrimitiveMethod:
+                    {
+                        Object::as<PrimitiveMethod>(callee)->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
+                        fiber->stack_top = slot;
+                        RETURN_OK(Object::NullVal);
+                    }
+                    break;
+                default:
+                    {
+                    }
+                    break;
+            }
+        }
+        if(Object::isNull(callee))
+        {
+            lit_runtime_error(vm, "attempt to call a null value");
+        }
+        else
+        {
+            lit_runtime_error(vm, "can only call functions and classes");
+        }
+
+        RETURN_RUNTIME_ERROR();
+    }
+
+    //#define LIT_TRACE_EXECUTION
+
+    /*
+    * visual studio doesn't support computed gotos, so
+    * instead a switch-case is used. 
+    */
+    #if !defined(_MSC_VER)
+        //#define LIT_USE_COMPUTEDGOTO
+    #endif
+
+    #ifdef LIT_TRACE_EXECUTION
+        #define vm_traceframe(fiber)\
+            lit_trace_frame(fiber);
+    #else
+        #define vm_traceframe(fiber) \
+            do \
+            { \
+            } while(0);
+    #endif
+
+    #ifdef LIT_USE_COMPUTEDGOTO
+        #define vm_default()
+        #define op_case(name) \
+            OP_##name:
+    #else
+        #define vm_default() default:
+        #define op_case(name) \
+            case OP_##name:
+    #endif
+
+    #define vm_pushgc(state, allow) \
+        bool was_allowed = state->allow_gc; \
+        state->allow_gc = allow;
+
+    #define vm_popgc(state) \
+        state->allow_gc = was_allowed;
+
+    #define vm_push(fiber, value) \
+        (*fiber->stack_top++ = value)
+
+    #define vm_pop(fiber) \
+        (*(--fiber->stack_top))
+
+    #define vm_drop(fiber) \
+        (fiber->stack_top--)
+
+    #define vm_dropn(fiber, amount) \
+        (fiber->stack_top -= amount)
+
+    #define vm_readbyte(ip) \
+        (*ip++)
+
+    #if 1
+    #define vm_readshort(ip) \
+        (ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]))
+    #else
+    /* todo: why does this seemingly break everything? */
+    static inline uint16_t vm_readshort(uint8_t* ip)
+    {
+        return ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]);
+    }
+    #endif
+
+    #define vm_readconstant(current_chunk) \
+        (current_chunk->constants.m_values[vm_readbyte(ip)])
+
+    #define vm_readconstantlong(current_chunk, ip) \
+        (current_chunk->constants.m_values[vm_readshort(ip)])
+
+    #define vm_readstring(current_chunk) \
+        Object::as<String>(vm_readconstant(current_chunk))
+
+    #define vm_readstringlong(current_chunk, ip) \
+        Object::as<String>(vm_readconstantlong(current_chunk, ip))
+
+
+    static inline Value vm_peek(Fiber* fiber, short distance)
+    {
+        return fiber->stack_top[(-1) - distance];
+    }
+
+    #define vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues) \
+        frame = &fiber->frames[fiber->frame_count - 1]; \
+        current_chunk = &frame->function->chunk; \
+        ip = frame->ip; \
+        slots = frame->slots; \
+        fiber->module = frame->function->module; \
+        privates = fiber->module->privates; \
+        upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
+
+    #define vm_writeframe(frame, ip) \
+        frame->ip = ip;
+
+    #define vm_returnerror() \
+        vm_popgc(this); \
+        return (InterpretResult){ LITRESULT_RUNTIME_ERROR, Object::NullVal };
+
+    #define vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues) \
+        vm_writeframe(frame, ip); \
+        fiber = vm->fiber; \
+        if(fiber == nullptr) \
+        { \
+            return (InterpretResult){ LITRESULT_OK, vm_pop(fiber) }; \
+        } \
+        if(fiber->abort) \
+        { \
+            vm_returnerror(); \
+        } \
+        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
+        vm_traceframe(fiber);
+
+    #define vm_callvalue(callee, arg_count) \
+        if(vm->callValue(callee, arg_count)) \
+        { \
+            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
+        }
+
+    #define vm_rterror(format) \
+        if(lit_runtime_error(vm, format)) \
+        { \
+            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
+            continue; \
+        } \
+        else \
+        { \
+            vm_returnerror(); \
+        }
+
+    #define vm_rterrorvarg(format, ...) \
+        if(lit_runtime_error(vm, format, __VA_ARGS__)) \
+        { \
+            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
+            continue; \
+        } \
+        else \
+        { \
+            vm_returnerror(); \
+        }
+
+    #define vm_invoke_from_class_advanced(zklass, method_name, arg_count, error, stat, ignoring, callee) \
+        Value mthval; \
+        if((Object::isInstance(callee) && (Object::as<Instance>(callee)->fields.get(method_name, &mthval))) \
+           || zklass->stat.get(method_name, &mthval)) \
+        { \
+            if(ignoring) \
+            { \
+                if(vm->callValue(mthval, arg_count)) \
+                { \
+                    vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
+                    frame->result_ignored = true; \
+                } \
+                else \
+                { \
+                    fiber->stack_top[-1] = callee; \
+                } \
+            } \
+            else \
+            { \
+                vm_callvalue(mthval, arg_count); \
+            } \
+        } \
+        else \
+        { \
+            if(error) \
+            { \
+                vm_rterrorvarg("Attempt to call method '%s', that is not defined in class %s", method_name->chars, \
+                                   zklass->name->chars) \
+            } \
+        } \
+        if(error) \
+        { \
+            continue; \
+        }
+
+    #define vm_invoke_from_class(klass, method_name, arg_count, error, stat, ignoring) \
+        vm_invoke_from_class_advanced(klass, method_name, arg_count, error, stat, ignoring, vm_peek(fiber, arg_count))
+
+    #define vm_invokemethod(instance, method_name, arg_count) \
+        Class* klass = this->getClassFor(instance); \
+        if(klass == nullptr) \
+        { \
+            vm_rterror("invokemethod: only instances and classes have methods"); \
+        } \
+        vm_writeframe(frame, ip); \
+        vm_invoke_from_class_advanced(klass, String::intern(this, method_name), arg_count, true, methods, false, instance); \
+        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues)
+
+    #define vm_binaryop(type, op, op_string) \
+        Value a = vm_peek(fiber, 1); \
+        Value b = vm_peek(fiber, 0); \
+        if(Object::isNumber(a)) \
+        { \
+            if(!Object::isNumber(b)) \
+            { \
+                if(!Object::isNull(b)) \
+                { \
+                    vm_rterrorvarg("Attempt to use op %s with a number and a %s", op_string, Object::valueName(b)); \
+                } \
+            } \
+            vm_drop(fiber); \
+            *(fiber->stack_top - 1) = (type(Object::toNumber(a) op Object::toNumber(b))); \
+            continue; \
+        } \
+        if(Object::isNull(a)) \
+        { \
+        /* vm_rterrorvarg("Attempt to use op %s on a null value", op_string); */ \
+            vm_drop(fiber); \
+            *(fiber->stack_top - 1) = Object::TrueVal; \
+        } \
+        else \
+        { \
+            vm_invokemethod(a, op_string, 1); \
+        }
+
+    #define vm_bitwiseop(op, op_string) \
+        Value a = vm_peek(fiber, 1); \
+        Value b = vm_peek(fiber, 0); \
+        if(!Object::isNumber(a) || !Object::isNumber(b)) \
+        { \
+            vm_rterrorvarg("Operands of bitwise op %s must be two numbers, got %s and %s", op_string, \
+                               Object::valueName(a), Object::valueName(b)); \
+        } \
+        vm_drop(fiber); \
+        *(fiber->stack_top - 1) = (Object::toValue((int)Object::toNumber(a) op(int) Object::toNumber(b)));
+
+    #define vm_invokeoperation(ignoring) \
+        uint8_t arg_count = vm_readbyte(ip); \
+        String* method_name = vm_readstringlong(current_chunk, ip); \
+        Value receiver = vm_peek(fiber, arg_count); \
+        if(Object::isNull(receiver)) \
+        { \
+            vm_rterror("Attempt to index a null value"); \
+        } \
+        vm_writeframe(frame, ip); \
+        if(Object::isClass(receiver)) \
+        { \
+            vm_invoke_from_class_advanced(Object::as<Class>(receiver), method_name, arg_count, true, static_fields, ignoring, receiver); \
+            continue; \
+        } \
+        else if(Object::isInstance(receiver)) \
+        { \
+            Instance* instance = Object::as<Instance>(receiver); \
+            Value value; \
+            if(instance->fields.get(method_name, &value)) \
+            { \
+                fiber->stack_top[-arg_count - 1] = value; \
+                vm_callvalue(value, arg_count); \
+                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
+                continue; \
+            } \
+            vm_invoke_from_class_advanced(instance->klass, method_name, arg_count, true, methods, ignoring, receiver); \
+        } \
+        else \
+        { \
+            Class* type = this->getClassFor(receiver); \
+            if(type == nullptr) \
+            { \
+                vm_rterror("invokeoperation: only instances and classes have methods"); \
+            } \
+            vm_invoke_from_class_advanced(type, method_name, arg_count, true, methods, ignoring, receiver); \
+        }
+
+    static void reset_stack(VM* vm)
+    {
+        if(vm->fiber != nullptr)
+        {
+            vm->fiber->stack_top = vm->fiber->stack;
+        }
+    }
+
+    InterpretResult State::execFiber(Fiber* fiber)
+    {
+        bool found;
+        size_t arg_count;
+        size_t arindex;
+        size_t i;
+        uint16_t offset;
+        uint8_t index;
+        uint8_t is_local;
+        uint8_t instruction;
+        uint8_t* ip;
+        CallFrame* frame;
+        Chunk* current_chunk;
+        Class* instance_klass;
+        Class* klassobj;
+        Class* super_klass;
+        Class* type;
+        Closure* closure;
+        Fiber* parent;
+        Field* field;
+        Function* function;
+        Instance* instobj;
+        String* field_name;
+        String* method_name;
+        String* name;
+        Upvalue** upvalues;
+        Value a;
+        Value arg;
+        Value b;
+        Value getval;
+        Value instval;
+        Value klassval;
+        Value vobj;
+        Value operand;
+        Value reference;
+        Value result;
+        Value setter;
+        Value setval;
+        Value slot;
+        Value super;
+        Value tmpval;
+        Value value;
+        Value* privates;
+        Value* pval;
+        Value* slots;
+        PCGenericArray<Value>* values;
+        VM* vm;
+        (void)instruction;
+        vm = this->vm;
+        vm_pushgc(this, true);
+        vm->fiber = fiber;
+        fiber->abort = false;
+        frame = &fiber->frames[fiber->frame_count - 1];
+        current_chunk = &frame->function->chunk;
+        fiber->module = frame->function->module;
+        ip = frame->ip;
+        slots = frame->slots;
+        privates = fiber->module->privates;
+        upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
+
+        // Has to be inside of the function in order for goto to work
+        #ifdef LIT_USE_COMPUTEDGOTO
+            static void* dispatch_table[] =
+            {
+                #define OPCODE(name, effect) &&OP_##name,
+                #include "opcode.inc"
+                #undef OPCODE
+            };
+        #endif
+    #ifdef LIT_TRACE_EXECUTION
+        vm_traceframe(fiber);
+    #endif
+
+        while(true)
+        {
+    #ifdef LIT_TRACE_STACK
+            lit_trace_vm_stack(vm);
+    #endif
+
+    #ifdef LIT_CHECK_STACK_SIZE
+            if((fiber->stack_top - frame->slots) > fiber->stack_capacity)
+            {
+                vm_rterrorvarg("Fiber stack is not large enough (%i > %i)", (int)(fiber->stack_top - frame->slots),
+                                   fiber->stack_capacity);
+            }
+    #endif
+
+            #ifdef LIT_USE_COMPUTEDGOTO
+                #ifdef LIT_TRACE_EXECUTION
+                    instruction = *ip++;
+                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->code - 1), nullptr);
+                    goto* dispatch_table[instruction];
+                #else
+                    goto* dispatch_table[*ip++];
+                #endif
+            #else
+                instruction = *ip++;
+                #ifdef LIT_TRACE_EXECUTION
+                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->code - 1), nullptr);
+                #endif
+                switch(instruction)
+            #endif
+            /*
+            * each op_case(...){...} *MUST* end with either break, return, or continue.
+            * computationally, fall-throughs differ wildly between computed gotos or switch/case statements.
+            * in computed gotos, a "fall-through" just executes the next block (since it's just a labelled block),
+            * which may invalidate the stack, and while the same is technically true for switch/case, they
+            * could end up executing completely unrelated instructions.
+            * think, declaring a block for OP_BUILDHOUSE, and the next block is OP_SETHOUSEONFIRE.
+            * an easy mistake to make, but crucial to check.
+            */
+            {
+                op_case(POP)
+                {
+                    vm_drop(fiber);
+                    continue;
+                }
+                op_case(RETURN)
+                {
+                    result = vm_pop(fiber);
+                    vm->closeUpvalues(slots);
+                    vm_writeframe(frame, ip);
+                    fiber->frame_count--;
+                    if(frame->return_to_c)
+                    {
+                        frame->return_to_c = false;
+                        fiber->module->return_value = result;
+                        fiber->stack_top = frame->slots;
+                        return (InterpretResult){ LITRESULT_OK, result };
+                    }
+                    if(fiber->frame_count == 0)
+                    {
+                        fiber->module->return_value = result;
+                        if(fiber->parent == nullptr)
+                        {
+                            vm_drop(fiber);
+                            this->allow_gc = was_allowed;
+                            return (InterpretResult){ LITRESULT_OK, result };
+                        }
+                        arg_count = fiber->arg_count;
+                        parent = fiber->parent;
+                        fiber->parent = nullptr;
+                        vm->fiber = fiber = parent;
+                        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                        vm_traceframe(fiber);
+                        fiber->stack_top -= arg_count;
+                        fiber->stack_top[-1] = result;
+                        continue;
+                    }
+                    fiber->stack_top = frame->slots;
+                    if(frame->result_ignored)
+                    {
+                        fiber->stack_top++;
+                        frame->result_ignored = false;
+                    }
+                    else
+                    {
+                        vm_push(fiber, result);
+                    }
+                    vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                    vm_traceframe(fiber);
+                    continue;
+                }
+                op_case(CONSTANT)
+                {
+                    vm_push(fiber, vm_readconstant(current_chunk));
+                    continue;
+                }
+                op_case(CONSTANT_LONG)
+                {
+                    vm_push(fiber, vm_readconstantlong(current_chunk, ip));
+                    continue;
+                }
+                op_case(TRUE)
+                {
+                    vm_push(fiber, Object::TrueVal);
+                    continue;
+                }
+                op_case(FALSE)
+                {
+                    vm_push(fiber, Object::FalseVal);
+                    continue;
+                }
+                op_case(NULL)
+                {
+                    vm_push(fiber, Object::NullVal);
+                    continue;
+                }
+                op_case(ARRAY)
+                {
+                    vm_push(fiber, Array::make(this)->asValue());
+                    continue;
+                }
+                op_case(OBJECT)
+                {
+                    // TODO: use object, or map for literal '{...}' constructs?
+                    // objects would be more general-purpose, but don't implement anything map-like.
+                    //vm_push(fiber, Instance::make(this, state->objectvalue_class)->asValue());
+                    vm_push(fiber, Map::make(this)->asValue());
+
+                    continue;
+                }
+                op_case(RANGE)
+                {
+                    a = vm_pop(fiber);
+                    b = vm_pop(fiber);
+                    if(!Object::isNumber(a) || !Object::isNumber(b))
+                    {
+                        vm_rterror("Range operands must be number");
+                    }
+                    vm_push(fiber, Range::make(this, Object::toNumber(a), Object::toNumber(b))->asValue());
+                    continue;
+                }
+                op_case(NEGATE)
+                {
+                    if(!Object::isNumber(vm_peek(fiber, 0)))
+                    {
+                        arg = vm_peek(fiber, 0);
+                        // Don't even ask me why
+                        // This doesn't kill our performance, since it's a error anyway
+                        if(Object::isString(arg) && strcmp(Object::asString(arg)->chars, "muffin") == 0)
+                        {
+                            vm_rterror("Idk, can you negate a muffin?");
+                        }
+                        else
+                        {
+                            vm_rterror("Operand must be a number");
+                        }
+                    }
+                    tmpval = Object::toValue(-Object::toNumber(vm_pop(fiber)));
+                    vm_push(fiber, tmpval);
+                    continue;
+                }
+                op_case(NOT)
+                {
+                    if(Object::isInstance(vm_peek(fiber, 0)))
+                    {
+                        vm_writeframe(frame, ip);
+                        vm_invoke_from_class(Object::as<Instance>(vm_peek(fiber, 0))->klass, String::intern(this, "!"), 0, false, methods, false);
+                        continue;
+                    }
+                    tmpval = BOOL_VALUE(Object::isFalsey(vm_pop(fiber)));
+                    vm_push(fiber, tmpval);
+                    continue;
+                }
+                op_case(BNOT)
+                {
+                    if(!Object::isNumber(vm_peek(fiber, 0)))
+                    {
+                        vm_rterror("Operand must be a number");
+                    }
+                    tmpval = Object::toValue(~((int)Object::toNumber(vm_pop(fiber))));
+                    vm_push(fiber, tmpval);
+                    continue;
+                }
+                op_case(ADD)
+                {
+                    vm_binaryop(Object::toValue, +, "+");
+                    continue;
+                }
+                op_case(SUBTRACT)
+                {
+                    vm_binaryop(Object::toValue, -, "-");
+                    continue;
+                }
+                op_case(MULTIPLY)
+                {
+                    vm_binaryop(Object::toValue, *, "*");
+                    continue;
+                }
+                op_case(POWER)
+                {
+                    a = vm_peek(fiber, 1);
+                    b = vm_peek(fiber, 0);
+                    if(Object::isNumber(a) && Object::isNumber(b))
+                    {
+                        vm_drop(fiber);
+                        *(fiber->stack_top - 1) = (Object::toValue(pow(Object::toNumber(a), Object::toNumber(b))));
+                        continue;
+                    }
+                    vm_invokemethod(a, "**", 1);
+                    continue;
+                }
+                op_case(DIVIDE)
+                {
+                    vm_binaryop(Object::toValue, /, "/");
+                    continue;
+                }
+                op_case(FLOOR_DIVIDE)
+                {
+                    a = vm_peek(fiber, 1);
+                    b = vm_peek(fiber, 0);
+                    if(Object::isNumber(a) && Object::isNumber(b))
+                    {
+                        vm_drop(fiber);
+                        *(fiber->stack_top - 1) = (Object::toValue(floor(Object::toNumber(a) / Object::toNumber(b))));
+
+                        continue;
+                    }
+
+                    vm_invokemethod(a, "#", 1);
+                    continue;
+                }
+                op_case(MOD)
+                {
+                    a = vm_peek(fiber, 1);
+                    b = vm_peek(fiber, 0);
+                    if(Object::isNumber(a) && Object::isNumber(b))
+                    {
+                        vm_drop(fiber);
+                        *(fiber->stack_top - 1) = Object::toValue(fmod(Object::toNumber(a), Object::toNumber(b)));
+                        continue;
+                    }
+                    vm_invokemethod(a, "%", 1);
+                    continue;
+                }
+                op_case(BAND)
+                {
+                    vm_bitwiseop(&, "&");
+                    continue;
+                }
+                op_case(BOR)
+                {
+                    vm_bitwiseop(|, "|");
+                    continue;
+                }
+                op_case(BXOR)
+                {
+                    vm_bitwiseop(^, "^");
+                    continue;
+                }
+                op_case(LSHIFT)
+                {
+                    vm_bitwiseop(<<, "<<");
+                    continue;
+                }
+                op_case(RSHIFT)
+                {
+                    vm_bitwiseop(>>, ">>");
+                    continue;
+                }
+                op_case(EQUAL)
+                {
+                    /*
+                    if(Object::isInstance(vm_peek(fiber, 1)))
+                    {
+                        vm_writeframe(frame, ip);
+                        fprintf(stderr, "OP_EQUAL: trying to invoke '==' ...\n");
+                        vm_invoke_from_class(Object::as<Instance>(vm_peek(fiber, 1))->klass, String::intern(state, "=="), 1, false, methods, false);
+                        continue;
+                    }
+                    a = vm_pop(fiber);
+                    b = vm_pop(fiber);
+                    vm_push(fiber, BOOL_VALUE(a == b));
+                    */
+                    vm_binaryop(Object::toValue, ==, "==");
+                    continue;
+                }
+
+                op_case(GREATER)
+                {
+                    vm_binaryop(BOOL_VALUE, >, ">");
+                    continue;
+                }
+                op_case(GREATER_EQUAL)
+                {
+                    vm_binaryop(BOOL_VALUE, >=, ">=");
+                    continue;
+                }
+                op_case(LESS)
+                {
+                    vm_binaryop(BOOL_VALUE, <, "<");
+                    continue;
+                }
+                op_case(LESS_EQUAL)
+                {
+                    vm_binaryop(BOOL_VALUE, <=, "<=");
+                    continue;
+                }
+
+                op_case(SET_GLOBAL)
+                {
+                    name = vm_readstringlong(current_chunk, ip);
+                    vm->globals->values.set(name, vm_peek(fiber, 0));
+                    continue;
+                }
+
+                op_case(GET_GLOBAL)
+                {
+                    name = vm_readstringlong(current_chunk, ip);
+                    if(!vm->globals->values.get(name, &setval))
+                    {
+                        vm_push(fiber, Object::NullVal);
+                    }
+                    else
+                    {
+                        vm_push(fiber, setval);
+                    }
+                    continue;
+                }
+                op_case(SET_LOCAL)
+                {
+                    index = vm_readbyte(ip);
+                    slots[index] = vm_peek(fiber, 0);
+                    continue;
+                }
+                op_case(GET_LOCAL)
+                {
+                    vm_push(fiber, slots[vm_readbyte(ip)]);
+                    continue;
+                }
+                op_case(SET_LOCAL_LONG)
+                {
+                    index = vm_readshort(ip);
+                    slots[index] = vm_peek(fiber, 0);
+                    continue;
+                }
+                op_case(GET_LOCAL_LONG)
+                {
+                    vm_push(fiber, slots[vm_readshort(ip)]);
+                    continue;
+                }
+                op_case(SET_PRIVATE)
+                {
+                    index = vm_readbyte(ip);
+                    privates[index] = vm_peek(fiber, 0);
+                    continue;
+                }
+                op_case(GET_PRIVATE)
+                {
+                    vm_push(fiber, privates[vm_readbyte(ip)]);
+                    continue;
+                }
+                op_case(SET_PRIVATE_LONG)
+                {
+                    index = vm_readshort(ip);
+                    privates[index] = vm_peek(fiber, 0);
+                    continue;
+                }
+                op_case(GET_PRIVATE_LONG)
+                {
+                    vm_push(fiber, privates[vm_readshort(ip)]);
+                    continue;
+                }
+                op_case(SET_UPVALUE)
+                {
+                    index = vm_readbyte(ip);
+                    *upvalues[index]->location = vm_peek(fiber, 0);
+                    continue;
+                }
+                op_case(GET_UPVALUE)
+                {
+                    vm_push(fiber, *upvalues[vm_readbyte(ip)]->location);
+                    continue;
+                }
+
+                op_case(JUMP_IF_FALSE)
+                {
+                    offset = vm_readshort(ip);
+                    if(Object::isFalsey(vm_pop(fiber)))
+                    {
+                        ip += offset;
+                    }
+                    continue;
+                }
+                op_case(JUMP_IF_NULL)
+                {
+                    offset = vm_readshort(ip);
+                    if(Object::isNull(vm_peek(fiber, 0)))
+                    {
+                        ip += offset;
+                    }
+                    continue;
+                }
+                op_case(JUMP_IF_NULL_POPPING)
+                {
+                    offset = vm_readshort(ip);
+                    if(Object::isNull(vm_pop(fiber)))
+                    {
+                        ip += offset;
+                    }
+                    continue;
+                }
+                op_case(JUMP)
+                {
+                    offset = vm_readshort(ip);
+                    ip += offset;
+                    continue;
+                }
+                op_case(JUMP_BACK)
+                {
+                    offset = vm_readshort(ip);
+                    ip -= offset;
+                    continue;
+                }
+                op_case(AND)
+                {
+                    offset = vm_readshort(ip);
+                    if(Object::isFalsey(vm_peek(fiber, 0)))
+                    {
+                        ip += offset;
+                    }
+                    else
+                    {
+                        vm_drop(fiber);
+                    }
+                    continue;
+                }
+                op_case(OR)
+                {
+                    offset = vm_readshort(ip);
+                    if(Object::isFalsey(vm_peek(fiber, 0)))
+                    {
+                        vm_drop(fiber);
+                    }
+                    else
+                    {
+                        ip += offset;
+                    }
+                    continue;
+                }
+                op_case(NULL_OR)
+                {
+                    offset = vm_readshort(ip);
+                    if(Object::isNull(vm_peek(fiber, 0)))
+                    {
+                        vm_drop(fiber);
+                    }
+                    else
+                    {
+                        ip += offset;
+                    }
+                    continue;
+                }
+                op_case(CALL)
+                {
+                    arg_count = vm_readbyte(ip);
+                    vm_writeframe(frame, ip);
+                    vm_callvalue(vm_peek(fiber, arg_count), arg_count);
+                    continue;
+                }
+                op_case(CLOSURE)
+                {
+                    function = Object::as<Function>(vm_readconstantlong(current_chunk, ip));
+                    closure = Closure::make(this, function);
+                    vm_push(fiber, closure->asValue());
+                    for(i = 0; i < closure->upvalue_count; i++)
+                    {
+                        is_local = vm_readbyte(ip);
+                        index = vm_readbyte(ip);
+                        if(is_local)
+                        {
+                            closure->upvalues[i] = this->captureUpvalue(frame->slots + index);
+                        }
+                        else
+                        {
+                            closure->upvalues[i] = upvalues[index];
+                        }
+                    }
+                    continue;
+                }
+                op_case(CLOSE_UPVALUE)
+                {
+                    vm->closeUpvalues(fiber->stack_top - 1);
+                    vm_drop(fiber);
+                    continue;
+                }
+                op_case(CLASS)
+                {
+                    name = vm_readstringlong(current_chunk, ip);
+                    klassobj = Class::make(this, name);
+                    vm_push(fiber, klassobj->asValue());
+                    klassobj->super = this->objectvalue_class;
+                    klassobj->super->methods.addAll(&klassobj->methods);
+                    klassobj->super->static_fields.addAll(&klassobj->static_fields);
+                    vm->globals->values.set(name, klassobj->asValue());
+                    continue;
+                }
+                op_case(GET_FIELD)
+                {
+                    vobj = vm_peek(fiber, 1);
+                    if(Object::isNull(vobj))
+                    {
+                        vm_rterror("Attempt to index a null value");
+                    }
+                    name = Object::as<String>(vm_peek(fiber, 0));
+                    if(Object::isInstance(vobj))
+                    {
+                        instobj = Object::as<Instance>(vobj);
+
+                        if(!instobj->fields.get(name, &getval))
+                        {
+                            if(instobj->klass->methods.get(name, &getval))
+                            {
+                                if(Object::isField(getval))
+                                {
+                                    field = Object::as<Field>(getval);
+                                    if(field->getter == nullptr)
+                                    {
+                                        vm_rterrorvarg("Class %s does not have a getter for the field %s",
+                                                           instobj->klass->name->chars, name->chars);
+                                    }
+                                    vm_drop(fiber);
+                                    vm_writeframe(frame, ip);
+                                    vm_callvalue(Object::as<Field>(getval)->getter->asValue(), 0);
+                                    vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                                    continue;
+                                }
+                                else
+                                {
+                                    getval = BoundMethod::make(this, instobj->asValue(), getval)->asValue();
+                                }
+                            }
+                            else
+                            {
+                                getval = Object::NullVal;
+                            }
+                        }
+                    }
+                    else if(Object::isClass(vobj))
+                    {
+                        klassobj = Object::as<Class>(vobj);
+                        if(klassobj->static_fields.get(name, &getval))
+                        {
+                            if(Object::isNativeMethod(getval) || Object::isPrimitiveMethod(getval))
+                            {
+                                getval = BoundMethod::make(this, klassobj->asValue(), getval)->asValue();
+                            }
+                            else if(Object::isField(getval))
+                            {
+                                field = Object::as<Field>(getval);
+                                if(field->getter == nullptr)
+                                {
+                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->chars,
+                                                       name->chars);
+                                }
+                                vm_drop(fiber);
+                                vm_writeframe(frame, ip);
+                                vm_callvalue(field->getter->asValue(), 0);
+                                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            getval = Object::NullVal;
+                        }
+                    }
+                    else
+                    {
+                        klassobj = this->getClassFor(vobj);
+                        if(klassobj == nullptr)
+                        {
+                            vm_rterror("GET_FIELD: only instances and classes have fields");
+                        }
+                        if(klassobj->methods.get(name, &getval))
+                        {
+                            if(Object::isField(getval))
+                            {
+                                field = Object::as<Field>(getval);
+                                if(field->getter == nullptr)
+                                {
+                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->chars,
+                                                       name->chars);
+                                }
+                                vm_drop(fiber);
+                                vm_writeframe(frame, ip);
+                                vm_callvalue(Object::as<Field>(getval)->getter->asValue(), 0);
+                                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                                continue;
+                            }
+                            else if(Object::isNativeMethod(getval) || Object::isPrimitiveMethod(getval))
+                            {
+                                getval = BoundMethod::make(this, vobj, getval)->asValue();
+                            }
+                        }
+                        else
+                        {
+                            getval = Object::NullVal;
+                        }
+                    }
+                    vm_drop(fiber);// Pop field name
+                    fiber->stack_top[-1] = getval;
+                    continue;
+                }
+                op_case(SET_FIELD)
+                {
+                    instval = vm_peek(fiber, 2);
+                    if(Object::isNull(instval))
+                    {
+                        vm_rterror("Attempt to index a null value")
+                    }
+                    value = vm_peek(fiber, 1);
+                    field_name = Object::as<String>(vm_peek(fiber, 0));
+                    if(Object::isClass(instval))
+                    {
+                        klassobj = Object::as<Class>(instval);
+                        if(klassobj->static_fields.get(field_name, &setter) && Object::isField(setter))
+                        {
+                            field = Object::as<Field>(setter);
+                            if(field->setter == nullptr)
+                            {
+                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->chars,
+                                                   field_name->chars);
+                            }
+
+                            vm_dropn(fiber, 2);
+                            vm_push(fiber, value);
+                            vm_writeframe(frame, ip);
+                            vm_callvalue(field->setter->asValue(), 1);
+                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                            continue;
+                        }
+                        if(Object::isNull(value))
+                        {
+                            klassobj->static_fields.remove(field_name);
+                        }
+                        else
+                        {
+                            klassobj->static_fields.set(field_name, value);
+                        }
+                        vm_dropn(fiber, 2);// Pop field name and the value
+                        fiber->stack_top[-1] = value;
+                    }
+                    else if(Object::isInstance(instval))
+                    {
+                        instobj = Object::as<Instance>(instval);
+                        if(instobj->klass->methods.get(field_name, &setter) && Object::isField(setter))
+                        {
+                            field = Object::as<Field>(setter);
+                            if(field->setter == nullptr)
+                            {
+                                vm_rterrorvarg("Class %s does not have a setter for the field %s", instobj->klass->name->chars,
+                                                   field_name->chars);
+                            }
+                            vm_dropn(fiber, 2);
+                            vm_push(fiber, value);
+                            vm_writeframe(frame, ip);
+                            vm_callvalue(field->setter->asValue(), 1);
+                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                            continue;
+                        }
+                        if(Object::isNull(value))
+                        {
+                            instobj->fields.remove(field_name);
+                        }
+                        else
+                        {
+                            instobj->fields.set(field_name, value);
+                        }
+                        vm_dropn(fiber, 2);// Pop field name and the value
+                        fiber->stack_top[-1] = value;
+                    }
+                    else
+                    {
+                        klassobj = this->getClassFor(instval);
+                        if(klassobj == nullptr)
+                        {
+                            vm_rterror("SET_FIELD: only instances and classes have fields");
+                        }
+                        if(klassobj->methods.get(field_name, &setter) && Object::isField(setter))
+                        {
+                            field = Object::as<Field>(setter);
+                            if(field->setter == nullptr)
+                            {
+                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->chars,
+                                                   field_name->chars);
+                            }
+                            vm_dropn(fiber, 2);
+                            vm_push(fiber, value);
+                            vm_writeframe(frame, ip);
+                            vm_callvalue(field->setter->asValue(), 1);
+                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
+                            continue;
+                        }
+                        else
+                        {
+                            vm_rterrorvarg("Class %s does not contain field %s", klassobj->name->chars, field_name->chars);
+                        }
+                    }
+                    continue;
+                }
+                op_case(SUBSCRIPT_GET)
+                {
+                    vm_invokemethod(vm_peek(fiber, 1), "[]", 1);
+                    continue;
+                }
+                op_case(SUBSCRIPT_SET)
+                {
+                    vm_invokemethod(vm_peek(fiber, 2), "[]", 2);
+                    continue;
+                }
+                op_case(PUSH_ARRAY_ELEMENT)
+                {
+                    values = &Object::as<Array>(vm_peek(fiber, 1))->m_actualarray;
+                    arindex = values->m_count;
+                    values->reserve(arindex + 1, Object::NullVal);
+                    values->m_values[arindex] = vm_peek(fiber, 0);
+                    vm_drop(fiber);
+                    continue;
+                }
+                op_case(PUSH_OBJECT_FIELD)
+                {
+                    operand = vm_peek(fiber, 2);
+                    if(Object::isMap(operand))
+                    {
+                        Object::as<Map>(operand)->values.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
+                    }
+                    else if(Object::isInstance(operand))
+                    {
+                        Object::as<Instance>(operand)->fields.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
+                    }
+                    else
+                    {
+                        vm_rterrorvarg("Expected an object or a map as the operand, got %s", Object::valueName(operand));
+                    }
+                    vm_dropn(fiber, 2);
+                    continue;
+                }
+                op_case(STATIC_FIELD)
+                {
+                    Object::as<Class>(vm_peek(fiber, 1))->static_fields.set(vm_readstringlong(current_chunk, ip), vm_peek(fiber, 0));
+                    vm_drop(fiber);
+                    continue;
+                }
+                op_case(METHOD)
+                {
+                    klassobj = Object::as<Class>(vm_peek(fiber, 1));
+                    name = vm_readstringlong(current_chunk, ip);
+                    if((klassobj->init_method == nullptr || (klassobj->super != nullptr && klassobj->init_method == ((Class*)klassobj->super)->init_method))
+                       && name->length() == 11 && memcmp(name->chars, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0)
+                    {
+                        klassobj->init_method = Object::asObject(vm_peek(fiber, 0));
+                    }
+                    klassobj->methods.set(name, vm_peek(fiber, 0));
+                    vm_drop(fiber);
+                    continue;
+                }
+                op_case(DEFINE_FIELD)
+                {
+                    Object::as<Class>(vm_peek(fiber, 1))->methods.set(vm_readstringlong(current_chunk, ip), vm_peek(fiber, 0));
+                    vm_drop(fiber);
+                    continue;
+                }
+                op_case(INVOKE)
+                {
+                    vm_invokeoperation(false);
+                    continue;
+                }
+                op_case(INVOKE_IGNORING)
+                {
+                    vm_invokeoperation(true);
+                    continue;
+                }
+                op_case(INVOKE_SUPER)
+                {
+                    arg_count = vm_readbyte(ip);
+                    method_name = vm_readstringlong(current_chunk, ip);
+                    klassobj = Object::as<Class>(vm_pop(fiber));
+                    vm_writeframe(frame, ip);
+                    vm_invoke_from_class(klassobj, method_name, arg_count, true, methods, false);
+                    continue;
+                }
+                op_case(INVOKE_SUPER_IGNORING)
+                {
+                    arg_count = vm_readbyte(ip);
+                    method_name = vm_readstringlong(current_chunk, ip);
+                    klassobj = Object::as<Class>(vm_pop(fiber));
+                    vm_writeframe(frame, ip);
+                    vm_invoke_from_class(klassobj, method_name, arg_count, true, methods, true);
+                    continue;
+                }
+                op_case(GET_SUPER_METHOD)
+                {
+                    method_name = vm_readstringlong(current_chunk, ip);
+                    klassobj = Object::as<Class>(vm_pop(fiber));
+                    instval = vm_pop(fiber);
+                    if(klassobj->methods.get(method_name, &value))
+                    {
+                        value = BoundMethod::make(this, instval, value)->asValue();
+                    }
+                    else
+                    {
+                        value = Object::NullVal;
+                    }
+                    vm_push(fiber, value);
+                    continue;
+                }
+                op_case(INHERIT)
+                {
+                    super = vm_peek(fiber, 1);
+                    if(!Object::isClass(super))
+                    {
+                        vm_rterror("Superclass must be a class");
+                    }
+                    klassobj = Object::as<Class>(vm_peek(fiber, 0));
+                    super_klass = Object::as<Class>(super);
+                    klassobj->super = super_klass;
+                    klassobj->init_method = super_klass->init_method;
+                    super_klass->methods.addAll(&klassobj->methods);
+                    klassobj->super->static_fields.addAll(&klassobj->static_fields);
+                    continue;
+                }
+                op_case(IS)
+                {
+                    instval = vm_peek(fiber, 1);
+                    if(Object::isNull(instval))
+                    {
+                        vm_dropn(fiber, 2);
+                        vm_push(fiber, Object::FalseVal);
+
+                        continue;
+                    }
+                    instance_klass = this->getClassFor(instval);
+                    klassval = vm_peek(fiber, 0);
+                    if(instance_klass == nullptr || !Object::isClass(klassval))
+                    {
+                        vm_rterror("operands must be an instance and a class");
+                    }            
+                    type = Object::as<Class>(klassval);
+                    found = false;
+                    while(instance_klass != nullptr)
+                    {
+                        if(instance_klass == type)
+                        {
+                            found = true;
+                            break;
+                        }
+                        instance_klass = (Class*)instance_klass->super;
+                    }
+                    vm_dropn(fiber, 2);// Drop the instance and class
+                    vm_push(fiber, BOOL_VALUE(found));
+                    continue;
+                }
+                op_case(POP_LOCALS)
+                {
+                    vm_dropn(fiber, vm_readshort(ip));
+                    continue;
+                }
+                op_case(VARARG)
+                {
+                    slot = slots[vm_readbyte(ip)];
+                    if(!Object::isArray(slot))
+                    {
+                        continue;
+                    }
+                    values = &Object::as<Array>(slot)->m_actualarray;
+                    fiber->ensure_stack(values->m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
+                    for(i = 0; i < values->m_count; i++)
+                    {
+                        vm_push(fiber, values->m_values[i]);
+                    }
+                    // Hot-bytecode patching, increment the amount of arguments to OP_CALL
+                    ip[1] = ip[1] + values->m_count - 1;
+                    continue;
+                }
+
+                op_case(REFERENCE_GLOBAL)
+                {
+                    name = vm_readstringlong(current_chunk, ip);
+                    if(vm->globals->values.getSlot(name, &pval))
+                    {
+                        vm_push(fiber, Reference::make(this, pval)->asValue());
+                    }
+                    else
+                    {
+                        vm_rterror("Attempt to reference a null value");
+                    }
+                    continue;
+                }
+                op_case(REFERENCE_PRIVATE)
+                {
+                    vm_push(fiber, Reference::make(this, &privates[vm_readshort(ip)])->asValue());
+                    continue;
+                }
+                op_case(REFERENCE_LOCAL)
+                {
+                    vm_push(fiber, Reference::make(this, &slots[vm_readshort(ip)])->asValue());
+                    continue;
+                }
+                op_case(REFERENCE_UPVALUE)
+                {
+                    vm_push(fiber, Reference::make(this, upvalues[vm_readbyte(ip)]->location)->asValue());
+                    continue;
+                }
+                op_case(REFERENCE_FIELD)
+                {
+                    vobj = vm_peek(fiber, 1);
+                    if(Object::isNull(vobj))
+                    {
+                        vm_rterror("Attempt to index a null value");
+                    }
+                    name = Object::as<String>(vm_peek(fiber, 0));
+                    if(Object::isInstance(vobj))
+                    {
+                        if(!Object::as<Instance>(vobj)->fields.getSlot(name, &pval))
+                        {
+                            vm_rterror("Attempt to reference a null value");
+                        }
+                    }
+                    else
+                    {
+                        Object::print(this, &this->debugwriter, vobj);
+                        printf("\n");
+                        vm_rterror("You can only reference fields of real instances");
+                    }
+                    vm_drop(fiber);// Pop field name
+                    fiber->stack_top[-1] = Reference::make(this, pval)->asValue();
+                    continue;
+                }
+                op_case(SET_REFERENCE)
+                {
+                    reference = vm_pop(fiber);
+                    if(!Object::isReference(reference))
+                    {
+                        vm_rterror("Provided value is not a reference");
+                    }
+                    *Object::as<Reference>(reference)->slot = vm_peek(fiber, 0);
+                    continue;
+                }
+                vm_default()
+                {
+                    vm_rterrorvarg("Unknown op code '%d'", *ip);
+                    break;
+                }
+            }
+        }
+
+        vm_returnerror();
     }
 
     // impl::vm
@@ -9943,6 +11804,183 @@ namespace lit
         this->globals->values.markForGC(this);
     }
 
+    bool VM::callValue(Value callee, uint8_t arg_count)
+    {
+        size_t i;
+        bool bres;
+        NativeMethod* mthobj;
+        Fiber* fiber;
+        Closure* closure;
+        BoundMethod* bound_method;
+        Value mthval;
+        Value result;
+        Instance* instance;
+        Class* klass;
+        (void)fiber;
+        if(Object::isObject(callee))
+        {
+            if(this->m_state->set_native_exit_jump())
+            {
+                return true;
+            }
+            switch(OBJECT_TYPE(callee))
+            {
+                case Object::Type::Function:
+                    {
+                        return this->dispatchCall(Object::as<Function>(callee), nullptr, arg_count);
+                    }
+                    break;
+                case Object::Type::Closure:
+                    {
+                        closure = Object::as<Closure>(callee);
+                        return this->dispatchCall(closure->function, closure, arg_count);
+                    }
+                    break;
+                case Object::Type::NativeFunction:
+                    {
+                        vm_pushgc(this->m_state, false)
+                        result = Object::as<NativeFunction>(callee)->function(this, arg_count, this->fiber->stack_top - arg_count);
+                        this->fiber->stack_top -= arg_count + 1;
+                        this->push(result);
+                        vm_popgc(this->m_state);
+                        return false;
+                    }
+                    break;
+                case Object::Type::NativePrimitive:
+                    {
+                        vm_pushgc(this->m_state, false)
+                        fiber = this->fiber;
+                        bres = Object::as<NativePrimFunction>(callee)->function(this, arg_count, fiber->stack_top - arg_count);
+                        if(bres)
+                        {
+                            fiber->stack_top -= arg_count;
+                        }
+                        vm_popgc(this->m_state);
+                        return bres;
+                    }
+                    break;
+                case Object::Type::NativeMethod:
+                    {
+                        vm_pushgc(this->m_state, false);
+                        mthobj = Object::as<NativeMethod>(callee);
+                        fiber = this->fiber;
+                        result = mthobj->method(this, *(this->fiber->stack_top - arg_count - 1), arg_count, this->fiber->stack_top - arg_count);
+                        this->fiber->stack_top -= arg_count + 1;
+                        //if(!Object::isNull(result))
+                        {
+                            if(!this->fiber->abort)
+                            {
+                                this->push(result);
+                            }
+                        }
+                        vm_popgc(this->m_state);
+                        return false;
+                    }
+                    break;
+                case Object::Type::PrimitiveMethod:
+                    {
+                        vm_pushgc(this->m_state, false);
+                        fiber = this->fiber;
+                        bres = Object::as<PrimitiveMethod>(callee)->method(this, *(fiber->stack_top - arg_count - 1), arg_count, fiber->stack_top - arg_count);
+                        if(bres)
+                        {
+                            fiber->stack_top -= arg_count;
+                        }
+                        vm_popgc(this->m_state);
+                        return bres;
+                    }
+                    break;
+                case Object::Type::Class:
+                    {
+                        klass = Object::as<Class>(callee);
+                        instance = Instance::make(this->m_state, klass);
+                        this->fiber->stack_top[-arg_count - 1] = instance->asValue();
+                        if(klass->init_method != nullptr)
+                        {
+                            return this->callValue(klass->init_method->asValue(), arg_count);
+                        }
+                        // Remove the arguments, so that they don't mess up the stack
+                        // (default constructor has no arguments)
+                        for(i = 0; i < arg_count; i++)
+                        {
+                            this->pop();
+                        }
+                        return false;
+                    }
+                    break;
+                case Object::Type::BoundMethod:
+                    {
+                        bound_method = Object::as<BoundMethod>(callee);
+                        mthval = bound_method->method;
+                        if(Object::isNativeMethod(mthval))
+                        {
+                            vm_pushgc(this->m_state, false);
+                            result = Object::as<NativeMethod>(mthval)->method(this, bound_method->receiver, arg_count, this->fiber->stack_top - arg_count);
+                            this->fiber->stack_top -= arg_count + 1;
+                            this->push(result);
+                            vm_popgc(this->m_state);
+                            return false;
+                        }
+                        else if(Object::isPrimitiveMethod(mthval))
+                        {
+                            fiber = this->fiber;
+                            vm_pushgc(this->m_state, false);
+                            if(Object::as<PrimitiveMethod>(mthval)->method(this, bound_method->receiver, arg_count, fiber->stack_top - arg_count))
+                            {
+                                fiber->stack_top -= arg_count;
+                                return true;
+                            }
+                            vm_popgc(this->m_state);
+                            return false;
+                        }
+                        else
+                        {
+                            this->fiber->stack_top[-arg_count - 1] = bound_method->receiver;
+                            return this->dispatchCall(Object::as<Function>(mthval), nullptr, arg_count);
+                        }
+                    }
+                    break;
+                default:
+                    {
+                    }
+                    break;
+
+            }
+        }
+        if(Object::isNull(callee))
+        {
+            lit_runtime_error(this, "Attempt to call a null value");
+        }
+        else
+        {
+            lit_runtime_error(this, "Can only call functions and classes, got %s", Object::valueName(callee));
+        }
+        return true;
+    }
+
+    // impl::writer
+    void Writer::initString(State* state)
+    {
+        initDefault(state, this);
+        this->stringmode = true;
+        this->uptr = String::allocEmpty(state, 0, false);
+    }
+
+    void Writer::stringAppend(String* ds, int byte)
+    {
+        ds->append(byte);
+    }
+
+    void Writer::stringAppend(String* ds, const char* str, size_t len)
+    {
+        ds->append(str, len);
+    }
+
+    void Writer::stringAppendFormat(String* ds, const char* fmt, va_list va)
+    {
+        ds->chars = sdscatvprintf(ds->chars, fmt, va);
+    }
+
     // impl::object
     Object* Object::make(State* state, size_t size, Object::Type type)
     {
@@ -9954,7 +11992,7 @@ namespace lit
         obj->next = state->vm->objects;
         state->vm->objects = obj;
     #ifdef LIT_LOG_ALLOCATION
-        printf("%p allocate %ld for %s\n", (void*)obj, size, lit_get_value_type(type));
+        printf("%p allocate %ld for %s\n", (void*)obj, size, Object::valueName(type));
     #endif
         return obj;
     }
@@ -9968,8 +12006,8 @@ namespace lit
         Closure* closure;
     #ifdef LIT_LOG_ALLOCATION
         printf("(");
-        lit_print_value(obj->asValue());
-        printf(") %p free %s\n", (void*)obj, lit_get_value_type(obj->type));
+        Object::print(obj->asValue());
+        printf(") %p free %s\n", (void*)obj, Object::valueName(obj->type));
     #endif
 
         switch(obj->type)
@@ -10111,6 +12149,392 @@ namespace lit
         }
     }
 
+    inline State* Object::asState(VM* vm)
+    {
+        return vm->m_state;
+    }
+
+    String* Object::functionName(VM* vm, Value instance)
+    {
+        String* name;
+        Field* field;
+        name = nullptr;
+        switch(OBJECT_TYPE(instance))
+        {
+            case Object::Type::Function:
+                {
+                    name = Object::as<Function>(instance)->name;
+                }
+                break;
+            case Object::Type::Closure:
+                {
+                    name = Object::as<Closure>(instance)->function->name;
+                }
+                break;
+            case Object::Type::Field:
+                {
+                    field = Object::as<Field>(instance);
+                    if(field->getter != nullptr)
+                    {
+                        return functionName(vm, field->getter->asValue());
+                    }
+                    return functionName(vm, field->setter->asValue());
+                }
+                break;
+            case Object::Type::NativePrimitive:
+                {
+                    name = Object::as<NativePrimFunction>(instance)->name;
+                }
+                break;
+            case Object::Type::NativeFunction:
+                {
+                    name = Object::as<NativeFunction>(instance)->name;
+                }
+                break;
+            case Object::Type::NativeMethod:
+                {
+                    name = Object::as<NativeMethod>(instance)->name;
+                }
+                break;
+            case Object::Type::PrimitiveMethod:
+                {
+                    name = Object::as<PrimitiveMethod>(instance)->name;
+                }
+                break;
+            case Object::Type::BoundMethod:
+                {
+                    return functionName(vm, Object::as<BoundMethod>(instance)->method);
+                }
+                break;
+            default:
+                {
+                }
+                break;
+        }
+        if(name == nullptr)
+        {
+            return String::format(vm->m_state, "function #", *((double*)Object::asObject(instance)));
+        }
+        return String::format(vm->m_state, "function @", name->asValue());
+    }
+
+    String* Object::toString(State* state, Value valobj)
+    {
+        Value* slot;
+        VM* vm;
+        Fiber* fiber;
+        Function* function;
+        Chunk* chunk;
+        CallFrame* frame;
+        InterpretResult result;
+        if(Object::isString(valobj))
+        {
+            return Object::as<String>(valobj);
+        }
+        else if(!Object::isObject(valobj))
+        {
+            if(Object::isNull(valobj))
+            {
+                return String::intern(state, "null");
+            }
+            else if(Object::isNumber(valobj))
+            {
+                return Object::as<String>(String::stringNumberToString(state, Object::toNumber(valobj)));
+            }
+            else if(Object::isBool(valobj))
+            {
+                return String::intern(state, Object::asBool(valobj) ? "true" : "false");
+            }
+        }
+        else if(Object::isReference(valobj))
+        {
+            slot = Object::as<Reference>(valobj)->slot;
+
+            if(slot == nullptr)
+            {
+                return String::intern(state, "null");
+            }
+            return Object::toString(state, *slot);
+        }
+        vm = state->vm;
+        fiber = vm->fiber;
+        if(Fiber::ensureFiber(vm, fiber))
+        {
+            return String::intern(state, "null");
+        }
+        function = state->api_function;
+        if(function == nullptr)
+        {
+            function = state->api_function = Function::make(state, fiber->module);
+            function->chunk.has_line_info = false;
+            function->name = state->api_name;
+            chunk = &function->chunk;
+            chunk->m_count = 0;
+            chunk->constants.m_count = 0;
+            function->max_slots = 3;
+            chunk->write_chunk(OP_INVOKE, 1);
+            chunk->emit_byte(0);
+            chunk->emit_short(chunk->add_constant(String::internValue(state, "toString")));
+            chunk->emit_byte(OP_RETURN);
+        }
+        fiber->ensure_stack(function->max_slots + (int)(fiber->stack_top - fiber->stack));
+        frame = &fiber->frames[fiber->frame_count++];
+        frame->ip = function->chunk.code;
+        frame->closure = nullptr;
+        frame->function = function;
+        frame->slots = fiber->stack_top;
+        frame->result_ignored = false;
+        frame->return_to_c = true;
+        PUSH(function->asValue());
+        PUSH(valobj);
+        result = state->execFiber(fiber);
+        if(result.type != LITRESULT_OK)
+        {
+            return String::intern(state, "null");
+        }
+        return Object::as<String>(result.result);
+    }
+
+    void Object::printArray(State* state, Writer* wr, Array* array, size_t size)
+    {
+        size_t i;
+        wr->format("(%u) [", (unsigned int)size);
+        if(size > 0)
+        {
+            wr->put(" ");
+            for(i = 0; i < size; i++)
+            {
+                if(Object::isArray(array->at(i)) && (array == Object::as<Array>(array->at(i))))
+                {
+                    wr->put("(recursion)");
+                }
+                else
+                {
+                    Object::print(state, wr, array->at(i));
+                }
+                if(i + 1 < size)
+                {
+                    wr->put(", ");
+                }
+                else
+                {
+                    wr->put(" ");
+                }
+            }
+        }
+        wr->put("]");
+    }
+
+    void Object::printMap(State* state, Writer* wr, Map* map, size_t size)
+    {
+        bool had_before;
+        size_t i;
+        TableEntry* entry;
+        wr->format("(%u) {", (unsigned int)size);
+        had_before = false;
+        if(size > 0)
+        {
+            for(i = 0; i < (size_t)map->values.m_capacity; i++)
+            {
+                entry = &map->values.m_values[i];
+                if(entry->key != nullptr)
+                {
+                    if(had_before)
+                    {
+                        wr->put(", ");
+                    }
+                    else
+                    {
+                        wr->put(" ");
+                    }
+                    wr->format("%s = ", entry->key->chars);
+                    if(Object::isMap(entry->value) && (map == Object::as<Map>(entry->value)))
+                    {
+                        wr->put("(recursion)");
+                    }
+                    else
+                    {
+                        Object::print(state, wr, entry->value);
+                    }
+                    had_before = true;
+                }
+            }
+        }
+        if(had_before)
+        {
+            wr->put(" }");
+        }
+        else
+        {
+            wr->put("}");
+        }
+    }
+
+    void Object::printObject(State* state, Writer* wr, Value value)
+    {
+        size_t size;
+        Map* map;
+        Array* array;
+        Range* range;
+        Value* slot;
+        Object* obj;
+        Upvalue* upvalue;
+        obj = Object::asObject(value);
+        if(obj != nullptr)
+        {
+            switch(obj->type)
+            {
+                case Object::Type::String:
+                    {
+                        wr->format("%s", Object::asString(value)->chars);
+                    }
+                    break;
+                case Object::Type::Function:
+                    {
+                        wr->format("function %s", Object::as<Function>(value)->name->chars);
+                    }
+                    break;
+                case Object::Type::Closure:
+                    {
+                        wr->format("closure %s", Object::as<Closure>(value)->function->name->chars);
+                    }
+                    break;
+                case Object::Type::NativePrimitive:
+                    {
+                        wr->format("function %s", Object::as<NativePrimFunction>(value)->name->chars);
+                    }
+                    break;
+                case Object::Type::NativeFunction:
+                    {
+                        wr->format("function %s", Object::as<NativeFunction>(value)->name->chars);
+                    }
+                    break;
+                case Object::Type::PrimitiveMethod:
+                    {
+                        wr->format("function %s", Object::as<PrimitiveMethod>(value)->name->chars);
+                    }
+                    break;
+                case Object::Type::NativeMethod:
+                    {
+                        wr->format("function %s", Object::as<NativeMethod>(value)->name->chars);
+                    }
+                    break;
+                case Object::Type::Fiber:
+                    {
+                        wr->format("fiber");
+                    }
+                    break;
+                case Object::Type::Module:
+                    {
+                        wr->format("module %s", Object::as<Module>(value)->name->chars);
+                    }
+                    break;
+
+                case Object::Type::Upvalue:
+                    {
+                        upvalue = Object::as<Upvalue>(value);
+                        if(upvalue->location == nullptr)
+                        {
+                            Object::print(state, wr, upvalue->closed);
+                        }
+                        else
+                        {
+                            printObject(state, wr, *upvalue->location);
+                        }
+                    }
+                    break;
+                case Object::Type::Class:
+                    {
+                        wr->format("class %s", Object::as<Class>(value)->name->chars);
+                    }
+                    break;
+                case Object::Type::Instance:
+                    {
+                        /*
+                        if(Object::as<Instance>(value)->klass->type == Object::Type::Map)
+                        {
+                            fprintf(stderr, "instance is a map\n");
+                        }
+                        printf("%s instance", Object::as<Instance>(value)->klass->name->chars);
+                        */
+                        wr->format("<instance '%s' ", Object::as<Instance>(value)->klass->name->chars);
+                        map = Object::as<Map>(value);
+                        size = map->values.m_count;
+                        printMap(state, wr, map, size);
+                        wr->put(">");
+                    }
+                    break;
+                case Object::Type::BoundMethod:
+                    {
+                        Object::print(state, wr, Object::as<BoundMethod>(value)->method);
+                        return;
+                    }
+                    break;
+                case Object::Type::Array:
+                    {
+                        #ifdef LIT_MINIMIZE_CONTAINERS
+                            wr->put("array");
+                        #else
+                            array = Object::as<Array>(value);
+                            size = array->size();
+                            printArray(state, wr, array, size);
+                        #endif
+                    }
+                    break;
+                case Object::Type::Map:
+                    {
+                        #ifdef LIT_MINIMIZE_CONTAINERS
+                            wr->format("map");
+                        #else
+                            map = Object::as<Map>(value);
+                            size = map->values.m_count;
+                            printMap(state, wr, map, size);
+                        #endif
+                    }
+                    break;
+                case Object::Type::Userdata:
+                    {
+                        wr->format("userdata");
+                    }
+                    break;
+                case Object::Type::Range:
+                    {
+                        range = Object::as<Range>(value);
+                        wr->format("%g .. %g", range->from, range->to);
+                    }
+                    break;
+                case Object::Type::Field:
+                    {
+                        wr->format("field");
+                    }
+                    break;
+                case Object::Type::Reference:
+                    {
+                        wr->format("reference => ");
+                        slot = Object::as<Reference>(value)->slot;
+                        if(slot == nullptr)
+                        {
+                            wr->put("null");
+                        }
+                        else
+                        {
+                            Object::print(state, wr, *slot);
+                        }
+                    }
+                    break;
+                default:
+                    {
+                    }
+                    break;
+            }
+        }
+        else
+        {
+            wr->put("!nullpointer!");
+        }
+    }
+
+    // impl::table 
     void Table::markForGC(VM* vm)
     {
         size_t i;
@@ -10472,17 +12896,6 @@ namespace lit
         return true;
     }
 
-
-
-    #define PUSH(value) (*fiber->stack_top++ = value)
-
-    #define RETURN_OK(r) return InterpretResult{ LITRESULT_OK, r };
-
-    #define RETURN_RUNTIME_ERROR() return InterpretResult{ LITRESULT_RUNTIME_ERROR, Object::NullVal };
-
-
-
-
     Value lit_instance_get_method(State* state, Value callee, String* mthname)
     {
         Value mthval;
@@ -10501,7 +12914,7 @@ namespace lit
         mthval = lit_instance_get_method(state, callee, mthname);
         if(!Object::isNull(mthval))
         {
-            return lit_call(state, mthval, argv, argc, false);
+            return state->call(mthval, argv, argc, false);
         }
         return INTERPRET_RUNTIME_FAIL;    
     }
@@ -10512,7 +12925,7 @@ namespace lit
         if(arg_count <= id || !Object::isNumber(args[id]))
         {
             lit_runtime_error_exiting(vm, "expected a number as argument #%i, got a %s", (int)id,
-                                      id >= arg_count ? "null" : lit_get_value_type(args[id]));
+                                      id >= arg_count ? "null" : Object::valueName(args[id]));
         }
         return Object::toNumber(args[id]);
     }
@@ -10532,7 +12945,7 @@ namespace lit
         if(arg_count <= id || !Object::isBool(args[id]))
         {
             lit_runtime_error_exiting(vm, "expected a boolean as argument #%i, got a %s", (int)id,
-                                      id >= arg_count ? "null" : lit_get_value_type(args[id]));
+                                      id >= arg_count ? "null" : Object::valueName(args[id]));
         }
 
         return Object::asBool(args[id]);
@@ -10553,7 +12966,7 @@ namespace lit
         if(arg_count <= id || !Object::isString(args[id]))
         {
             lit_runtime_error_exiting(vm, "expected a string as argument #%i, got a %s", (int)id,
-                                      id >= arg_count ? "null" : lit_get_value_type(args[id]));
+                                      id >= arg_count ? "null" : Object::valueName(args[id]));
         }
 
         return Object::as<String>(args[id])->chars;
@@ -10575,7 +12988,7 @@ namespace lit
         if(arg_count <= id || !Object::isString(args[id]))
         {
             lit_runtime_error_exiting(vm, "expected a string as argument #%i, got a %s", (int)id,
-                                      id >= arg_count ? "null" : lit_get_value_type(args[id]));
+                                      id >= arg_count ? "null" : Object::valueName(args[id]));
         }
 
         return Object::as<String>(args[id]);
@@ -10586,7 +12999,7 @@ namespace lit
         if(arg_count <= id || !Object::isInstance(args[id]))
         {
             lit_runtime_error_exiting(vm, "expected an instance as argument #%i, got a %s", (int)id,
-                                      id >= arg_count ? "null" : lit_get_value_type(args[id]));
+                                      id >= arg_count ? "null" : Object::valueName(args[id]));
         }
 
         return Object::as<Instance>(args[id]);
@@ -10597,7 +13010,7 @@ namespace lit
         if(arg_count <= id || !Object::isReference(args[id]))
         {
             lit_runtime_error_exiting(vm, "expected a reference as argument #%i, got a %s", (int)id,
-                                      id >= arg_count ? "null" : lit_get_value_type(args[id]));
+                                      id >= arg_count ? "null" : Object::valueName(args[id]));
         }
 
         return Object::as<Reference>(args[id])->slot;
@@ -10635,413 +13048,6 @@ namespace lit
         }
     }
 
-
-
-
-    static bool ensure_fiber(VM* vm, Fiber* fiber)
-    {
-        size_t newcapacity;
-        size_t osize;
-        size_t newsize;
-        if(fiber == nullptr)
-        {
-            lit_runtime_error(vm, "no fiber to run on");
-            return true;
-        }
-        if(fiber->frame_count == LIT_CALL_FRAMES_MAX)
-        {
-            lit_runtime_error(vm, "fiber frame overflow");
-            return true;
-        }
-        if(fiber->frame_count + 1 > fiber->frame_capacity)
-        {
-            //newcapacity = fmin(LIT_CALL_FRAMES_MAX, fiber->frame_capacity * 2);
-            newcapacity = (fiber->frame_capacity * 2) + 1;
-            osize = (sizeof(CallFrame) * fiber->frame_capacity);
-            newsize = (sizeof(CallFrame) * newcapacity);
-            fiber->frames = (CallFrame*)Memory::reallocate(vm->m_state, fiber->frames, osize, newsize);
-            fiber->frame_capacity = newcapacity;
-        }
-
-        return false;
-    }
-
-    static inline CallFrame* setup_call(State* state, Function* callee, Value* argv, uint8_t argc, bool ignfiber)
-    {
-        bool vararg;
-        int amount;
-        size_t i;
-        size_t varargc;
-        size_t function_arg_count;
-        VM* vm;
-        Fiber* fiber;
-        CallFrame* frame;
-        Array* array;
-        (void)argc;
-        (void)varargc;
-        vm = state->vm;
-        fiber = vm->fiber;
-        if(callee == nullptr)
-        {
-            lit_runtime_error(vm, "attempt to call a null value");
-            return nullptr;
-        }
-        if(ignfiber)
-        {
-            if(fiber == nullptr)
-            {
-                fiber = state->api_fiber;
-            }
-        }
-        if(!ignfiber)
-        {
-            if(ensure_fiber(vm, fiber))
-            {
-                return nullptr;
-            }        
-        }
-        lit_ensure_fiber_stack(state, fiber, callee->max_slots + (int)(fiber->stack_top - fiber->stack));
-        frame = &fiber->frames[fiber->frame_count++];
-        frame->slots = fiber->stack_top;
-        PUSH(callee->asValue());
-        for(i = 0; i < argc; i++)
-        {
-            PUSH(argv[i]);
-        }
-        function_arg_count = callee->arg_count;
-        if(argc != function_arg_count)
-        {
-            vararg = callee->vararg;
-            if(argc < function_arg_count)
-            {
-                amount = (int)function_arg_count - argc - (vararg ? 1 : 0);
-                for(i = 0; i < (size_t)amount; i++)
-                {
-                    PUSH(Object::NullVal);
-                }
-                if(vararg)
-                {
-                    PUSH(Array::make(vm->m_state)->asValue());
-                }
-            }
-            else if(callee->vararg)
-            {
-                array = Array::make(vm->m_state);
-                varargc = argc - function_arg_count + 1;
-                array->m_actualarray.reserve(varargc + 1, Object::NullVal);
-                for(i = 0; i < varargc; i++)
-                {
-                    array->m_actualarray.m_values[i] = fiber->stack_top[(int)i - (int)varargc];
-                }
-
-                fiber->stack_top -= varargc;
-                lit_push(vm, array->asValue());
-            }
-            else
-            {
-                fiber->stack_top -= (argc - function_arg_count);
-            }
-        }
-        else if(callee->vararg)
-        {
-            array = Array::make(vm->m_state);
-            varargc = argc - function_arg_count + 1;
-            array->push(*(fiber->stack_top - 1));
-            *(fiber->stack_top - 1) = array->asValue();
-        }
-        frame->ip = callee->chunk.code;
-        frame->closure = nullptr;
-        frame->function = callee;
-        frame->result_ignored = false;
-        frame->return_to_c = true;
-        return frame;
-    }
-
-    static inline InterpretResult execute_call(State* state, CallFrame* frame)
-    {
-        Fiber* fiber;
-        InterpretResult result;
-        if(frame == nullptr)
-        {
-            RETURN_RUNTIME_ERROR();
-        }
-        fiber = state->vm->fiber;
-        result = lit_interpret_fiber(state, fiber);
-        if(fiber->error != Object::NullVal)
-        {
-            result.result = fiber->error;
-        }
-        return result;
-    }
-
-    InterpretResult lit_call_function(State* state, Function* callee, Value* argv, uint8_t argc, bool ignfiber)
-    {
-        return execute_call(state, setup_call(state, callee, argv, argc, ignfiber));
-    }
-
-    InterpretResult lit_call_closure(State* state, Closure* callee, Value* argv, uint8_t argc, bool ignfiber)
-    {
-        CallFrame* frame;
-        frame = setup_call(state, callee->function, argv, argc, ignfiber);
-        if(frame == nullptr)
-        {
-            RETURN_RUNTIME_ERROR();
-        }
-        frame->closure = callee;
-        return execute_call(state, frame);
-    }
-
-    InterpretResult lit_call_method(State* state, Value instance, Value callee, Value* argv, uint8_t argc, bool ignfiber)
-    {
-        uint8_t i;
-        VM* vm;
-        InterpretResult lir;
-        Object::Type type;
-        Class* klass;
-        Fiber* fiber;
-        Value* slot;
-        NativeMethod* natmethod;
-        BoundMethod* bound_method;
-        Value mthval;
-        Value result;
-        lir.result = Object::NullVal;
-        lir.type = LITRESULT_OK;
-        vm = state->vm;
-        if(Object::isObject(callee))
-        {
-            if(state->set_native_exit_jump())
-            {
-                RETURN_RUNTIME_ERROR();
-            }
-            type = OBJECT_TYPE(callee);
-
-            if(type == Object::Type::Function)
-            {
-                return lit_call_function(state, Object::as<Function>(callee), argv, argc, ignfiber);
-            }
-            else if(type == Object::Type::Closure)
-            {
-                return lit_call_closure(state, Object::as<Closure>(callee), argv, argc, ignfiber);
-            }
-            fiber = vm->fiber;
-            if(ignfiber)
-            {
-                if(fiber == nullptr)
-                {
-                    fiber = state->api_fiber;
-                }
-            }
-            if(!ignfiber)
-            {
-                if(ensure_fiber(vm, fiber))
-                {
-                    RETURN_RUNTIME_ERROR();
-                }
-            }
-            lit_ensure_fiber_stack(state, fiber, 3 + argc + (int)(fiber->stack_top - fiber->stack));
-            slot = fiber->stack_top;
-            PUSH(instance);
-            if(type != Object::Type::Class)
-            {
-                for(i = 0; i < argc; i++)
-                {
-                    PUSH(argv[i]);
-                }
-            }
-            switch(type)
-            {
-                case Object::Type::NativeFunction:
-                    {
-                        Value result = Object::as<NativeFunction>(callee)->function(vm, argc, fiber->stack_top - argc);
-                        fiber->stack_top = slot;
-                        RETURN_OK(result);
-                    }
-                    break;
-                case Object::Type::NativePrimitive:
-                    {
-                        Object::as<NativePrimFunction>(callee)->function(vm, argc, fiber->stack_top - argc);
-                        fiber->stack_top = slot;
-                        RETURN_OK(Object::NullVal);
-                    }
-                    break;
-                case Object::Type::NativeMethod:
-                    {
-                        natmethod = Object::as<NativeMethod>(callee);
-                        result = natmethod->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
-                        fiber->stack_top = slot;
-                        RETURN_OK(result);
-                    }
-                    break;
-                case Object::Type::Class:
-                    {
-                        klass = Object::as<Class>(callee);
-                        *slot = Instance::make(vm->m_state, klass)->asValue();
-                        if(klass->init_method != nullptr)
-                        {
-                            lir = lit_call_method(state, *slot, klass->init_method->asValue(), argv, argc, ignfiber);
-                        }
-                        // TODO: when should this return *slot instead of lir?
-                        fiber->stack_top = slot;
-                        //RETURN_OK(*slot);
-                        return lir;
-                    }
-                    break;
-                case Object::Type::BoundMethod:
-                    {
-                        bound_method = Object::as<BoundMethod>(callee);
-                        mthval = bound_method->method;
-                        *slot = bound_method->receiver;
-                        if(Object::isNativeMethod(mthval))
-                        {
-                            result = Object::as<NativeMethod>(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
-                            fiber->stack_top = slot;
-                            RETURN_OK(result);
-                        }
-                        else if(Object::isPrimitiveMethod(mthval))
-                        {
-                            Object::as<PrimitiveMethod>(mthval)->method(vm, bound_method->receiver, argc, fiber->stack_top - argc);
-
-                            fiber->stack_top = slot;
-                            RETURN_OK(Object::NullVal);
-                        }
-                        else
-                        {
-                            fiber->stack_top = slot;
-                            return lit_call_function(state, Object::as<Function>(mthval), argv, argc, ignfiber);
-                        }
-                    }
-                    break;
-                case Object::Type::PrimitiveMethod:
-                    {
-                        Object::as<PrimitiveMethod>(callee)->method(vm, *(fiber->stack_top - argc - 1), argc, fiber->stack_top - argc);
-                        fiber->stack_top = slot;
-                        RETURN_OK(Object::NullVal);
-                    }
-                    break;
-                default:
-                    {
-                    }
-                    break;
-            }
-        }
-        if(Object::isNull(callee))
-        {
-            lit_runtime_error(vm, "attempt to call a null value");
-        }
-        else
-        {
-            lit_runtime_error(vm, "can only call functions and classes");
-        }
-
-        RETURN_RUNTIME_ERROR();
-    }
-
-    InterpretResult lit_call(State* state, Value callee, Value* argv, uint8_t argc, bool ignfiber)
-    {
-        return lit_call_method(state, callee, callee, argv, argc, ignfiber);
-    }
-
-    InterpretResult lit_find_and_call_method(State* state, Value callee, String* method_name, Value* argv, uint8_t argc, bool ignfiber)
-    {
-        Class* klass;
-        VM* vm;
-        Fiber* fiber;
-        Value mthval;
-        vm = state->vm;
-        fiber = vm->fiber;
-        if(fiber == nullptr)
-        {
-            if(!ignfiber)
-            {
-                lit_runtime_error(vm, "no fiber to run on");
-                RETURN_RUNTIME_ERROR();
-            }
-        }
-        klass = state->getClassFor(callee);
-        if((Object::isInstance(callee) && Object::as<Instance>(callee)->fields.get(method_name, &mthval)) || klass->methods.get(method_name, &mthval))
-        {
-            return lit_call_method(state, callee, mthval, argv, argc, ignfiber);
-        }
-        return InterpretResult{ LITRESULT_INVALID, Object::NullVal };
-    }
-
-    String* lit_to_string(State* state, Value valobj)
-    {
-        Value* slot;
-        VM* vm;
-        Fiber* fiber;
-        Function* function;
-        Chunk* chunk;
-        CallFrame* frame;
-        InterpretResult result;
-        if(Object::isString(valobj))
-        {
-            return Object::as<String>(valobj);
-        }
-        else if(!Object::isObject(valobj))
-        {
-            if(Object::isNull(valobj))
-            {
-                return String::intern(state, "null");
-            }
-            else if(Object::isNumber(valobj))
-            {
-                return Object::as<String>(String::stringNumberToString(state, Object::toNumber(valobj)));
-            }
-            else if(Object::isBool(valobj))
-            {
-                return String::intern(state, Object::asBool(valobj) ? "true" : "false");
-            }
-        }
-        else if(Object::isReference(valobj))
-        {
-            slot = Object::as<Reference>(valobj)->slot;
-
-            if(slot == nullptr)
-            {
-                return String::intern(state, "null");
-            }
-            return lit_to_string(state, *slot);
-        }
-        vm = state->vm;
-        fiber = vm->fiber;
-        if(ensure_fiber(vm, fiber))
-        {
-            return String::intern(state, "null");
-        }
-        function = state->api_function;
-        if(function == nullptr)
-        {
-            function = state->api_function = Function::make(state, fiber->module);
-            function->chunk.has_line_info = false;
-            function->name = state->api_name;
-            chunk = &function->chunk;
-            chunk->m_count = 0;
-            chunk->constants.m_count = 0;
-            function->max_slots = 3;
-            chunk->write_chunk(OP_INVOKE, 1);
-            chunk->emit_byte(0);
-            chunk->emit_short(chunk->add_constant(String::internValue(state, "toString")));
-            chunk->emit_byte(OP_RETURN);
-        }
-        lit_ensure_fiber_stack(state, fiber, function->max_slots + (int)(fiber->stack_top - fiber->stack));
-        frame = &fiber->frames[fiber->frame_count++];
-        frame->ip = function->chunk.code;
-        frame->closure = nullptr;
-        frame->function = function;
-        frame->slots = fiber->stack_top;
-        frame->result_ignored = false;
-        frame->return_to_c = true;
-        PUSH(function->asValue());
-        PUSH(valobj);
-        result = lit_interpret_fiber(state, fiber);
-        if(result.type != LITRESULT_OK)
-        {
-            return String::intern(state, "null");
-        }
-        return Object::as<String>(result.result);
-    }
-
     Value lit_call_new(VM* vm, const char* name, Value* args, size_t argc, bool ignfiber)
     {
         Value value;
@@ -11056,7 +13062,7 @@ namespace lit
         {
             return Instance::make(vm->m_state, klass)->asValue();
         }
-        return lit_call_method(vm->m_state, value, value, args, argc, ignfiber).result;
+        return vm->m_state->callMethod(value, value, args, argc, ignfiber).result;
     }
 
 
@@ -11082,7 +13088,7 @@ namespace lit
             constant = chunk->code[offset + 1];
         }
         wr->format("%s%-16s%s %4d '", COLOR_YELLOW, name, COLOR_RESET, constant);
-        lit_print_value(state, wr, chunk->constants.m_values[constant]);
+        Object::print(state, wr, chunk->constants.m_values[constant]);
         wr->format("'\n");
         return offset + (big ? 3 : 2);
     }
@@ -11125,7 +13131,7 @@ namespace lit
         constant = chunk->code[offset + 2];
         constant |= chunk->code[offset + 3];
         wr->format("%s%-16s%s (%d args) %4d '", COLOR_YELLOW, name, COLOR_RESET, arg_count, constant);
-        lit_print_value(state, wr, chunk->constants.m_values[constant]);
+        Object::print(state, wr, chunk->constants.m_values[constant]);
         wr->format("'\n");
         return offset + 4;
     }
@@ -11288,7 +13294,7 @@ namespace lit
                     offset++;
                     constant |= chunk->code[offset];
                     wr->format("%-16s %4d ", "OP_CLOSURE", constant);
-                    lit_print_value(state, wr, chunk->constants.m_values[constant]);
+                    Object::print(state, wr, chunk->constants.m_values[constant]);
                     wr->format("\n");
                     function = Object::as<Function>(chunk->constants.m_values[constant]);
                     for(j = 0; j < function->upvalue_count; j++)
@@ -11947,170 +13953,6 @@ namespace lit
         return n;
     }
 
-    bool lit_is_callable_function(Value value)
-    {
-        if(Object::isObject(value))
-        {
-            Object::Type type = OBJECT_TYPE(value);
-            return (
-                (type == Object::Type::Closure) ||
-                (type == Object::Type::Function) ||
-                (type == Object::Type::NativeFunction) ||
-                (type == Object::Type::NativePrimitive) ||
-                (type == Object::Type::NativeMethod) ||
-                (type == Object::Type::PrimitiveMethod) ||
-                (type == Object::Type::BoundMethod)
-            );
-        }
-
-        return false;
-    }
-
-    Value lit_get_function_name(VM* vm, Value instance)
-    {
-        String* name;
-        Field* field;
-        name = nullptr;
-        switch(OBJECT_TYPE(instance))
-        {
-            case Object::Type::Function:
-                {
-                    name = Object::as<Function>(instance)->name;
-                }
-                break;
-            case Object::Type::Closure:
-                {
-                    name = Object::as<Closure>(instance)->function->name;
-                }
-                break;
-            case Object::Type::Field:
-                {
-                    field = Object::as<Field>(instance);
-                    if(field->getter != nullptr)
-                    {
-                        return lit_get_function_name(vm, field->getter->asValue());
-                    }
-                    return lit_get_function_name(vm, field->setter->asValue());
-                }
-                break;
-            case Object::Type::NativePrimitive:
-                {
-                    name = Object::as<NativePrimFunction>(instance)->name;
-                }
-                break;
-            case Object::Type::NativeFunction:
-                {
-                    name = Object::as<NativeFunction>(instance)->name;
-                }
-                break;
-            case Object::Type::NativeMethod:
-                {
-                    name = Object::as<NativeMethod>(instance)->name;
-                }
-                break;
-            case Object::Type::PrimitiveMethod:
-                {
-                    name = Object::as<PrimitiveMethod>(instance)->name;
-                }
-                break;
-            case Object::Type::BoundMethod:
-                {
-                    return lit_get_function_name(vm, Object::as<BoundMethod>(instance)->method);
-                }
-                break;
-            default:
-                {
-                }
-                break;
-        }
-        if(name == nullptr)
-        {
-            return String::format(vm->m_state, "function #", *((double*)Object::asObject(instance)))->asValue();
-        }
-
-        return String::format(vm->m_state, "function @", name->asValue())->asValue();
-    }
-
-
-    void lit_ensure_fiber_stack(State* state, Fiber* fiber, size_t needed)
-    {
-        size_t i;
-        size_t capacity;
-        Value* old_stack;
-        Upvalue* upvalue;
-        if(fiber->stack_capacity >= needed)
-        {
-            return;
-        }
-        capacity = (size_t)lit_closest_power_of_two((int)needed);
-        old_stack = fiber->stack;
-        fiber->stack = (Value*)Memory::reallocate(state, fiber->stack, sizeof(Value) * fiber->stack_capacity, sizeof(Value) * capacity);
-        fiber->stack_capacity = capacity;
-        if(fiber->stack != old_stack)
-        {
-            for(i = 0; i < fiber->frame_capacity; i++)
-            {
-                CallFrame* frame = &fiber->frames[i];
-                frame->slots = fiber->stack + (frame->slots - old_stack);
-            }
-            for(upvalue = fiber->open_upvalues; upvalue != nullptr; upvalue = upvalue->next)
-            {
-                upvalue->location = fiber->stack + (upvalue->location - old_stack);
-            }
-            fiber->stack_top = fiber->stack + (fiber->stack_top - old_stack);
-        }
-    }
-
-
-    BoundMethod* lit_create_bound_method(State* state, Value receiver, Value method)
-    {
-        BoundMethod* bound_method;
-        bound_method = Object::make<BoundMethod>(state, Object::Type::BoundMethod);
-        bound_method->receiver = receiver;
-        bound_method->method = method;
-        return bound_method;
-    }
-
-
-
-    Userdata* lit_create_userdata(State* state, size_t size, bool ispointeronly)
-    {
-        Userdata* userdata;
-        userdata = Object::make<Userdata>(state, Object::Type::Userdata);
-        userdata->data = nullptr;
-        if(size > 0)
-        {
-            if(!ispointeronly)
-            {
-                userdata->data = Memory::reallocate(state, nullptr, 0, size);
-            }
-        }
-        userdata->size = size;
-        userdata->cleanup_fn = nullptr;
-        userdata->canfree = true;
-        return userdata;
-    }
-
-    Range* lit_create_range(State* state, double from, double to)
-    {
-        Range* range;
-        range = Object::make<Range>(state, Object::Type::Range);
-        range->from = from;
-        range->to = to;
-        return range;
-    }
-
-    Reference* lit_create_reference(State* state, Value* slot)
-    {
-        Reference* reference;
-        reference = Object::make<Reference>(state, Object::Type::Reference);
-        reference->slot = slot;
-        return reference;
-    }
-
-
-
-
 
     InterpretResult lit_interpret(State* state, const char* module_name, char* code)
     {
@@ -12203,7 +14045,7 @@ namespace lit
         {
             return InterpretResult{ LITRESULT_COMPILE_ERROR, Object::NullVal };
         }
-        result = lit_interpret_module(state, module);
+        result = state->execModule(module);
         fiber = module->main_fiber;
         if(!state->had_error && !fiber->abort && fiber->stack_top != fiber->stack)
         {
@@ -12427,624 +14269,6 @@ namespace lit
     }
 
 
-
-
-
-    static const char* lit_object_type_names[] =
-    {
-        "string",
-        "function",
-        "native_function",
-        "native_primitive",
-        "native_method",
-        "primitive_method",
-        "fiber",
-        "module",
-        "closure",
-        "upvalue",
-        "class",
-        "instance",
-        "bound_method",
-        "array",
-        "map",
-        "userdata",
-        "range",
-        "field",
-        "reference"
-    };
-
-
-
-    static void print_array(State* state, Writer* wr, Array* array, size_t size)
-    {
-        size_t i;
-        wr->format("(%u) [", (unsigned int)size);
-        if(size > 0)
-        {
-            wr->put(" ");
-            for(i = 0; i < size; i++)
-            {
-                if(Object::isArray(array->at(i)) && (array == Object::as<Array>(array->at(i))))
-                {
-                    wr->put("(recursion)");
-                }
-                else
-                {
-                    lit_print_value(state, wr, array->at(i));
-                }
-                if(i + 1 < size)
-                {
-                    wr->put(", ");
-                }
-                else
-                {
-                    wr->put(" ");
-                }
-            }
-        }
-        wr->put("]");
-    }
-
-    static void print_map(State* state, Writer* wr, Map* map, size_t size)
-    {
-        bool had_before;
-        size_t i;
-        TableEntry* entry;
-        wr->format("(%u) {", (unsigned int)size);
-        had_before = false;
-        if(size > 0)
-        {
-            for(i = 0; i < (size_t)map->values.m_capacity; i++)
-            {
-                entry = &map->values.m_values[i];
-                if(entry->key != nullptr)
-                {
-                    if(had_before)
-                    {
-                        wr->put(", ");
-                    }
-                    else
-                    {
-                        wr->put(" ");
-                    }
-                    wr->format("%s = ", entry->key->chars);
-                    if(Object::isMap(entry->value) && (map == Object::as<Map>(entry->value)))
-                    {
-                        wr->put("(recursion)");
-                    }
-                    else
-                    {
-                        lit_print_value(state, wr, entry->value);
-                    }
-                    had_before = true;
-                }
-            }
-        }
-        if(had_before)
-        {
-            wr->put(" }");
-        }
-        else
-        {
-            wr->put("}");
-        }
-    }
-
-    static void print_object(State* state, Writer* wr, Value value)
-    {
-        size_t size;
-        Map* map;
-        Array* array;
-        Range* range;
-        Value* slot;
-        Object* obj;
-        Upvalue* upvalue;
-        obj = Object::asObject(value);
-        if(obj != nullptr)
-        {
-            switch(obj->type)
-            {
-                case Object::Type::String:
-                    {
-                        wr->format("%s", Object::asString(value)->chars);
-                    }
-                    break;
-                case Object::Type::Function:
-                    {
-                        wr->format("function %s", Object::as<Function>(value)->name->chars);
-                    }
-                    break;
-                case Object::Type::Closure:
-                    {
-                        wr->format("closure %s", Object::as<Closure>(value)->function->name->chars);
-                    }
-                    break;
-                case Object::Type::NativePrimitive:
-                    {
-                        wr->format("function %s", Object::as<NativePrimFunction>(value)->name->chars);
-                    }
-                    break;
-                case Object::Type::NativeFunction:
-                    {
-                        wr->format("function %s", Object::as<NativeFunction>(value)->name->chars);
-                    }
-                    break;
-                case Object::Type::PrimitiveMethod:
-                    {
-                        wr->format("function %s", Object::as<PrimitiveMethod>(value)->name->chars);
-                    }
-                    break;
-                case Object::Type::NativeMethod:
-                    {
-                        wr->format("function %s", Object::as<NativeMethod>(value)->name->chars);
-                    }
-                    break;
-                case Object::Type::Fiber:
-                    {
-                        wr->format("fiber");
-                    }
-                    break;
-                case Object::Type::Module:
-                    {
-                        wr->format("module %s", Object::as<Module>(value)->name->chars);
-                    }
-                    break;
-
-                case Object::Type::Upvalue:
-                    {
-                        upvalue = Object::as<Upvalue>(value);
-                        if(upvalue->location == nullptr)
-                        {
-                            lit_print_value(state, wr, upvalue->closed);
-                        }
-                        else
-                        {
-                            print_object(state, wr, *upvalue->location);
-                        }
-                    }
-                    break;
-                case Object::Type::Class:
-                    {
-                        wr->format("class %s", Object::as<Class>(value)->name->chars);
-                    }
-                    break;
-                case Object::Type::Instance:
-                    {
-                        /*
-                        if(Object::as<Instance>(value)->klass->type == Object::Type::Map)
-                        {
-                            fprintf(stderr, "instance is a map\n");
-                        }
-                        printf("%s instance", Object::as<Instance>(value)->klass->name->chars);
-                        */
-                        wr->format("<instance '%s' ", Object::as<Instance>(value)->klass->name->chars);
-                        map = Object::as<Map>(value);
-                        size = map->values.m_count;
-                        print_map(state, wr, map, size);
-                        wr->put(">");
-                    }
-                    break;
-                case Object::Type::BoundMethod:
-                    {
-                        lit_print_value(state, wr, Object::as<BoundMethod>(value)->method);
-                        return;
-                    }
-                    break;
-                case Object::Type::Array:
-                    {
-                        #ifdef LIT_MINIMIZE_CONTAINERS
-                            wr->put("array");
-                        #else
-                            array = Object::as<Array>(value);
-                            size = array->size();
-                            print_array(state, wr, array, size);
-                        #endif
-                    }
-                    break;
-                case Object::Type::Map:
-                    {
-                        #ifdef LIT_MINIMIZE_CONTAINERS
-                            wr->format("map");
-                        #else
-                            map = Object::as<Map>(value);
-                            size = map->values.m_count;
-                            print_map(state, wr, map, size);
-                        #endif
-                    }
-                    break;
-                case Object::Type::Userdata:
-                    {
-                        wr->format("userdata");
-                    }
-                    break;
-                case Object::Type::Range:
-                    {
-                        range = Object::as<Range>(value);
-                        wr->format("%g .. %g", range->from, range->to);
-                    }
-                    break;
-                case Object::Type::Field:
-                    {
-                        wr->format("field");
-                    }
-                    break;
-                case Object::Type::Reference:
-                    {
-                        wr->format("reference => ");
-                        slot = Object::as<Reference>(value)->slot;
-                        if(slot == nullptr)
-                        {
-                            wr->put("null");
-                        }
-                        else
-                        {
-                            lit_print_value(state, wr, *slot);
-                        }
-                    }
-                    break;
-                default:
-                    {
-                    }
-                    break;
-            }
-        }
-        else
-        {
-            wr->put("!nullpointer!");
-        }
-    }
-
-    //InterpretResult lit_call_instance_method(State* state, Instance* instance, String* mthname, Value* argv, size_t argc)
-    //
-    void lit_print_value(State* state, Writer* wr, Value value)
-    {
-        /*
-        Value mthtostring;
-        Value tstrval;
-        String* tstring;
-        String* mthname;
-        InterpretResult inret;
-        Value args[1] = {Object::NullVal};
-        mthname = String::intern(state, "toString");
-        fprintf(stderr, "lit_print_value: checking if toString() exists for '%s' ...\n", lit_get_value_type(value));
-        if(Object::as<Class>(value) != nullptr)
-        {
-            mthtostring = lit_instance_get_method(state, value, mthname);
-            if(!Object::isNull(mthtostring))
-            {
-                fprintf(stderr, "lit_print_value: we got toString()! now checking if calling it works ...\n");
-                inret = lit_instance_call_method(state, value, mthname, args, 0);
-                if(inret.type == LITRESULT_OK)
-                {
-                    fprintf(stderr, "lit_print_value: calling toString() succeeded! but is it a string? ...\n");
-                    tstrval = inret.result;
-                    if(!Object::isNull(tstrval))
-                    {
-                        fprintf(stderr, "lit_print_value: toString() returned a string! so that's what we'll use.\n");
-                        tstring = Object::as<String>(tstrval);
-                        printf("%.*s", (int)tstring->length(), tstring->chars);
-                        return;
-                    }
-                }
-            }
-        }
-        fprintf(stderr, "lit_print_value: nope, no toString(), or it didn't return a string. falling back to manual stringification\n");
-        */
-        if(Object::isBool(value))
-        {
-            wr->put(Object::asBool(value) ? "true" : "false");
-        }
-        else if(Object::isNull(value))
-        {
-            wr->put("null");
-        }
-        else if(Object::isNumber(value))
-        {
-            wr->format("%g", Object::toNumber(value));
-        }
-        else if(Object::isObject(value))
-        {
-            print_object(state, wr, value);
-        }
-    }
-
-
-    const char* lit_get_value_type(Value value)
-    {
-        if(Object::isBool(value))
-        {
-            return "bool";
-        }
-        else if(Object::isNull(value))
-        {
-            return "null";
-        }
-        else if(Object::isNumber(value))
-        {
-            return "number";
-        }
-        else if(Object::isObject(value))
-        {
-            return lit_object_type_names[(int)OBJECT_TYPE(value)];
-        }
-        return "unknown";
-    }
-
-
-    //#define LIT_TRACE_EXECUTION
-
-    /*
-    * visual studio doesn't support computed gotos, so
-    * instead a switch-case is used. 
-    */
-    #if !defined(_MSC_VER)
-        //#define LIT_USE_COMPUTEDGOTO
-    #endif
-
-    #ifdef LIT_TRACE_EXECUTION
-        #define vm_traceframe(fiber)\
-            lit_trace_frame(fiber);
-    #else
-        #define vm_traceframe(fiber) \
-            do \
-            { \
-            } while(0);
-    #endif
-
-    #ifdef LIT_USE_COMPUTEDGOTO
-        #define vm_default()
-        #define op_case(name) \
-            OP_##name:
-    #else
-        #define vm_default() default:
-        #define op_case(name) \
-            case OP_##name:
-    #endif
-
-    #define vm_pushgc(state, allow) \
-        bool was_allowed = state->allow_gc; \
-        state->allow_gc = allow;
-
-    #define vm_popgc(state) \
-        state->allow_gc = was_allowed;
-
-    #define vm_push(fiber, value) \
-        (*fiber->stack_top++ = value)
-
-    #define vm_pop(fiber) \
-        (*(--fiber->stack_top))
-
-    #define vm_drop(fiber) \
-        (fiber->stack_top--)
-
-    #define vm_dropn(fiber, amount) \
-        (fiber->stack_top -= amount)
-
-    #define vm_readbyte(ip) \
-        (*ip++)
-
-    #if 1
-    #define vm_readshort(ip) \
-        (ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]))
-    #else
-    /* todo: why does this seemingly break everything? */
-    static inline uint16_t vm_readshort(uint8_t* ip)
-    {
-        return ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]);
-    }
-    #endif
-
-    #define vm_readconstant(current_chunk) \
-        (current_chunk->constants.m_values[vm_readbyte(ip)])
-
-    #define vm_readconstantlong(current_chunk, ip) \
-        (current_chunk->constants.m_values[vm_readshort(ip)])
-
-    #define vm_readstring(current_chunk) \
-        Object::as<String>(vm_readconstant(current_chunk))
-
-    #define vm_readstringlong(current_chunk, ip) \
-        Object::as<String>(vm_readconstantlong(current_chunk, ip))
-
-
-    static inline Value vm_peek(Fiber* fiber, short distance)
-    {
-        return fiber->stack_top[(-1) - distance];
-    }
-
-    #define vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues) \
-        frame = &fiber->frames[fiber->frame_count - 1]; \
-        current_chunk = &frame->function->chunk; \
-        ip = frame->ip; \
-        slots = frame->slots; \
-        fiber->module = frame->function->module; \
-        privates = fiber->module->privates; \
-        upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
-
-    #define vm_writeframe(frame, ip) \
-        frame->ip = ip;
-
-    #define vm_returnerror() \
-        vm_popgc(state); \
-        return (InterpretResult){ LITRESULT_RUNTIME_ERROR, Object::NullVal };
-
-    #define vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues) \
-        vm_writeframe(frame, ip); \
-        fiber = vm->fiber; \
-        if(fiber == nullptr) \
-        { \
-            return (InterpretResult){ LITRESULT_OK, vm_pop(fiber) }; \
-        } \
-        if(fiber->abort) \
-        { \
-            vm_returnerror(); \
-        } \
-        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
-        vm_traceframe(fiber);
-
-    #define vm_callvalue(callee, arg_count) \
-        if(call_value(vm, callee, arg_count)) \
-        { \
-            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-        }
-
-    #define vm_rterror(format) \
-        if(lit_runtime_error(vm, format)) \
-        { \
-            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-            continue; \
-        } \
-        else \
-        { \
-            vm_returnerror(); \
-        }
-
-    #define vm_rterrorvarg(format, ...) \
-        if(lit_runtime_error(vm, format, __VA_ARGS__)) \
-        { \
-            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-            continue; \
-        } \
-        else \
-        { \
-            vm_returnerror(); \
-        }
-
-    #define vm_invoke_from_class_advanced(zklass, method_name, arg_count, error, stat, ignoring, callee) \
-        Value mthval; \
-        if((Object::isInstance(callee) && (Object::as<Instance>(callee)->fields.get(method_name, &mthval))) \
-           || zklass->stat.get(method_name, &mthval)) \
-        { \
-            if(ignoring) \
-            { \
-                if(call_value(vm, mthval, arg_count)) \
-                { \
-                    vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-                    frame->result_ignored = true; \
-                } \
-                else \
-                { \
-                    fiber->stack_top[-1] = callee; \
-                } \
-            } \
-            else \
-            { \
-                vm_callvalue(mthval, arg_count); \
-            } \
-        } \
-        else \
-        { \
-            if(error) \
-            { \
-                vm_rterrorvarg("Attempt to call method '%s', that is not defined in class %s", method_name->chars, \
-                                   zklass->name->chars) \
-            } \
-        } \
-        if(error) \
-        { \
-            continue; \
-        }
-
-    #define vm_invoke_from_class(klass, method_name, arg_count, error, stat, ignoring) \
-        vm_invoke_from_class_advanced(klass, method_name, arg_count, error, stat, ignoring, vm_peek(fiber, arg_count))
-
-    #define vm_invokemethod(instance, method_name, arg_count) \
-        Class* klass = state->getClassFor(instance); \
-        if(klass == nullptr) \
-        { \
-            vm_rterror("invokemethod: only instances and classes have methods"); \
-        } \
-        vm_writeframe(frame, ip); \
-        vm_invoke_from_class_advanced(klass, String::intern(state, method_name), arg_count, true, methods, false, instance); \
-        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues)
-
-    #define vm_binaryop(type, op, op_string) \
-        Value a = vm_peek(fiber, 1); \
-        Value b = vm_peek(fiber, 0); \
-        if(Object::isNumber(a)) \
-        { \
-            if(!Object::isNumber(b)) \
-            { \
-                if(!Object::isNull(b)) \
-                { \
-                    vm_rterrorvarg("Attempt to use op %s with a number and a %s", op_string, lit_get_value_type(b)); \
-                } \
-            } \
-            vm_drop(fiber); \
-            *(fiber->stack_top - 1) = (type(Object::toNumber(a) op Object::toNumber(b))); \
-            continue; \
-        } \
-        if(Object::isNull(a)) \
-        { \
-        /* vm_rterrorvarg("Attempt to use op %s on a null value", op_string); */ \
-            vm_drop(fiber); \
-            *(fiber->stack_top - 1) = Object::TrueVal; \
-        } \
-        else \
-        { \
-            vm_invokemethod(a, op_string, 1); \
-        }
-
-    #define vm_bitwiseop(op, op_string) \
-        Value a = vm_peek(fiber, 1); \
-        Value b = vm_peek(fiber, 0); \
-        if(!Object::isNumber(a) || !Object::isNumber(b)) \
-        { \
-            vm_rterrorvarg("Operands of bitwise op %s must be two numbers, got %s and %s", op_string, \
-                               lit_get_value_type(a), lit_get_value_type(b)); \
-        } \
-        vm_drop(fiber); \
-        *(fiber->stack_top - 1) = (Object::toValue((int)Object::toNumber(a) op(int) Object::toNumber(b)));
-
-    #define vm_invokeoperation(ignoring) \
-        uint8_t arg_count = vm_readbyte(ip); \
-        String* method_name = vm_readstringlong(current_chunk, ip); \
-        Value receiver = vm_peek(fiber, arg_count); \
-        if(Object::isNull(receiver)) \
-        { \
-            vm_rterror("Attempt to index a null value"); \
-        } \
-        vm_writeframe(frame, ip); \
-        if(Object::isClass(receiver)) \
-        { \
-            vm_invoke_from_class_advanced(Object::as<Class>(receiver), method_name, arg_count, true, static_fields, ignoring, receiver); \
-            continue; \
-        } \
-        else if(Object::isInstance(receiver)) \
-        { \
-            Instance* instance = Object::as<Instance>(receiver); \
-            Value value; \
-            if(instance->fields.get(method_name, &value)) \
-            { \
-                fiber->stack_top[-arg_count - 1] = value; \
-                vm_callvalue(value, arg_count); \
-                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
-                continue; \
-            } \
-            vm_invoke_from_class_advanced(instance->klass, method_name, arg_count, true, methods, ignoring, receiver); \
-        } \
-        else \
-        { \
-            Class* type = state->getClassFor(receiver); \
-            if(type == nullptr) \
-            { \
-                vm_rterror("invokeoperation: only instances and classes have methods"); \
-            } \
-            vm_invoke_from_class_advanced(type, method_name, arg_count, true, methods, ignoring, receiver); \
-        }
-
-    static void reset_stack(VM* vm)
-    {
-        if(vm->fiber != nullptr)
-        {
-            vm->fiber->stack_top = vm->fiber->stack;
-        }
-    }
-
-
-
-
-
     void lit_trace_vm_stack(VM* vm, Writer* wr)
     {
         Value* top;
@@ -13060,14 +14284,14 @@ namespace lit
         for(slot = fiber->stack; slot < top; slot++)
         {
             wr->format("[ ");
-            lit_print_value(vm->m_state, wr, *slot);
+            Object::print(vm->m_state, wr, *slot);
             wr->format(" ]");
         }
         wr->format("%s", COLOR_RESET);
         for(slot = top; slot < fiber->stack_top; slot++)
         {
             wr->format("[ ");
-            lit_print_value(vm->m_state, wr, *slot);
+            Object::print(vm->m_state, wr, *slot);
             wr->format(" ]");
         }
         wr->format("\n");
@@ -13189,1418 +14413,10 @@ namespace lit
         return result;
     }
 
-    static bool call(VM* vm, Function* function, Closure* closure, uint8_t arg_count)
-    {
-        bool vararg;
-        size_t amount;
-        size_t i;
-        size_t osize;
-        size_t newcapacity;
-        size_t newsize;
-        size_t vararg_count;
-        size_t function_arg_count;
-        CallFrame* frame;
-        Fiber* fiber;
-        Array* array;
-        fiber = vm->fiber;
 
-        #if 0
-        //if(fiber->frame_count == LIT_CALL_FRAMES_MAX)
-        //{
-            //lit_runtime_error(vm, "call stack overflow");
-            //return true;
-        //}
-        #endif
-        if(fiber->frame_count + 1 > fiber->frame_capacity)
-        {
-            //newcapacity = fmin(LIT_CALL_FRAMES_MAX, fiber->frame_capacity * 2);
-            newcapacity = (fiber->frame_capacity * 2);
-            newsize = (sizeof(CallFrame) * newcapacity);
-            osize = (sizeof(CallFrame) * fiber->frame_capacity);
-            fiber->frames = (CallFrame*)Memory::reallocate(vm->m_state, fiber->frames, osize, newsize);
-            fiber->frame_capacity = newcapacity;
-        }
 
-        function_arg_count = function->arg_count;
-        lit_ensure_fiber_stack(vm->m_state, fiber, function->max_slots + (int)(fiber->stack_top - fiber->stack));
-        frame = &fiber->frames[fiber->frame_count++];
-        frame->function = function;
-        frame->closure = closure;
-        frame->ip = function->chunk.code;
-        frame->slots = fiber->stack_top - arg_count - 1;
-        frame->result_ignored = false;
-        frame->return_to_c = false;
-        if(arg_count != function_arg_count)
-        {
-            vararg = function->vararg;
-            if(arg_count < function_arg_count)
-            {
-                amount = (int)function_arg_count - arg_count - (vararg ? 1 : 0);
-                for(i = 0; i < amount; i++)
-                {
-                    lit_push(vm, Object::NullVal);
-                }
-                if(vararg)
-                {
-                    lit_push(vm, Array::make(vm->m_state)->asValue());
-                }
-            }
-            else if(function->vararg)
-            {
-                array = Array::make(vm->m_state);
-                vararg_count = arg_count - function_arg_count + 1;
-                vm->m_state->pushRoot((Object*)array);
-                array->m_actualarray.reserve(vararg_count, Object::NullVal);
-                vm->m_state->popRoot();
-                for(i = 0; i < vararg_count; i++)
-                {
-                    array->m_actualarray.m_values[i] = vm->fiber->stack_top[(int)i - (int)vararg_count];
-                }
-                vm->fiber->stack_top -= vararg_count;
-                lit_push(vm, array->asValue());
-            }
-            else
-            {
-                vm->fiber->stack_top -= (arg_count - function_arg_count);
-            }
-        }
-        else if(function->vararg)
-        {
-            array = Array::make(vm->m_state);
-            vararg_count = arg_count - function_arg_count + 1;
-            vm->m_state->pushRoot((Object*)array);
-            array->push(*(fiber->stack_top - 1));
-            *(fiber->stack_top - 1) = array->asValue();
-            vm->m_state->popRoot();
-        }
-        return true;
-    }
 
-    static bool call_value(VM* vm, Value callee, uint8_t arg_count)
-    {
-        size_t i;
-        bool bres;
-        NativeMethod* mthobj;
-        Fiber* fiber;
-        Closure* closure;
-        BoundMethod* bound_method;
-        Value mthval;
-        Value result;
-        Instance* instance;
-        Class* klass;
-        (void)fiber;
-        if(Object::isObject(callee))
-        {
-            if(vm->m_state->set_native_exit_jump())
-            {
-                return true;
-            }
-            switch(OBJECT_TYPE(callee))
-            {
-                case Object::Type::Function:
-                    {
-                        return call(vm, Object::as<Function>(callee), nullptr, arg_count);
-                    }
-                    break;
-                case Object::Type::Closure:
-                    {
-                        closure = Object::as<Closure>(callee);
-                        return call(vm, closure->function, closure, arg_count);
-                    }
-                    break;
-                case Object::Type::NativeFunction:
-                    {
-                        vm_pushgc(vm->m_state, false)
-                        result = Object::as<NativeFunction>(callee)->function(vm, arg_count, vm->fiber->stack_top - arg_count);
-                        vm->fiber->stack_top -= arg_count + 1;
-                        lit_push(vm, result);
-                        vm_popgc(vm->m_state);
-                        return false;
-                    }
-                    break;
-                case Object::Type::NativePrimitive:
-                    {
-                        vm_pushgc(vm->m_state, false)
-                        fiber = vm->fiber;
-                        bres = Object::as<NativePrimFunction>(callee)->function(vm, arg_count, fiber->stack_top - arg_count);
-                        if(bres)
-                        {
-                            fiber->stack_top -= arg_count;
-                        }
-                        vm_popgc(vm->m_state);
-                        return bres;
-                    }
-                    break;
-                case Object::Type::NativeMethod:
-                    {
-                        vm_pushgc(vm->m_state, false);
-                        mthobj = Object::as<NativeMethod>(callee);
-                        fiber = vm->fiber;
-                        result = mthobj->method(vm, *(vm->fiber->stack_top - arg_count - 1), arg_count, vm->fiber->stack_top - arg_count);
-                        vm->fiber->stack_top -= arg_count + 1;
-                        //if(!Object::isNull(result))
-                        {
-                            if(!vm->fiber->abort)
-                            {
-                                lit_push(vm, result);
-                            }
-                        }
-                        vm_popgc(vm->m_state);
-                        return false;
-                    }
-                    break;
-                case Object::Type::PrimitiveMethod:
-                    {
-                        vm_pushgc(vm->m_state, false);
-                        fiber = vm->fiber;
-                        bres = Object::as<PrimitiveMethod>(callee)->method(vm, *(fiber->stack_top - arg_count - 1), arg_count, fiber->stack_top - arg_count);
-                        if(bres)
-                        {
-                            fiber->stack_top -= arg_count;
-                        }
-                        vm_popgc(vm->m_state);
-                        return bres;
-                    }
-                    break;
-                case Object::Type::Class:
-                    {
-                        klass = Object::as<Class>(callee);
-                        instance = Instance::make(vm->m_state, klass);
-                        vm->fiber->stack_top[-arg_count - 1] = instance->asValue();
-                        if(klass->init_method != nullptr)
-                        {
-                            return call_value(vm, klass->init_method->asValue(), arg_count);
-                        }
-                        // Remove the arguments, so that they don't mess up the stack
-                        // (default constructor has no arguments)
-                        for(i = 0; i < arg_count; i++)
-                        {
-                            lit_pop(vm);
-                        }
-                        return false;
-                    }
-                    break;
-                case Object::Type::BoundMethod:
-                    {
-                        bound_method = Object::as<BoundMethod>(callee);
-                        mthval = bound_method->method;
-                        if(Object::isNativeMethod(mthval))
-                        {
-                            vm_pushgc(vm->m_state, false);
-                            result = Object::as<NativeMethod>(mthval)->method(vm, bound_method->receiver, arg_count, vm->fiber->stack_top - arg_count);
-                            vm->fiber->stack_top -= arg_count + 1;
-                            lit_push(vm, result);
-                            vm_popgc(vm->m_state);
-                            return false;
-                        }
-                        else if(Object::isPrimitiveMethod(mthval))
-                        {
-                            fiber = vm->fiber;
-                            vm_pushgc(vm->m_state, false);
-                            if(Object::as<PrimitiveMethod>(mthval)->method(vm, bound_method->receiver, arg_count, fiber->stack_top - arg_count))
-                            {
-                                fiber->stack_top -= arg_count;
-                                return true;
-                            }
-                            vm_popgc(vm->m_state);
-                            return false;
-                        }
-                        else
-                        {
-                            vm->fiber->stack_top[-arg_count - 1] = bound_method->receiver;
-                            return call(vm, Object::as<Function>(mthval), nullptr, arg_count);
-                        }
-                    }
-                    break;
-                default:
-                    {
-                    }
-                    break;
 
-            }
-        }
-        if(Object::isNull(callee))
-        {
-            lit_runtime_error(vm, "Attempt to call a null value");
-        }
-        else
-        {
-            lit_runtime_error(vm, "Can only call functions and classes, got %s", lit_get_value_type(callee));
-        }
-        return true;
-    }
-
-    static Upvalue* capture_upvalue(State* state, Value* local)
-    {
-        Upvalue* upvalue;
-        Upvalue* created_upvalue;
-        Upvalue* previous_upvalue;
-        previous_upvalue = nullptr;
-        upvalue = state->vm->fiber->open_upvalues;
-        while(upvalue != nullptr && upvalue->location > local)
-        {
-            previous_upvalue = upvalue;
-            upvalue = upvalue->next;
-        }
-        if(upvalue != nullptr && upvalue->location == local)
-        {
-            return upvalue;
-        }
-        created_upvalue = Upvalue::make(state, local);
-        created_upvalue->next = upvalue;
-        if(previous_upvalue == nullptr)
-        {
-            state->vm->fiber->open_upvalues = created_upvalue;
-        }
-        else
-        {
-            previous_upvalue->next = created_upvalue;
-        }
-        return created_upvalue;
-    }
-
-    static void close_upvalues(VM* vm, const Value* last)
-    {
-        Fiber* fiber;
-        Upvalue* upvalue;
-        fiber = vm->fiber;
-        while(fiber->open_upvalues != nullptr && fiber->open_upvalues->location >= last)
-        {
-            upvalue = fiber->open_upvalues;
-            upvalue->closed = *upvalue->location;
-            upvalue->location = &upvalue->closed;
-            fiber->open_upvalues = upvalue->next;
-        }
-    }
-
-    InterpretResult lit_interpret_module(State* state, Module* module)
-    {
-        VM* vm;
-        Fiber* fiber;
-        InterpretResult result;
-        vm = state->vm;
-        fiber = Fiber::make(state, module, module->main_function);
-        vm->fiber = fiber;
-        lit_push(vm, module->main_function->asValue());
-        result = lit_interpret_fiber(state, fiber);
-        return result;
-    }
-
-    InterpretResult lit_interpret_fiber(State* state, Fiber* fiber)
-    {
-        bool found;
-        size_t arg_count;
-        size_t arindex;
-        size_t i;
-        uint16_t offset;
-        uint8_t index;
-        uint8_t is_local;
-        uint8_t instruction;
-        uint8_t* ip;
-        CallFrame* frame;
-        Chunk* current_chunk;
-        Class* instance_klass;
-        Class* klassobj;
-        Class* super_klass;
-        Class* type;
-        Closure* closure;
-        Fiber* parent;
-        Field* field;
-        Function* function;
-        Instance* instobj;
-        String* field_name;
-        String* method_name;
-        String* name;
-        Upvalue** upvalues;
-        Value a;
-        Value arg;
-        Value b;
-        Value getval;
-        Value instval;
-        Value klassval;
-        Value vobj;
-        Value operand;
-        Value reference;
-        Value result;
-        Value setter;
-        Value setval;
-        Value slot;
-        Value super;
-        Value tmpval;
-        Value value;
-        Value* privates;
-        Value* pval;
-        Value* slots;
-        PCGenericArray<Value>* values;
-        VM* vm;
-        (void)instruction;
-        vm = state->vm;
-        vm_pushgc(state, true);
-        vm->fiber = fiber;
-        fiber->abort = false;
-        frame = &fiber->frames[fiber->frame_count - 1];
-        current_chunk = &frame->function->chunk;
-        fiber->module = frame->function->module;
-        ip = frame->ip;
-        slots = frame->slots;
-        privates = fiber->module->privates;
-        upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
-
-        // Has to be inside of the function in order for goto to work
-        #ifdef LIT_USE_COMPUTEDGOTO
-            static void* dispatch_table[] =
-            {
-                #define OPCODE(name, effect) &&OP_##name,
-                    OPCODE(POP, -1)
-                    OPCODE(RETURN, 0)
-                    OPCODE(CONSTANT, 1)
-                    OPCODE(CONSTANT_LONG, 1)
-                    OPCODE(TRUE, 1)
-                    OPCODE(FALSE, 1)
-                    OPCODE(NULL, 1)
-                    OPCODE(ARRAY, 1)
-                    OPCODE(OBJECT, 1)
-                    OPCODE(RANGE, -1)
-                    OPCODE(NEGATE, 0)
-                    OPCODE(NOT, 0)
-                    OPCODE(ADD, -1)
-                    OPCODE(SUBTRACT, -1)
-                    OPCODE(MULTIPLY, -1)
-                    OPCODE(POWER, -1)
-                    OPCODE(DIVIDE, -1)
-                    OPCODE(FLOOR_DIVIDE, -1)
-                    OPCODE(MOD, -1)
-                    OPCODE(BAND, -1)
-                    OPCODE(BOR, -1)
-                    OPCODE(BXOR, -1)
-                    OPCODE(LSHIFT, -1)
-                    OPCODE(RSHIFT, -1)
-                    OPCODE(BNOT, 0)
-                    OPCODE(EQUAL, -1)
-                    OPCODE(GREATER, -1)
-                    OPCODE(GREATER_EQUAL, -1)
-                    OPCODE(LESS, -1)
-                    OPCODE(LESS_EQUAL, -1)
-                    OPCODE(SET_GLOBAL, 0)
-                    OPCODE(GET_GLOBAL, 1)
-                    OPCODE(SET_LOCAL, 0)
-                    OPCODE(GET_LOCAL, 1)
-                    OPCODE(SET_LOCAL_LONG, 0)
-                    OPCODE(GET_LOCAL_LONG, 1)
-                    OPCODE(SET_PRIVATE, 0)
-                    OPCODE(GET_PRIVATE, 1)
-                    OPCODE(SET_PRIVATE_LONG, 0)
-                    OPCODE(GET_PRIVATE_LONG, 1)
-                    OPCODE(SET_UPVALUE, 0)
-                    OPCODE(GET_UPVALUE, 1)
-                    OPCODE(JUMP_IF_FALSE, -1)
-                    OPCODE(JUMP_IF_NULL, 0)
-                    OPCODE(JUMP_IF_NULL_POPPING, -1)
-                    OPCODE(JUMP, 0)
-                    OPCODE(JUMP_BACK, 0)
-                    OPCODE(AND, -1)
-                    OPCODE(OR, -1)
-                    OPCODE(NULL_OR, -1)
-                    OPCODE(CLOSURE, 1)
-                    OPCODE(CLOSE_UPVALUE, -1)
-                    OPCODE(CLASS, 1)
-                    OPCODE(GET_FIELD, -1)
-                    OPCODE(SET_FIELD, -2)
-                    // [array] [index] -> [value]
-                    OPCODE(SUBSCRIPT_GET, -1)
-                    // [array] [index] [value] -> [value]
-                    OPCODE(SUBSCRIPT_SET, -2)
-                    // [array] [value] -> [array]
-                    OPCODE(PUSH_ARRAY_ELEMENT, -1)
-                    // [map] [slot] [value] -> [map]
-                    OPCODE(PUSH_OBJECT_FIELD, -2)
-                    // [class] [method] -> [class]
-                    OPCODE(METHOD, -1)
-                    // [class] [method] -> [class]
-                    OPCODE(STATIC_FIELD, -1)
-                    OPCODE(DEFINE_FIELD, -1)
-                    OPCODE(INHERIT, 0)
-                    // [instance] [class] -> [bool]
-                    OPCODE(IS, -1)
-                    OPCODE(GET_SUPER_METHOD, 0)
-                    // Varying stack effect
-                    OPCODE(CALL, 0)
-                    OPCODE(INVOKE, 0)
-                    OPCODE(INVOKE_SUPER, 0)
-                    OPCODE(INVOKE_IGNORING, 0)
-                    OPCODE(INVOKE_SUPER_IGNORING, 0)
-                    OPCODE(POP_LOCALS, 0)
-                    OPCODE(VARARG, 0)
-                    OPCODE(REFERENCE_GLOBAL, 1)
-                    OPCODE(REFERENCE_PRIVATE, 0)
-                    OPCODE(REFERENCE_LOCAL, 1)
-                    OPCODE(REFERENCE_UPVALUE, 1)
-                    OPCODE(REFERENCE_FIELD, -1)
-                    OPCODE(SET_REFERENCE, -1)
-                #undef OPCODE
-            };
-        #endif
-    #ifdef LIT_TRACE_EXECUTION
-        vm_traceframe(fiber);
-    #endif
-
-        while(true)
-        {
-    #ifdef LIT_TRACE_STACK
-            lit_trace_vm_stack(vm);
-    #endif
-
-    #ifdef LIT_CHECK_STACK_SIZE
-            if((fiber->stack_top - frame->slots) > fiber->stack_capacity)
-            {
-                vm_rterrorvarg("Fiber stack is not large enough (%i > %i)", (int)(fiber->stack_top - frame->slots),
-                                   fiber->stack_capacity);
-            }
-    #endif
-
-            #ifdef LIT_USE_COMPUTEDGOTO
-                #ifdef LIT_TRACE_EXECUTION
-                    instruction = *ip++;
-                    lit_disassemble_instruction(state, current_chunk, (size_t)(ip - current_chunk->code - 1), nullptr);
-                    goto* dispatch_table[instruction];
-                #else
-                    goto* dispatch_table[*ip++];
-                #endif
-            #else
-                instruction = *ip++;
-                #ifdef LIT_TRACE_EXECUTION
-                    lit_disassemble_instruction(state, current_chunk, (size_t)(ip - current_chunk->code - 1), nullptr);
-                #endif
-                switch(instruction)
-            #endif
-            /*
-            * each op_case(...){...} *MUST* end with either break, return, or continue.
-            * computationally, fall-throughs differ wildly between computed gotos or switch/case statements.
-            * in computed gotos, a "fall-through" just executes the next block (since it's just a labelled block),
-            * which may invalidate the stack, and while the same is technically true for switch/case, they
-            * could end up executing completely unrelated instructions.
-            * think, declaring a block for OP_BUILDHOUSE, and the next block is OP_SETHOUSEONFIRE.
-            * an easy mistake to make, but crucial to check.
-            */
-            {
-                op_case(POP)
-                {
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(RETURN)
-                {
-                    result = vm_pop(fiber);
-                    close_upvalues(vm, slots);
-                    vm_writeframe(frame, ip);
-                    fiber->frame_count--;
-                    if(frame->return_to_c)
-                    {
-                        frame->return_to_c = false;
-                        fiber->module->return_value = result;
-                        fiber->stack_top = frame->slots;
-                        return (InterpretResult){ LITRESULT_OK, result };
-                    }
-                    if(fiber->frame_count == 0)
-                    {
-                        fiber->module->return_value = result;
-                        if(fiber->parent == nullptr)
-                        {
-                            vm_drop(fiber);
-                            state->allow_gc = was_allowed;
-                            return (InterpretResult){ LITRESULT_OK, result };
-                        }
-                        arg_count = fiber->arg_count;
-                        parent = fiber->parent;
-                        fiber->parent = nullptr;
-                        vm->fiber = fiber = parent;
-                        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                        vm_traceframe(fiber);
-                        fiber->stack_top -= arg_count;
-                        fiber->stack_top[-1] = result;
-                        continue;
-                    }
-                    fiber->stack_top = frame->slots;
-                    if(frame->result_ignored)
-                    {
-                        fiber->stack_top++;
-                        frame->result_ignored = false;
-                    }
-                    else
-                    {
-                        vm_push(fiber, result);
-                    }
-                    vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                    vm_traceframe(fiber);
-                    continue;
-                }
-                op_case(CONSTANT)
-                {
-                    vm_push(fiber, vm_readconstant(current_chunk));
-                    continue;
-                }
-                op_case(CONSTANT_LONG)
-                {
-                    vm_push(fiber, vm_readconstantlong(current_chunk, ip));
-                    continue;
-                }
-                op_case(TRUE)
-                {
-                    vm_push(fiber, Object::TrueVal);
-                    continue;
-                }
-                op_case(FALSE)
-                {
-                    vm_push(fiber, Object::FalseVal);
-                    continue;
-                }
-                op_case(NULL)
-                {
-                    vm_push(fiber, Object::NullVal);
-                    continue;
-                }
-                op_case(ARRAY)
-                {
-                    vm_push(fiber, Array::make(state)->asValue());
-                    continue;
-                }
-                op_case(OBJECT)
-                {
-                    // TODO: use object, or map for literal '{...}' constructs?
-                    // objects would be more general-purpose, but don't implement anything map-like.
-                    //vm_push(fiber, Instance::make(state, state->objectvalue_class)->asValue());
-                    vm_push(fiber, Map::make(state)->asValue());
-
-                    continue;
-                }
-                op_case(RANGE)
-                {
-                    a = vm_pop(fiber);
-                    b = vm_pop(fiber);
-                    if(!Object::isNumber(a) || !Object::isNumber(b))
-                    {
-                        vm_rterror("Range operands must be number");
-                    }
-                    vm_push(fiber, lit_create_range(state, Object::toNumber(a), Object::toNumber(b))->asValue());
-                    continue;
-                }
-                op_case(NEGATE)
-                {
-                    if(!Object::isNumber(vm_peek(fiber, 0)))
-                    {
-                        arg = vm_peek(fiber, 0);
-                        // Don't even ask me why
-                        // This doesn't kill our performance, since it's a error anyway
-                        if(Object::isString(arg) && strcmp(Object::asString(arg)->chars, "muffin") == 0)
-                        {
-                            vm_rterror("Idk, can you negate a muffin?");
-                        }
-                        else
-                        {
-                            vm_rterror("Operand must be a number");
-                        }
-                    }
-                    tmpval = Object::toValue(-Object::toNumber(vm_pop(fiber)));
-                    vm_push(fiber, tmpval);
-                    continue;
-                }
-                op_case(NOT)
-                {
-                    if(Object::isInstance(vm_peek(fiber, 0)))
-                    {
-                        vm_writeframe(frame, ip);
-                        vm_invoke_from_class(Object::as<Instance>(vm_peek(fiber, 0))->klass, String::intern(state, "!"), 0, false, methods, false);
-                        continue;
-                    }
-                    tmpval = BOOL_VALUE(Object::isFalsey(vm_pop(fiber)));
-                    vm_push(fiber, tmpval);
-                    continue;
-                }
-                op_case(BNOT)
-                {
-                    if(!Object::isNumber(vm_peek(fiber, 0)))
-                    {
-                        vm_rterror("Operand must be a number");
-                    }
-                    tmpval = Object::toValue(~((int)Object::toNumber(vm_pop(fiber))));
-                    vm_push(fiber, tmpval);
-                    continue;
-                }
-                op_case(ADD)
-                {
-                    vm_binaryop(Object::toValue, +, "+");
-                    continue;
-                }
-                op_case(SUBTRACT)
-                {
-                    vm_binaryop(Object::toValue, -, "-");
-                    continue;
-                }
-                op_case(MULTIPLY)
-                {
-                    vm_binaryop(Object::toValue, *, "*");
-                    continue;
-                }
-                op_case(POWER)
-                {
-                    a = vm_peek(fiber, 1);
-                    b = vm_peek(fiber, 0);
-                    if(Object::isNumber(a) && Object::isNumber(b))
-                    {
-                        vm_drop(fiber);
-                        *(fiber->stack_top - 1) = (Object::toValue(pow(Object::toNumber(a), Object::toNumber(b))));
-                        continue;
-                    }
-                    vm_invokemethod(a, "**", 1);
-                    continue;
-                }
-                op_case(DIVIDE)
-                {
-                    vm_binaryop(Object::toValue, /, "/");
-                    continue;
-                }
-                op_case(FLOOR_DIVIDE)
-                {
-                    a = vm_peek(fiber, 1);
-                    b = vm_peek(fiber, 0);
-                    if(Object::isNumber(a) && Object::isNumber(b))
-                    {
-                        vm_drop(fiber);
-                        *(fiber->stack_top - 1) = (Object::toValue(floor(Object::toNumber(a) / Object::toNumber(b))));
-
-                        continue;
-                    }
-
-                    vm_invokemethod(a, "#", 1);
-                    continue;
-                }
-                op_case(MOD)
-                {
-                    a = vm_peek(fiber, 1);
-                    b = vm_peek(fiber, 0);
-                    if(Object::isNumber(a) && Object::isNumber(b))
-                    {
-                        vm_drop(fiber);
-                        *(fiber->stack_top - 1) = Object::toValue(fmod(Object::toNumber(a), Object::toNumber(b)));
-                        continue;
-                    }
-                    vm_invokemethod(a, "%", 1);
-                    continue;
-                }
-                op_case(BAND)
-                {
-                    vm_bitwiseop(&, "&");
-                    continue;
-                }
-                op_case(BOR)
-                {
-                    vm_bitwiseop(|, "|");
-                    continue;
-                }
-                op_case(BXOR)
-                {
-                    vm_bitwiseop(^, "^");
-                    continue;
-                }
-                op_case(LSHIFT)
-                {
-                    vm_bitwiseop(<<, "<<");
-                    continue;
-                }
-                op_case(RSHIFT)
-                {
-                    vm_bitwiseop(>>, ">>");
-                    continue;
-                }
-                op_case(EQUAL)
-                {
-                    /*
-                    if(Object::isInstance(vm_peek(fiber, 1)))
-                    {
-                        vm_writeframe(frame, ip);
-                        fprintf(stderr, "OP_EQUAL: trying to invoke '==' ...\n");
-                        vm_invoke_from_class(Object::as<Instance>(vm_peek(fiber, 1))->klass, String::intern(state, "=="), 1, false, methods, false);
-                        continue;
-                    }
-                    a = vm_pop(fiber);
-                    b = vm_pop(fiber);
-                    vm_push(fiber, BOOL_VALUE(a == b));
-                    */
-                    vm_binaryop(Object::toValue, ==, "==");
-                    continue;
-                }
-
-                op_case(GREATER)
-                {
-                    vm_binaryop(BOOL_VALUE, >, ">");
-                    continue;
-                }
-                op_case(GREATER_EQUAL)
-                {
-                    vm_binaryop(BOOL_VALUE, >=, ">=");
-                    continue;
-                }
-                op_case(LESS)
-                {
-                    vm_binaryop(BOOL_VALUE, <, "<");
-                    continue;
-                }
-                op_case(LESS_EQUAL)
-                {
-                    vm_binaryop(BOOL_VALUE, <=, "<=");
-                    continue;
-                }
-
-                op_case(SET_GLOBAL)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    vm->globals->values.set(name, vm_peek(fiber, 0));
-                    continue;
-                }
-
-                op_case(GET_GLOBAL)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    if(!vm->globals->values.get(name, &setval))
-                    {
-                        vm_push(fiber, Object::NullVal);
-                    }
-                    else
-                    {
-                        vm_push(fiber, setval);
-                    }
-                    continue;
-                }
-                op_case(SET_LOCAL)
-                {
-                    index = vm_readbyte(ip);
-                    slots[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_LOCAL)
-                {
-                    vm_push(fiber, slots[vm_readbyte(ip)]);
-                    continue;
-                }
-                op_case(SET_LOCAL_LONG)
-                {
-                    index = vm_readshort(ip);
-                    slots[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_LOCAL_LONG)
-                {
-                    vm_push(fiber, slots[vm_readshort(ip)]);
-                    continue;
-                }
-                op_case(SET_PRIVATE)
-                {
-                    index = vm_readbyte(ip);
-                    privates[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_PRIVATE)
-                {
-                    vm_push(fiber, privates[vm_readbyte(ip)]);
-                    continue;
-                }
-                op_case(SET_PRIVATE_LONG)
-                {
-                    index = vm_readshort(ip);
-                    privates[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_PRIVATE_LONG)
-                {
-                    vm_push(fiber, privates[vm_readshort(ip)]);
-                    continue;
-                }
-                op_case(SET_UPVALUE)
-                {
-                    index = vm_readbyte(ip);
-                    *upvalues[index]->location = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_UPVALUE)
-                {
-                    vm_push(fiber, *upvalues[vm_readbyte(ip)]->location);
-                    continue;
-                }
-
-                op_case(JUMP_IF_FALSE)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isFalsey(vm_pop(fiber)))
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(JUMP_IF_NULL)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isNull(vm_peek(fiber, 0)))
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(JUMP_IF_NULL_POPPING)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isNull(vm_pop(fiber)))
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(JUMP)
-                {
-                    offset = vm_readshort(ip);
-                    ip += offset;
-                    continue;
-                }
-                op_case(JUMP_BACK)
-                {
-                    offset = vm_readshort(ip);
-                    ip -= offset;
-                    continue;
-                }
-                op_case(AND)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isFalsey(vm_peek(fiber, 0)))
-                    {
-                        ip += offset;
-                    }
-                    else
-                    {
-                        vm_drop(fiber);
-                    }
-                    continue;
-                }
-                op_case(OR)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isFalsey(vm_peek(fiber, 0)))
-                    {
-                        vm_drop(fiber);
-                    }
-                    else
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(NULL_OR)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isNull(vm_peek(fiber, 0)))
-                    {
-                        vm_drop(fiber);
-                    }
-                    else
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(CALL)
-                {
-                    arg_count = vm_readbyte(ip);
-                    vm_writeframe(frame, ip);
-                    vm_callvalue(vm_peek(fiber, arg_count), arg_count);
-                    continue;
-                }
-                op_case(CLOSURE)
-                {
-                    function = Object::as<Function>(vm_readconstantlong(current_chunk, ip));
-                    closure = Closure::make(state, function);
-                    vm_push(fiber, closure->asValue());
-                    for(i = 0; i < closure->upvalue_count; i++)
-                    {
-                        is_local = vm_readbyte(ip);
-                        index = vm_readbyte(ip);
-                        if(is_local)
-                        {
-                            closure->upvalues[i] = capture_upvalue(state, frame->slots + index);
-                        }
-                        else
-                        {
-                            closure->upvalues[i] = upvalues[index];
-                        }
-                    }
-                    continue;
-                }
-                op_case(CLOSE_UPVALUE)
-                {
-                    close_upvalues(vm, fiber->stack_top - 1);
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(CLASS)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Class::make(state, name);
-                    vm_push(fiber, klassobj->asValue());
-                    klassobj->super = state->objectvalue_class;
-                    klassobj->super->methods.addAll(&klassobj->methods);
-                    klassobj->super->static_fields.addAll(&klassobj->static_fields);
-                    vm->globals->values.set(name, klassobj->asValue());
-                    continue;
-                }
-                op_case(GET_FIELD)
-                {
-                    vobj = vm_peek(fiber, 1);
-                    if(Object::isNull(vobj))
-                    {
-                        vm_rterror("Attempt to index a null value");
-                    }
-                    name = Object::as<String>(vm_peek(fiber, 0));
-                    if(Object::isInstance(vobj))
-                    {
-                        instobj = Object::as<Instance>(vobj);
-
-                        if(!instobj->fields.get(name, &getval))
-                        {
-                            if(instobj->klass->methods.get(name, &getval))
-                            {
-                                if(Object::isField(getval))
-                                {
-                                    field = Object::as<Field>(getval);
-                                    if(field->getter == nullptr)
-                                    {
-                                        vm_rterrorvarg("Class %s does not have a getter for the field %s",
-                                                           instobj->klass->name->chars, name->chars);
-                                    }
-                                    vm_drop(fiber);
-                                    vm_writeframe(frame, ip);
-                                    vm_callvalue(Object::as<Field>(getval)->getter->asValue(), 0);
-                                    vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                                    continue;
-                                }
-                                else
-                                {
-                                    getval = lit_create_bound_method(state, instobj->asValue(), getval)->asValue();
-                                }
-                            }
-                            else
-                            {
-                                getval = Object::NullVal;
-                            }
-                        }
-                    }
-                    else if(Object::isClass(vobj))
-                    {
-                        klassobj = Object::as<Class>(vobj);
-                        if(klassobj->static_fields.get(name, &getval))
-                        {
-                            if(Object::isNativeMethod(getval) || Object::isPrimitiveMethod(getval))
-                            {
-                                getval = lit_create_bound_method(state, klassobj->asValue(), getval)->asValue();
-                            }
-                            else if(Object::isField(getval))
-                            {
-                                field = Object::as<Field>(getval);
-                                if(field->getter == nullptr)
-                                {
-                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->chars,
-                                                       name->chars);
-                                }
-                                vm_drop(fiber);
-                                vm_writeframe(frame, ip);
-                                vm_callvalue(field->getter->asValue(), 0);
-                                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            getval = Object::NullVal;
-                        }
-                    }
-                    else
-                    {
-                        klassobj = state->getClassFor(vobj);
-                        if(klassobj == nullptr)
-                        {
-                            vm_rterror("GET_FIELD: only instances and classes have fields");
-                        }
-                        if(klassobj->methods.get(name, &getval))
-                        {
-                            if(Object::isField(getval))
-                            {
-                                field = Object::as<Field>(getval);
-                                if(field->getter == nullptr)
-                                {
-                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->chars,
-                                                       name->chars);
-                                }
-                                vm_drop(fiber);
-                                vm_writeframe(frame, ip);
-                                vm_callvalue(Object::as<Field>(getval)->getter->asValue(), 0);
-                                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                                continue;
-                            }
-                            else if(Object::isNativeMethod(getval) || Object::isPrimitiveMethod(getval))
-                            {
-                                getval = lit_create_bound_method(state, vobj, getval)->asValue();
-                            }
-                        }
-                        else
-                        {
-                            getval = Object::NullVal;
-                        }
-                    }
-                    vm_drop(fiber);// Pop field name
-                    fiber->stack_top[-1] = getval;
-                    continue;
-                }
-                op_case(SET_FIELD)
-                {
-                    instval = vm_peek(fiber, 2);
-                    if(Object::isNull(instval))
-                    {
-                        vm_rterror("Attempt to index a null value")
-                    }
-                    value = vm_peek(fiber, 1);
-                    field_name = Object::as<String>(vm_peek(fiber, 0));
-                    if(Object::isClass(instval))
-                    {
-                        klassobj = Object::as<Class>(instval);
-                        if(klassobj->static_fields.get(field_name, &setter) && Object::isField(setter))
-                        {
-                            field = Object::as<Field>(setter);
-                            if(field->setter == nullptr)
-                            {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->chars,
-                                                   field_name->chars);
-                            }
-
-                            vm_dropn(fiber, 2);
-                            vm_push(fiber, value);
-                            vm_writeframe(frame, ip);
-                            vm_callvalue(field->setter->asValue(), 1);
-                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                            continue;
-                        }
-                        if(Object::isNull(value))
-                        {
-                            klassobj->static_fields.remove(field_name);
-                        }
-                        else
-                        {
-                            klassobj->static_fields.set(field_name, value);
-                        }
-                        vm_dropn(fiber, 2);// Pop field name and the value
-                        fiber->stack_top[-1] = value;
-                    }
-                    else if(Object::isInstance(instval))
-                    {
-                        instobj = Object::as<Instance>(instval);
-                        if(instobj->klass->methods.get(field_name, &setter) && Object::isField(setter))
-                        {
-                            field = Object::as<Field>(setter);
-                            if(field->setter == nullptr)
-                            {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", instobj->klass->name->chars,
-                                                   field_name->chars);
-                            }
-                            vm_dropn(fiber, 2);
-                            vm_push(fiber, value);
-                            vm_writeframe(frame, ip);
-                            vm_callvalue(field->setter->asValue(), 1);
-                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                            continue;
-                        }
-                        if(Object::isNull(value))
-                        {
-                            instobj->fields.remove(field_name);
-                        }
-                        else
-                        {
-                            instobj->fields.set(field_name, value);
-                        }
-                        vm_dropn(fiber, 2);// Pop field name and the value
-                        fiber->stack_top[-1] = value;
-                    }
-                    else
-                    {
-                        klassobj = state->getClassFor(instval);
-                        if(klassobj == nullptr)
-                        {
-                            vm_rterror("SET_FIELD: only instances and classes have fields");
-                        }
-                        if(klassobj->methods.get(field_name, &setter) && Object::isField(setter))
-                        {
-                            field = Object::as<Field>(setter);
-                            if(field->setter == nullptr)
-                            {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->chars,
-                                                   field_name->chars);
-                            }
-                            vm_dropn(fiber, 2);
-                            vm_push(fiber, value);
-                            vm_writeframe(frame, ip);
-                            vm_callvalue(field->setter->asValue(), 1);
-                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                            continue;
-                        }
-                        else
-                        {
-                            vm_rterrorvarg("Class %s does not contain field %s", klassobj->name->chars, field_name->chars);
-                        }
-                    }
-                    continue;
-                }
-                op_case(SUBSCRIPT_GET)
-                {
-                    vm_invokemethod(vm_peek(fiber, 1), "[]", 1);
-                    continue;
-                }
-                op_case(SUBSCRIPT_SET)
-                {
-                    vm_invokemethod(vm_peek(fiber, 2), "[]", 2);
-                    continue;
-                }
-                op_case(PUSH_ARRAY_ELEMENT)
-                {
-                    values = &Object::as<Array>(vm_peek(fiber, 1))->m_actualarray;
-                    arindex = values->m_count;
-                    values->reserve(arindex + 1, Object::NullVal);
-                    values->m_values[arindex] = vm_peek(fiber, 0);
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(PUSH_OBJECT_FIELD)
-                {
-                    operand = vm_peek(fiber, 2);
-                    if(Object::isMap(operand))
-                    {
-                        Object::as<Map>(operand)->values.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
-                    }
-                    else if(Object::isInstance(operand))
-                    {
-                        Object::as<Instance>(operand)->fields.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
-                    }
-                    else
-                    {
-                        vm_rterrorvarg("Expected an object or a map as the operand, got %s", lit_get_value_type(operand));
-                    }
-                    vm_dropn(fiber, 2);
-                    continue;
-                }
-                op_case(STATIC_FIELD)
-                {
-                    Object::as<Class>(vm_peek(fiber, 1))->static_fields.set(vm_readstringlong(current_chunk, ip), vm_peek(fiber, 0));
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(METHOD)
-                {
-                    klassobj = Object::as<Class>(vm_peek(fiber, 1));
-                    name = vm_readstringlong(current_chunk, ip);
-                    if((klassobj->init_method == nullptr || (klassobj->super != nullptr && klassobj->init_method == ((Class*)klassobj->super)->init_method))
-                       && name->length() == 11 && memcmp(name->chars, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0)
-                    {
-                        klassobj->init_method = Object::asObject(vm_peek(fiber, 0));
-                    }
-                    klassobj->methods.set(name, vm_peek(fiber, 0));
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(DEFINE_FIELD)
-                {
-                    Object::as<Class>(vm_peek(fiber, 1))->methods.set(vm_readstringlong(current_chunk, ip), vm_peek(fiber, 0));
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(INVOKE)
-                {
-                    vm_invokeoperation(false);
-                    continue;
-                }
-                op_case(INVOKE_IGNORING)
-                {
-                    vm_invokeoperation(true);
-                    continue;
-                }
-                op_case(INVOKE_SUPER)
-                {
-                    arg_count = vm_readbyte(ip);
-                    method_name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Object::as<Class>(vm_pop(fiber));
-                    vm_writeframe(frame, ip);
-                    vm_invoke_from_class(klassobj, method_name, arg_count, true, methods, false);
-                    continue;
-                }
-                op_case(INVOKE_SUPER_IGNORING)
-                {
-                    arg_count = vm_readbyte(ip);
-                    method_name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Object::as<Class>(vm_pop(fiber));
-                    vm_writeframe(frame, ip);
-                    vm_invoke_from_class(klassobj, method_name, arg_count, true, methods, true);
-                    continue;
-                }
-                op_case(GET_SUPER_METHOD)
-                {
-                    method_name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Object::as<Class>(vm_pop(fiber));
-                    instval = vm_pop(fiber);
-                    if(klassobj->methods.get(method_name, &value))
-                    {
-                        value = lit_create_bound_method(state, instval, value)->asValue();
-                    }
-                    else
-                    {
-                        value = Object::NullVal;
-                    }
-                    vm_push(fiber, value);
-                    continue;
-                }
-                op_case(INHERIT)
-                {
-                    super = vm_peek(fiber, 1);
-                    if(!Object::isClass(super))
-                    {
-                        vm_rterror("Superclass must be a class");
-                    }
-                    klassobj = Object::as<Class>(vm_peek(fiber, 0));
-                    super_klass = Object::as<Class>(super);
-                    klassobj->super = super_klass;
-                    klassobj->init_method = super_klass->init_method;
-                    super_klass->methods.addAll(&klassobj->methods);
-                    klassobj->super->static_fields.addAll(&klassobj->static_fields);
-                    continue;
-                }
-                op_case(IS)
-                {
-                    instval = vm_peek(fiber, 1);
-                    if(Object::isNull(instval))
-                    {
-                        vm_dropn(fiber, 2);
-                        vm_push(fiber, Object::FalseVal);
-
-                        continue;
-                    }
-                    instance_klass = state->getClassFor(instval);
-                    klassval = vm_peek(fiber, 0);
-                    if(instance_klass == nullptr || !Object::isClass(klassval))
-                    {
-                        vm_rterror("operands must be an instance and a class");
-                    }            
-                    type = Object::as<Class>(klassval);
-                    found = false;
-                    while(instance_klass != nullptr)
-                    {
-                        if(instance_klass == type)
-                        {
-                            found = true;
-                            break;
-                        }
-                        instance_klass = (Class*)instance_klass->super;
-                    }
-                    vm_dropn(fiber, 2);// Drop the instance and class
-                    vm_push(fiber, BOOL_VALUE(found));
-                    continue;
-                }
-                op_case(POP_LOCALS)
-                {
-                    vm_dropn(fiber, vm_readshort(ip));
-                    continue;
-                }
-                op_case(VARARG)
-                {
-                    slot = slots[vm_readbyte(ip)];
-                    if(!Object::isArray(slot))
-                    {
-                        continue;
-                    }
-                    values = &Object::as<Array>(slot)->m_actualarray;
-                    lit_ensure_fiber_stack(state, fiber, values->m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
-                    for(i = 0; i < values->m_count; i++)
-                    {
-                        vm_push(fiber, values->m_values[i]);
-                    }
-                    // Hot-bytecode patching, increment the amount of arguments to OP_CALL
-                    ip[1] = ip[1] + values->m_count - 1;
-                    continue;
-                }
-
-                op_case(REFERENCE_GLOBAL)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    if(vm->globals->values.getSlot(name, &pval))
-                    {
-                        vm_push(fiber, lit_create_reference(state, pval)->asValue());
-                    }
-                    else
-                    {
-                        vm_rterror("Attempt to reference a null value");
-                    }
-                    continue;
-                }
-                op_case(REFERENCE_PRIVATE)
-                {
-                    vm_push(fiber, lit_create_reference(state, &privates[vm_readshort(ip)])->asValue());
-                    continue;
-                }
-                op_case(REFERENCE_LOCAL)
-                {
-                    vm_push(fiber, lit_create_reference(state, &slots[vm_readshort(ip)])->asValue());
-                    continue;
-                }
-                op_case(REFERENCE_UPVALUE)
-                {
-                    vm_push(fiber, lit_create_reference(state, upvalues[vm_readbyte(ip)]->location)->asValue());
-                    continue;
-                }
-                op_case(REFERENCE_FIELD)
-                {
-                    vobj = vm_peek(fiber, 1);
-                    if(Object::isNull(vobj))
-                    {
-                        vm_rterror("Attempt to index a null value");
-                    }
-                    name = Object::as<String>(vm_peek(fiber, 0));
-                    if(Object::isInstance(vobj))
-                    {
-                        if(!Object::as<Instance>(vobj)->fields.getSlot(name, &pval))
-                        {
-                            vm_rterror("Attempt to reference a null value");
-                        }
-                    }
-                    else
-                    {
-                        lit_print_value(state, &state->debugwriter, vobj);
-                        printf("\n");
-                        vm_rterror("You can only reference fields of real instances");
-                    }
-                    vm_drop(fiber);// Pop field name
-                    fiber->stack_top[-1] = lit_create_reference(state, pval)->asValue();
-                    continue;
-                }
-                op_case(SET_REFERENCE)
-                {
-                    reference = vm_pop(fiber);
-                    if(!Object::isReference(reference))
-                    {
-                        vm_rterror("Provided value is not a reference");
-                    }
-                    *Object::as<Reference>(reference)->slot = vm_peek(fiber, 0);
-                    continue;
-                }
-                vm_default()
-                {
-                    vm_rterrorvarg("Unknown op code '%d'", *ip);
-                    break;
-                }
-            }
-        }
-
-        vm_returnerror();
-    }
 
     #undef vm_rterrorvarg
     #undef vm_rterror
@@ -14775,10 +14591,12 @@ namespace lit
     static Value objfn_array_add(VM* vm, Value instance, size_t argc, Value* argv)
     {
         size_t i;
+        Array* self;
         (void)vm;
+        self = Object::as<Array>(instance);
         for(i=0; i<argc; i++)
         {
-            Object::as<Array>(instance)->push(argv[i]);
+            self->push(argv[i]);
         }
         return Object::NullVal;
     }
@@ -14939,7 +14757,7 @@ namespace lit
         strings = LIT_ALLOCATE(vm->m_state, String*, values->m_count+1);
         for(i = 0; i < values->m_count; i++)
         {
-            string = lit_to_string(vm->m_state, values->m_values[i]);
+            string = Object::toString(vm->m_state, values->m_values[i]);
             strings[i] = string;
             length += string->length();
             if(joinee != nullptr)
@@ -14979,7 +14797,7 @@ namespace lit
     {
         PCGenericArray<Value>* values;
         values = &Object::as<Array>(instance)->m_actualarray;
-        if(argc == 1 && lit_is_callable_function(argv[0]))
+        if(argc == 1 && Object::isCallableFunction(argv[0]))
         {
             util_custom_quick_sort(vm, values->m_values, values->m_count, argv[0]);
         }
@@ -15059,7 +14877,7 @@ namespace lit
             }
             else
             {
-                stringified = lit_to_string(state, val);
+                stringified = Object::toString(state, val);
             }
             part = stringified;
             buffer = sdscatlen(buffer, part->chars, part->length());
@@ -15268,17 +15086,21 @@ namespace lit
 
     void lit_open_class_library(State* state)
     {
-        Class* klass = Class::make(state, "Class");;
+        Class* klass = Class::make(state, "Class");
         {
             klass->bindMethod("[]", objfn_class_subscript);
             klass->bindMethod("==", objfn_class_compare);
             klass->bindMethod("toString", objfn_class_tostring);
-            klass->setStaticMethod("toString", objfn_class_tostring);;
-            klass->setStaticMethod("iterator", objfn_class_iterator);;
-            klass->setStaticMethod("iteratorValue", objfn_class_iteratorvalue);;
             klass->setGetter("super", objfn_class_super);;
+            #if 0
+            klass->setGetter("methods", objfn_class_getmethods);
+            klass->setGetter("fields", objfn_class_getfields);
+            #endif
             klass->setStaticGetter("super", objfn_class_super);
             klass->setStaticGetter("name", objfn_class_name);
+            klass->setStaticMethod("toString", objfn_class_tostring);
+            klass->setStaticMethod("iterator", objfn_class_iterator);
+            klass->setStaticMethod("iteratorValue", objfn_class_iteratorvalue);
             state->classvalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
@@ -15305,7 +15127,7 @@ namespace lit
             Value argv[2]; \
             argv[0] = a; \
             argv[1] = b; \
-            InterpretResult r = lit_call(state, callee, argv, 2, false); \
+            InterpretResult r = state->call(callee, argv, 2, false); \
             if(r.type != LITRESULT_OK) \
             { \
                 return; \
@@ -15318,7 +15140,7 @@ namespace lit
         Value argv[2];
         argv[0] = a;
         argv[1] = b;
-        return lit_call(state, callee, argv, 2, false);
+        return state->call(callee, argv, 2, false);
     }
 
     #define COMPARE(state, callee, a, b) \
@@ -15405,21 +15227,21 @@ namespace lit
         if(frame->ip == frame->function->chunk.code)
         {
             fiber->arg_count = argc;
-            lit_ensure_fiber_stack(vm->m_state, fiber, frame->function->max_slots + 1 + (int)(fiber->stack_top - fiber->stack));
+            fiber->ensure_stack(frame->function->max_slots + 1 + (int)(fiber->stack_top - fiber->stack));
             frame->slots = fiber->stack_top;
-            lit_push(vm, frame->function->asValue());
+            vm->push(frame->function->asValue());
             vararg = frame->function->vararg;
             objfn_function_arg_count = frame->function->arg_count;
             to = objfn_function_arg_count - (vararg ? 1 : 0);
             fiber->arg_count = objfn_function_arg_count;
             for(i = 0; i < to; i++)
             {
-                lit_push(vm, i < (int)argc ? argv[i] : Object::NullVal);
+                vm->push(i < (int)argc ? argv[i] : Object::NullVal);
             }
             if(vararg)
             {
                 array = Array::make(vm->m_state);
-                lit_push(vm, array->asValue());
+                vm->push(array->asValue());
                 vararg_count = argc - objfn_function_arg_count + 1;
                 if(vararg_count > 0)
                 {
@@ -15441,7 +15263,7 @@ namespace lit
             return Object::toNumber(a) < Object::toNumber(b);
         }
         argv[0] = b;
-        return !Object::isFalsey(lit_find_and_call_method(state, a, String::intern(state, "<"), argv, 1, false).result);
+        return !Object::isFalsey(state->findAndCallMethod(a, String::intern(state, "<"), argv, 1, false).result);
     }
 
     void util_basic_quick_sort(State* state, Value* clist, int length)
@@ -15494,7 +15316,7 @@ namespace lit
         if(frame->ip == frame->function->chunk.code)
         {
             frame->slots = fiber->stack_top;
-            lit_push(vm, frame->function->asValue());
+            vm->push(frame->function->asValue());
         }
         return true;
     }
@@ -15773,7 +15595,7 @@ namespace lit
         }
         for(i = 0; i < argc; i++)
         {
-            sv = lit_to_string(vm->m_state, argv[i]);
+            sv = Object::toString(vm->m_state, argv[i]);
             written += fwrite(sv->chars, sizeof(char), sv->length(), stdout);
         }
         return Object::toValue(written);
@@ -15788,7 +15610,7 @@ namespace lit
         }
         for(i = 0; i < argc; i++)
         {
-            lit_printf(vm->m_state, "%s", lit_to_string(vm->m_state, argv[i])->chars);
+            lit_printf(vm->m_state, "%s", Object::toString(vm->m_state, argv[i])->chars);
         }
         lit_printf(vm->m_state, "\n");
         return Object::NullVal;
@@ -15983,7 +15805,7 @@ namespace lit
         if(vm->fiber->parent == nullptr)
         {
             lit_handle_runtime_error(vm, argc == 0 ? String::intern(vm->m_state, "Fiber was yielded") :
-            lit_to_string(vm->m_state, argv[0]));
+            Object::toString(vm->m_state, argv[0]));
             return true;
         }
 
@@ -15991,7 +15813,7 @@ namespace lit
 
         vm->fiber = vm->fiber->parent;
         vm->fiber->stack_top -= fiber->arg_count;
-        vm->fiber->stack_top[-1] = argc == 0 ? Object::NullVal : lit_to_string(vm->m_state, argv[0])->asValue();
+        vm->fiber->stack_top[-1] = argc == 0 ? Object::NullVal : Object::toString(vm->m_state, argv[0])->asValue();
 
         argv[-1] = Object::NullVal;
         return true;
@@ -16004,7 +15826,7 @@ namespace lit
         if(vm->fiber->parent == nullptr)
         {
             lit_handle_runtime_error(vm, argc == 0 ? String::intern(vm->m_state, "Fiber was yeeted") :
-            lit_to_string(vm->m_state, argv[0]));
+            Object::toString(vm->m_state, argv[0]));
             return true;
         }
 
@@ -16012,7 +15834,7 @@ namespace lit
 
         vm->fiber = vm->fiber->parent;
         vm->fiber->stack_top -= fiber->arg_count;
-        vm->fiber->stack_top[-1] = argc == 0 ? Object::NullVal : lit_to_string(vm->m_state, argv[0])->asValue();
+        vm->fiber->stack_top[-1] = argc == 0 ? Object::NullVal : Object::toString(vm->m_state, argv[0])->asValue();
 
         argv[-1] = Object::NullVal;
         return true;
@@ -16023,7 +15845,7 @@ namespace lit
     {
         (void)instance;
         lit_handle_runtime_error(vm, argc == 0 ? String::intern(vm->m_state, "Fiber was aborted") :
-        lit_to_string(vm->m_state, argv[0]));
+        Object::toString(vm->m_state, argv[0]));
         argv[-1] = Object::NullVal;
         return true;
     }
@@ -16158,7 +15980,7 @@ namespace lit
 
     static void* LIT_INSERT_DATA(VM* vm, Value instance, size_t typsz, Userdata::CleanupFuncType cleanup)
     {
-        Userdata* userdata = lit_create_userdata(vm->m_state, typsz, false);
+        Userdata* userdata = Userdata::make(vm->m_state, typsz, false);
         userdata->cleanup_fn = cleanup;
         Object::as<Instance>(instance)->fields.set(String::intern(vm->m_state, "_data"), userdata->asValue());
         return userdata->data;
@@ -16283,7 +16105,7 @@ namespace lit
         LIT_ENSURE_ARGS(1)
         size_t rt;
         String* value;
-        value = lit_to_string(vm->m_state, argv[0]);
+        value = Object::toString(vm->m_state, argv[0]);
         rt = fwrite(value->chars, value->length(), 1, ((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle);
         return Object::toValue(rt);
     }
@@ -16342,6 +16164,12 @@ namespace lit
      * ==
      * File reading
      */
+
+    static Value objmethod_file_tostring(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        auto data = (FileData*)LIT_EXTRACT_DATA(vm, instance);
+        return String::format(vm->m_state, "<file:@>", instance)->asValue();
+    }
 
     static Value objmethod_file_readall(VM* vm, Value instance, size_t argc, Value* argv)
     {
@@ -16479,11 +16307,9 @@ namespace lit
         #endif
     }
 
-
     /*
     * Directory
     */
-
     static Value objfunction_directory_exists(VM* vm, Value instance, size_t argc, Value* argv)
     {
         const char* directory_name = lit_check_string(vm, argv, argc, 0);
@@ -16579,7 +16405,7 @@ namespace lit
             hstd->name = name;
             hstd->canread = canread;
             hstd->canwrite = canwrite; 
-            userhnd = lit_create_userdata(state, sizeof(StdioHandle), true);
+            userhnd = Userdata::make(state, sizeof(StdioHandle), true);
             userhnd->data = hstd;
             userhnd->canfree = false;
             userhnd->cleanup_fn = free_handle;
@@ -16587,8 +16413,8 @@ namespace lit
             descname = String::intern(state, name);
             args[0] = userhnd->asValue();
             args[1] = descname->asValue();
-            res = lit_call(state, fileval, args, 2, false);
-            //fprintf(stderr, "make_handle(%s, hnd=%p): res.type=%d, res.result=%s\n", name, hnd, res.type, lit_get_value_type(res.result));
+            res = state->call(fileval, args, 2, false);
+            //fprintf(stderr, "make_handle(%s, hnd=%p): res.type=%d, res.result=%s\n", name, hnd, res.type, Object::valueName(res.result));
             state->setGlobal(varname, res.result);
         }
         state->vm->fiber = oldfiber;
@@ -16598,7 +16424,7 @@ namespace lit
     {
         Value fileval;
         fileval = state->getGlobal(String::intern(state, "File"));
-        //fprintf(stderr, "fileval=%s\n", lit_get_value_type(fileval));
+        //fprintf(stderr, "fileval=%s\n", Object::valueName(fileval));
         {
             make_handle(state, fileval, "STDIN", stdin, true, false);
             make_handle(state, fileval, "STDOUT", stdout, false, true);
@@ -16609,11 +16435,12 @@ namespace lit
     void lit_open_file_library(State* state)
     {
         {
-            Class* klass = Class::make(state, "File");;
+            Class* klass = Class::make(state, "File");
             {
                 klass->setStaticMethod("exists", objmethod_file_exists);;
                 klass->setStaticMethod("getLastModified", objmethod_file_getlastmodified);;
                 klass->bindConstructor(objmethod_file_constructor);
+                //klass->bindMethod("toString", objmethod_file_tostring);
                 klass->bindMethod("close", objmethod_file_close);
                 klass->bindMethod("write", objmethod_file_write);
                 klass->bindMethod("writeByte", objmethod_file_writebyte);
@@ -16660,7 +16487,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return lit_get_function_name(vm, instance);
+        return Object::functionName(vm, instance)->asValue();
     }
 
 
@@ -16668,7 +16495,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return lit_get_function_name(vm, instance);
+        return Object::functionName(vm, instance)->asValue();
     }
 
     void lit_open_function_library(State* state)
@@ -16874,7 +16701,7 @@ namespace lit
                 // Special hidden key
                 field = has_wrapper ? map->index_fn(vm, map, entry->key, nullptr) : entry->value;
                 // This check is required to prevent infinite loops when playing with Module.privates and such
-                strobval = (Object::isMap(field) && Object::as<Map>(field)->index_fn != nullptr) ? String::intern(state, "map") : lit_to_string(state, field);
+                strobval = (Object::isMap(field) && Object::as<Map>(field)->index_fn != nullptr) ? String::intern(state, "map") : Object::toString(state, field);
                 state->pushRoot((Object*)strobval);
                 values_converted[i] = strobval;
                 keys[i] = entry->key;
@@ -17134,7 +16961,7 @@ namespace lit
 
     static Value random_constructor(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        Userdata* userdata = lit_create_userdata(vm->m_state, sizeof(size_t), false);
+        Userdata* userdata = Userdata::make(vm->m_state, sizeof(size_t), false);
         Object::as<Instance>(instance)->fields.set(String::intern(vm->m_state, "_data"), userdata->asValue());
 
         size_t* data = (size_t*)userdata->data;
@@ -17826,7 +17653,7 @@ namespace lit
         }
         else
         {
-            strval = lit_to_string(vm->m_state, value);
+            strval = Object::toString(vm->m_state, value);
         }
         result = String::allocEmpty(vm->m_state, selfstr->length() + strval->length(), false);
         result->append(selfstr);
@@ -18397,6 +18224,8 @@ namespace lit
 
     }
 }
+
+
 //endlit
 
 // Used for clean up on Ctrl+C / Ctrl+Z
@@ -18431,7 +18260,7 @@ static int run_repl(lit::State* state)
         lit::InterpretResult result = lit_interpret(state, "repl", line);
         if(result.type == lit::LITRESULT_OK && result.result != lit::Object::NullVal)
         {
-            printf("%s%s%s\n", COLOR_GREEN, lit_to_string(state, result.result)->chars, COLOR_RESET);
+            printf("%s%s%s\n", COLOR_GREEN, lit::Object::toString(state, result.result)->chars, COLOR_RESET);
         }
     }
     #endif
