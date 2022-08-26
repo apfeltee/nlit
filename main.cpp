@@ -868,6 +868,15 @@ namespace lit
             }
     };
 
+
+    struct InterpretResult
+    {
+        /* the result of this interpret/call attempt */
+        InterpretResultType type;
+        /* the value returned from this interpret/call attempt */
+        Value result;
+    };
+
     struct Object
     {
         public:
@@ -2102,19 +2111,17 @@ namespace lit
             String* name;
     };
 
-
-    struct TableEntry
+    struct Table
     {
-        /* the key of this entry. can be nullptr! */
-        String* key;
+        public:
+            struct Entry
+            {
+                /* the key of this entry. can be nullptr! */
+                String* key;
 
-        /* the associated value */
-        Value value;
-    };
-
-
-    struct Table: public PCGenericArray<TableEntry>
-    {
+                /* the associated value */
+                Value value;
+            };
 
         public:
             template<typename FuncT>
@@ -2140,11 +2147,11 @@ namespace lit
                 setFunctionValue<NativeMethod>(dest, sv, fn);
             }
 
-            static TableEntry* findEntry(TableEntry* entries, int capacity, String* key)
+            static Entry* findEntry(Entry* entries, int capacity, String* key)
             {
                 uint32_t index;
-                TableEntry* entry;
-                TableEntry* tombstone;
+                Entry* entry;
+                Entry* tombstone;
                 index = key->hash % capacity;
                 tombstone = nullptr;
                 while(true)
@@ -2172,19 +2179,19 @@ namespace lit
             static void adjustCapacity(State* state, Table* table, size_t capacity)
             {
                 size_t i;
-                TableEntry* destination;
-                TableEntry* entries;
-                TableEntry* entry;
-                entries = LIT_ALLOCATE(state, TableEntry, capacity + 1);
+                Entry* destination;
+                Entry* entries;
+                Entry* entry;
+                entries = LIT_ALLOCATE(state, Entry, capacity + 1);
                 for(i = 0; i <= capacity; i++)
                 {
                     entries[i].key = nullptr;
                     entries[i].value = Object::NullVal;
                 }
-                table->m_count = 0;
-                for(i = 0; i <= table->m_capacity; i++)
+                table->m_inner.m_count = 0;
+                for(i = 0; i <= table->m_inner.m_capacity; i++)
                 {
-                    entry = &table->m_values[i];
+                    entry = &table->m_inner.m_values[i];
                     if(entry == nullptr)
                     {
                         continue;
@@ -2196,15 +2203,45 @@ namespace lit
                     destination = findEntry(entries, capacity, entry->key);
                     destination->key = entry->key;
                     destination->value = entry->value;
-                    table->m_count++;
+                    table->m_inner.m_count++;
                 }
-                LIT_FREE_ARRAY(state, TableEntry, table->m_values, table->m_capacity + 1);
-                table->m_capacity = capacity;
-                table->m_values = entries;
+                LIT_FREE_ARRAY(state, Entry, table->m_inner.m_values, table->m_inner.m_capacity + 1);
+                table->m_inner.m_capacity = capacity;
+                table->m_inner.m_values = entries;
             }
 
         public:
+            State* m_state = nullptr;
+            PCGenericArray<Entry> m_inner;
+
+        public:
+            void init(State* state)
+            {
+                m_state = state;
+                m_inner.init(state);
+            }
+
+            void release()
+            {
+                m_inner.release();
+            }
+
             void markForGC(VM* vm);
+
+            inline size_t capacity() const
+            {
+                return m_inner.m_capacity;
+            }
+
+            inline size_t size() const
+            {
+                return m_inner.size();
+            }
+
+            inline constexpr Entry& at(size_t i)
+            {
+                return m_inner.at(i);
+            }
 
             void setField(const char* name, Value value)
             {
@@ -2225,17 +2262,17 @@ namespace lit
             {
                 bool is_new;
                 size_t capacity;
-                TableEntry* entry;
-                if(this->m_count + 1 > (this->m_capacity + 1) * TABLE_MAX_LOAD)
+                Entry* entry;
+                if(this->m_inner.m_count + 1 > (this->m_inner.m_capacity + 1) * TABLE_MAX_LOAD)
                 {
-                    capacity = LIT_GROW_CAPACITY(this->m_capacity + 1) - 1;
+                    capacity = LIT_GROW_CAPACITY(this->m_inner.m_capacity + 1) - 1;
                     adjustCapacity(m_state, this, capacity);
                 }
-                entry = findEntry(this->m_values, this->m_capacity, key);
+                entry = findEntry(this->m_inner.m_values, this->m_inner.m_capacity, key);
                 is_new = entry->key == nullptr;
                 if(is_new && Object::isNull(entry->value))
                 {
-                    this->m_count++;
+                    this->m_inner.m_count++;
                 }
                 entry->key = key;
                 entry->value = value;
@@ -2249,12 +2286,12 @@ namespace lit
 
             bool get(String* key, Value* value)
             {
-                TableEntry* entry;
-                if(this->m_count == 0)
+                Entry* entry;
+                if(this->m_inner.m_count == 0)
                 {
                     return false;
                 }
-                entry = findEntry(this->m_values, this->m_capacity, key);
+                entry = findEntry(this->m_inner.m_values, this->m_inner.m_capacity, key);
                 if(entry->key == nullptr)
                 {
                     return false;
@@ -2265,12 +2302,12 @@ namespace lit
 
             bool getSlot(String* key, Value** value)
             {
-                TableEntry* entry;
-                if(this->m_count == 0)
+                Entry* entry;
+                if(this->m_inner.m_count == 0)
                 {
                     return false;
                 }
-                entry = findEntry(this->m_values, this->m_capacity, key);
+                entry = findEntry(this->m_inner.m_values, this->m_inner.m_capacity, key);
                 if(entry->key == nullptr)
                 {
                     return false;
@@ -2281,12 +2318,12 @@ namespace lit
 
             bool remove(String* key)
             {
-                TableEntry* entry;
-                if(this->m_count == 0)
+                Entry* entry;
+                if(this->m_inner.m_count == 0)
                 {
                     return false;
                 }
-                entry = findEntry(this->m_values, this->m_capacity, key);
+                entry = findEntry(this->m_inner.m_values, this->m_inner.m_capacity, key);
                 if(entry->key == nullptr)
                 {
                     return false;
@@ -2299,15 +2336,15 @@ namespace lit
             String* find(const char* chars, size_t length, uint32_t hash)
             {
                 uint32_t index;
-                TableEntry* entry;
-                if(this->m_count == 0)
+                Entry* entry;
+                if(this->m_inner.m_count == 0)
                 {
                     return nullptr;
                 }
-                index = hash % this->m_capacity;
+                index = hash % this->m_inner.m_capacity;
                 while(true)
                 {
-                    entry = &this->m_values[index];
+                    entry = &this->m_inner.m_values[index];
                     if(entry->key == nullptr)
                     {
                         if(Object::isNull(entry->value))
@@ -2319,17 +2356,17 @@ namespace lit
                     {
                         return entry->key;
                     }
-                    index = (index + 1) % this->m_capacity;
+                    index = (index + 1) % this->m_inner.m_capacity;
                 }
             }
 
             void addAll(Table* from)
             {
                 size_t i;
-                TableEntry* entry;
-                for(i = 0; i <= from->m_capacity; i++)
+                Entry* entry;
+                for(i = 0; i <= from->m_inner.m_capacity; i++)
                 {
-                    entry = &from->m_values[i];
+                    entry = &from->m_inner.m_values[i];
                     if(entry != nullptr)
                     {
                         if(entry->key != nullptr)
@@ -2343,10 +2380,10 @@ namespace lit
             void removeWhite()
             {
                 size_t i;
-                TableEntry* entry;
-                for(i = 0; i <= this->m_capacity; i++)
+                Entry* entry;
+                for(i = 0; i <= this->m_inner.m_capacity; i++)
                 {
-                    entry = &this->m_values[i];
+                    entry = &this->m_inner.m_values[i];
                     if(entry->key != nullptr && !entry->key->marked)
                     {
                         this->remove(entry->key);
@@ -2356,18 +2393,18 @@ namespace lit
 
             int64_t iterator(int64_t number)
             {
-                if(this->m_count == 0)
+                if(this->m_inner.m_count == 0)
                 {
                     return -1;
                 }
-                if(number >= this->m_capacity)
+                if(number >= this->m_inner.m_capacity)
                 {
                     return -1;
                 }
                 number++;
-                for(; number < (int64_t)this->m_capacity; number++)
+                for(; number < (int64_t)this->m_inner.m_capacity; number++)
                 {
-                    if(this->m_values[number].key != nullptr)
+                    if(this->m_inner.m_values[number].key != nullptr)
                     {
                         return number;
                     }
@@ -2378,13 +2415,14 @@ namespace lit
 
             Value iterKey(int64_t index)
             {
-                if(this->m_capacity <= index)
+                if(this->m_inner.m_capacity <= index)
                 {
                     return Object::NullVal;
                 }
-                return this->m_values[index].key->asValue();
+                return this->m_inner.m_values[index].key->asValue();
             }
     };
+
 
     struct Local
     {
@@ -2595,6 +2633,21 @@ namespace lit
             IndexFuncType index_fn;
 
         public:
+            inline size_t capacity() const
+            {
+                return values.capacity();
+            }
+
+            inline size_t size() const
+            {
+                return values.size();
+            }
+
+            inline constexpr Table::Entry& at(size_t i)
+            {
+                return values.at(i);
+            }
+
             bool set(String* key, Value value)
             {
                 if(value == Object::NullVal)
@@ -2810,6 +2863,8 @@ namespace lit
                 return String::format(Object::asState(vm), fmtpat, Object::as<Class>(instance)->name->asValue())->asValue();
             }
 
+            static Class* getClassFor(State* state, Value value);
+
             static Class* make(State* state, String* name)
             {
                 Class* klass;
@@ -3006,9 +3061,22 @@ namespace lit
                 instance = Object::make<Instance>(state, Object::Type::Instance);
                 instance->klass = klass;
                 instance->fields.init(state);
-                instance->fields.m_count = 0;
                 return instance;
             }
+
+            static Value getMethod(State* state, Value callee, String* mthname)
+            {
+                Value mthval;
+                Class* klass;
+                klass = Class::getClassFor(state, callee);
+                if((Object::isInstance(callee) && Object::as<Instance>(callee)->fields.get(mthname, &mthval)) || klass->methods.get(mthname, &mthval))
+                {
+                    return mthval;
+                }
+                return Object::NullVal;
+            }
+
+            static InterpretResult callMethod(State* state, Value callee, String* mthname, Value* argv, size_t argc);
 
         public:
             /* the class that corresponds to this instance */
@@ -3195,7 +3263,7 @@ namespace lit
                 enum class Type
                 {
                     Unspecified,
-                    eral,
+                    Literal,
                     Binary,
                     Unary,
                     Variable,
@@ -3358,7 +3426,7 @@ namespace lit
             public:
                 static ExprLiteral* make(State* state, size_t line, Value value)
                 {
-                    auto rt = Expression::make<ExprLiteral>(state, line, Expression::Type::eral);
+                    auto rt = Expression::make<ExprLiteral>(state, line, Expression::Type::Literal);
                     rt->value = value;
                     return rt;
                 }
@@ -6495,7 +6563,7 @@ namespace lit
                     }
                     switch(expression->type)
                     {
-                        case Expression::Type::eral:
+                        case Expression::Type::Literal:
                             {
                                 return ((ExprLiteral*)expression)->value;
                             }
@@ -6540,15 +6608,12 @@ namespace lit
 
                 void optimize_expression(Expression** slot)
                 {
-                    Expression* expression = *slot;
-
+                    auto expression = *slot;
                     if(expression == nullptr)
                     {
                         return;
                     }
-
-                    State* state = this->m_state;
-
+                    auto state = this->m_state;
                     switch(expression->type)
                     {
                         case Expression::Type::Unary:
@@ -6573,7 +6638,7 @@ namespace lit
                                         break;
                                     case Expression::Type::Binary:
                                         {
-                                            ExprBinary* expr = (ExprBinary*)expression;
+                                            auto expr = (ExprBinary*)expression;
                                             optimize_expression(&expr->left);
                                             optimize_expression(&expr->right);
                                         }
@@ -6588,21 +6653,21 @@ namespace lit
                             break;
                         case Expression::Type::Assign:
                             {
-                                ExprAssign* expr = (ExprAssign*)expression;
+                                auto expr = (ExprAssign*)expression;
                                 optimize_expression(&expr->to);
                                 optimize_expression(&expr->value);
                             }
                             break;
                         case Expression::Type::Call:
                             {
-                                ExprCall* expr = (ExprCall*)expression;
+                                auto expr = (ExprCall*)expression;
                                 optimize_expression(&expr->callee);
                                 optimize_expressions(&expr->args);
                             }
                             break;
                         case Expression::Type::Set:
                             {
-                                ExprIndexSet* expr = (ExprIndexSet*)expression;
+                                auto expr = (ExprIndexSet*)expression;
                                 optimize_expression(&expr->where);
                                 optimize_expression(&expr->value);
                             }
@@ -6619,117 +6684,102 @@ namespace lit
                                 opt_end_scope();
                             }
                             break;
-
                         case Expression::Type::Array:
-                        {
-                            optimize_expressions(&((ExprArray*)expression)->values);
-                            break;
-                        }
-
-                        case Expression::Type::Object:
-                        {
-                            optimize_expressions(&((ExprObject*)expression)->values);
-                            break;
-                        }
-
-                        case Expression::Type::Subscript:
-                        {
-                            ExprSubscript* expr = (ExprSubscript*)expression;
-
-                            optimize_expression(&expr->array);
-                            optimize_expression(&expr->index);
-
-                            break;
-                        }
-
-                        case Expression::Type::Range:
-                        {
-                            ExprRange* expr = (ExprRange*)expression;
-
-                            optimize_expression(&expr->from);
-                            optimize_expression(&expr->to);
-
-                            break;
-                        }
-
-                        case Expression::Type::IfClause:
-                        {
-                            ExprIfClause* expr = (ExprIfClause*)expression;
-                            Value optimized = evaluate_expression(expr->condition);
-
-                            if(optimized != Object::NullVal)
                             {
-                                if(Object::isFalsey(optimized))
+                                optimize_expressions(&((ExprArray*)expression)->values);
+                            }
+                            break;
+                        case Expression::Type::Object:
+                            {
+                                optimize_expressions(&((ExprObject*)expression)->values);
+                            }
+                            break;
+                        case Expression::Type::Subscript:
+                            {
+                                auto expr = (ExprSubscript*)expression;
+                                optimize_expression(&expr->array);
+                                optimize_expression(&expr->index);
+                            }
+                            break;
+                        case Expression::Type::Range:
+                            {
+                                auto expr = (ExprRange*)expression;
+                                optimize_expression(&expr->from);
+                                optimize_expression(&expr->to);
+                            }
+                            break;
+                        case Expression::Type::IfClause:
+                            {
+                                auto expr = (ExprIfClause*)expression;
+                                Value optimized = evaluate_expression(expr->condition);
+                                if(optimized != Object::NullVal)
                                 {
-                                    *slot = expr->else_branch;
-                                    expr->else_branch = nullptr;// So that it doesn't get freed
+                                    if(Object::isFalsey(optimized))
+                                    {
+                                        *slot = expr->else_branch;
+                                        expr->else_branch = nullptr;// So that it doesn't get freed
+                                    }
+                                    else
+                                    {
+                                        *slot = expr->if_branch;
+                                        expr->if_branch = nullptr;// So that it doesn't get freed
+                                    }
+                                    optimize_expression(slot);
+                                    Expression::releaseExpression(state, expression);
                                 }
                                 else
                                 {
-                                    *slot = expr->if_branch;
-                                    expr->if_branch = nullptr;// So that it doesn't get freed
+                                    optimize_expression(&expr->if_branch);
+                                    optimize_expression(&expr->else_branch);
                                 }
-
-                                optimize_expression(slot);
-                                Expression::releaseExpression(state, expression);
                             }
-                            else
-                            {
-                                optimize_expression(&expr->if_branch);
-                                optimize_expression(&expr->else_branch);
-                            }
-
                             break;
-                        }
-
                         case Expression::Type::Interpolation:
-                        {
-                            optimize_expressions(&((ExprInterpolation*)expression)->expressions);
-                            break;
-                        }
-
-                        case Expression::Type::Variable:
-                        {
-                            ExprVar* expr = (ExprVar*)expression;
-                            Variable* variable = resolve_variable(expr->name, expr->length);
-
-                            if(variable != nullptr)
                             {
-                                variable->used = true;
-
-                                // Not checking here for the enable-ness of constant-folding, since if its off
-                                // the constant_value would be Object::NullVal anyway (:thinkaboutit:)
-                                if(variable->constant && variable->constant_value != Object::NullVal)
+                                optimize_expressions(&((ExprInterpolation*)expression)->expressions);
+                            }
+                            break;
+                        case Expression::Type::Variable:
+                            {
+                                auto expr = (ExprVar*)expression;
+                                auto variable = resolve_variable(expr->name, expr->length);
+                                if(variable != nullptr)
                                 {
-                                    *slot = (Expression*)ExprLiteral::make(state, expression->line, variable->constant_value);
-                                    Expression::releaseExpression(state, expression);
+                                    variable->used = true;
+
+                                    // Not checking here for the enable-ness of constant-folding, since if its off
+                                    // the constant_value would be Object::NullVal anyway (:thinkaboutit:)
+                                    if(variable->constant && variable->constant_value != Object::NullVal)
+                                    {
+                                        *slot = (Expression*)ExprLiteral::make(state, expression->line, variable->constant_value);
+                                        Expression::releaseExpression(state, expression);
+                                    }
                                 }
                             }
-
                             break;
-                        }
-
                         case Expression::Type::Reference:
-                        {
-                            optimize_expression(&((ExprReference*)expression)->to);
+                            {
+                                optimize_expression(&((ExprReference*)expression)->to);
+                            }
                             break;
-                        }
-
-                        case Expression::Type::eral:
+                        case Expression::Type::Literal:
                         case Expression::Type::This:
                         case Expression::Type::Super:
-                        {
-                            // Nothing, that we can do here
+                            {
+                                // nothing to do here
+                            }
                             break;
-                        }
-                        case Expression::Type::Unspecified:
+                        default:
+                            {
+                            }
                             break;
                     }
                 }
 
                 void optimize_expressions(Expression::List* expressions)
                 {
-                    for(size_t i = 0; i < expressions->m_count; i++)
+                    size_t i;
+                    for(i = 0; i < expressions->m_count; i++)
                     {
                         optimize_expression(&expressions->m_values[i]);
                     }
@@ -6737,6 +6787,8 @@ namespace lit
 
                 void optimize_statement(Expression** slot)
                 {
+                    size_t i;
+                    size_t j;
                     State* state;
                     Expression* statement;
                     statement = *slot;
@@ -6758,8 +6810,7 @@ namespace lit
                             break;
                         case Expression::Type::Block:
                             {
-                                StmtBlock* stmt;
-                                stmt = (StmtBlock*)statement;
+                                auto stmt = (StmtBlock*)statement;
                                 if(stmt->statements.m_count == 0)
                                 {
                                     Expression::releaseStatement(state, statement);
@@ -6770,16 +6821,16 @@ namespace lit
                                 optimize_statements(&stmt->statements);
                                 opt_end_scope();
                                 bool found = false;
-                                for(size_t i = 0; i < stmt->statements.m_count; i++)
+                                for(i = 0; i < stmt->statements.m_count; i++)
                                 {
-                                    Expression* step = stmt->statements.m_values[i];
+                                    auto step = stmt->statements.m_values[i];
                                     if(!is_empty(step))
                                     {
                                         found = true;
                                         if(step->type == Expression::Type::ReturnClause)
                                         {
                                             // Remove all the statements post return
-                                            for(size_t j = i + 1; j < stmt->statements.m_count; j++)
+                                            for(j = i + 1; j < stmt->statements.m_count; j++)
                                             {
                                                 step = stmt->statements.m_values[j];
                                                 if(step != nullptr)
@@ -6800,100 +6851,79 @@ namespace lit
                                 }
                             }
                             break;
-
                         case Expression::Type::IfClause:
-                        {
-                            StmtIfClause* stmt = (StmtIfClause*)statement;
-
-                            optimize_expression(&stmt->condition);
-                            optimize_statement(&stmt->if_branch);
-
-                            bool empty = Optimizer::is_enabled(LITOPTSTATE_EMPTY_BODY);
-                            bool dead = Optimizer::is_enabled(LITOPTSTATE_UNREACHABLE_CODE);
-
-                            Value optimized = empty ? evaluate_expression(stmt->condition) : Object::NullVal;
-
-                            if((optimized != Object::NullVal && Object::isFalsey(optimized)) || (dead && is_empty(stmt->if_branch)))
                             {
-                                Expression::releaseExpression(state, stmt->condition);
-                                stmt->condition = nullptr;
-
-                                Expression::releaseStatement(state, stmt->if_branch);
-                                stmt->if_branch = nullptr;
-                            }
-
-                            if(stmt->elseif_conditions != nullptr)
-                            {
-                                optimize_expressions(stmt->elseif_conditions);
-                                optimize_statements(stmt->elseif_branches);
-
-                                if(dead || empty)
+                                auto stmt = (StmtIfClause*)statement;
+                                optimize_expression(&stmt->condition);
+                                optimize_statement(&stmt->if_branch);
+                                bool empty = Optimizer::is_enabled(LITOPTSTATE_EMPTY_BODY);
+                                bool dead = Optimizer::is_enabled(LITOPTSTATE_UNREACHABLE_CODE);
+                                Value optimized = empty ? evaluate_expression(stmt->condition) : Object::NullVal;
+                                if((optimized != Object::NullVal && Object::isFalsey(optimized)) || (dead && is_empty(stmt->if_branch)))
                                 {
-                                    for(size_t i = 0; i < stmt->elseif_conditions->m_count; i++)
+                                    Expression::releaseExpression(state, stmt->condition);
+                                    stmt->condition = nullptr;
+                                    Expression::releaseStatement(state, stmt->if_branch);
+                                    stmt->if_branch = nullptr;
+                                }
+                                if(stmt->elseif_conditions != nullptr)
+                                {
+                                    optimize_expressions(stmt->elseif_conditions);
+                                    optimize_statements(stmt->elseif_branches);
+                                    if(dead || empty)
                                     {
-                                        if(empty && is_empty(stmt->elseif_branches->m_values[i]))
+                                        for(i = 0; i < stmt->elseif_conditions->m_count; i++)
                                         {
-                                            Expression::releaseExpression(state, stmt->elseif_conditions->m_values[i]);
-                                            stmt->elseif_conditions->m_values[i] = nullptr;
-
-                                            Expression::releaseStatement(state, stmt->elseif_branches->m_values[i]);
-                                            stmt->elseif_branches->m_values[i] = nullptr;
-
-                                            continue;
-                                        }
-
-                                        if(dead)
-                                        {
-                                            Value value = evaluate_expression(stmt->elseif_conditions->m_values[i]);
-
-                                            if(value != Object::NullVal && Object::isFalsey(value))
+                                            if(empty && is_empty(stmt->elseif_branches->m_values[i]))
                                             {
                                                 Expression::releaseExpression(state, stmt->elseif_conditions->m_values[i]);
                                                 stmt->elseif_conditions->m_values[i] = nullptr;
-
                                                 Expression::releaseStatement(state, stmt->elseif_branches->m_values[i]);
                                                 stmt->elseif_branches->m_values[i] = nullptr;
+                                                continue;
+                                            }
+                                            if(dead)
+                                            {
+                                                Value value = evaluate_expression(stmt->elseif_conditions->m_values[i]);
+                                                if(value != Object::NullVal && Object::isFalsey(value))
+                                                {
+                                                    Expression::releaseExpression(state, stmt->elseif_conditions->m_values[i]);
+                                                    stmt->elseif_conditions->m_values[i] = nullptr;
+                                                    Expression::releaseStatement(state, stmt->elseif_branches->m_values[i]);
+                                                    stmt->elseif_branches->m_values[i] = nullptr;
+                                                }
                                             }
                                         }
                                     }
                                 }
+                                optimize_statement(&stmt->else_branch);
                             }
-
-                            optimize_statement(&stmt->else_branch);
                             break;
-                        }
-
                         case Expression::Type::WhileLoop:
-                        {
-                            StmtWhileLoop* stmt = (StmtWhileLoop*)statement;
-                            optimize_expression(&stmt->condition);
-
-                            if(Optimizer::is_enabled(LITOPTSTATE_UNREACHABLE_CODE))
                             {
-                                Value optimized = evaluate_expression(stmt->condition);
-
-                                if(optimized != Object::NullVal && Object::isFalsey(optimized))
+                                auto stmt = (StmtWhileLoop*)statement;
+                                optimize_expression(&stmt->condition);
+                                if(Optimizer::is_enabled(LITOPTSTATE_UNREACHABLE_CODE))
+                                {
+                                    Value optimized = evaluate_expression(stmt->condition);
+                                    if(optimized != Object::NullVal && Object::isFalsey(optimized))
+                                    {
+                                        Expression::releaseStatement(this->m_state, statement);
+                                        *slot = nullptr;
+                                        break;
+                                    }
+                                }
+                                optimize_statement(&stmt->body);
+                                if(Optimizer::is_enabled(LITOPTSTATE_EMPTY_BODY) && is_empty(stmt->body))
                                 {
                                     Expression::releaseStatement(this->m_state, statement);
                                     *slot = nullptr;
-                                    break;
                                 }
                             }
-
-                            optimize_statement(&stmt->body);
-
-                            if(Optimizer::is_enabled(LITOPTSTATE_EMPTY_BODY) && is_empty(stmt->body))
-                            {
-                                Expression::releaseStatement(this->m_state, statement);
-                                *slot = nullptr;
-                            }
-
                             break;
-                        }
-
                         case Expression::Type::ForLoop:
                             {
-                                StmtForLoop* stmt = (StmtForLoop*)statement;
+                                auto stmt = (StmtForLoop*)statement;
                                 opt_begin_scope();
                                 // This is required, so that this doesn't optimize out our i variable (and such)
                                 this->mark_used = true;
@@ -6914,7 +6944,7 @@ namespace lit
                                 {
                                     break;
                                 }
-                                ExprRange* range = (ExprRange*)stmt->condition;
+                                auto range = (ExprRange*)stmt->condition;
                                 Value from = evaluate_expression(range->from);
                                 Value to = evaluate_expression(range->to);
                                 if(!Object::isNumber(from) || !Object::isNumber(to))
@@ -6922,7 +6952,7 @@ namespace lit
                                     break;
                                 }
                                 bool reverse = Object::toNumber(from) > Object::toNumber(to);
-                                StmtVar* var = (StmtVar*)stmt->var;
+                                auto var = (StmtVar*)stmt->var;
                                 size_t line = range->line;
                                 // var i = from
                                 var->valexpr = range->from;
@@ -6930,13 +6960,11 @@ namespace lit
                                 stmt->condition = (Expression*)ExprBinary::make(
                                 state, line, (Expression*)ExprVar::make(state, line, var->name, var->length), range->to, LITTOK_LESS_EQUAL);
                                 // i++ (or i--)
-                                Expression* var_get = (Expression*)ExprVar::make(state, line, var->name, var->length);
-                                ExprBinary* assign_value = ExprBinary::make(
-                                state, line, var_get, (Expression*)ExprLiteral::make(state, line, Object::toValue(1)),
+                                auto var_get = (Expression*)ExprVar::make(state, line, var->name, var->length);
+                                auto assign_value = ExprBinary::make(state, line, var_get, (Expression*)ExprLiteral::make(state, line, Object::toValue(1)),
                                 reverse ? LITTOK_MINUS_MINUS : LITTOK_PLUS);
                                 assign_value->ignore_left = true;
-                                Expression* increment
-                                = (Expression*)ExprAssign::make(state, line, var_get, (Expression*)assign_value);
+                                auto increment = (Expression*)ExprAssign::make(state, line, var_get, (Expression*)assign_value);
                                 stmt->increment = (Expression*)increment;
                                 range->from = nullptr;
                                 range->to = nullptr;
@@ -6944,16 +6972,14 @@ namespace lit
                                 Expression::releaseExpression(state, (Expression*)range);
                             }
                             break;
-
                         case Expression::Type::VarDecl:
                             {
-                                StmtVar* stmt = (StmtVar*)statement;
-                                Variable* variable = add_variable(stmt->name, stmt->length, stmt->constant, slot);
+                                auto stmt = (StmtVar*)statement;
+                                auto variable = add_variable(stmt->name, stmt->length, stmt->constant, slot);
                                 optimize_expression(&stmt->valexpr);
                                 if(stmt->constant && Optimizer::is_enabled(LITOPTSTATE_CONSTANT_FOLDING))
                                 {
                                     Value value = evaluate_expression(stmt->valexpr);
-
                                     if(value != Object::NullVal)
                                     {
                                         variable->constant_value = value;
@@ -6963,8 +6989,8 @@ namespace lit
                             break;
                         case Expression::Type::FunctionDecl:
                             {
-                                StmtFunction* stmt = (StmtFunction*)statement;
-                                Variable* variable = add_variable(stmt->name, stmt->length, false, slot);
+                                auto stmt = (StmtFunction*)statement;
+                                auto variable = add_variable(stmt->name, stmt->length, false, slot);
                                 if(stmt->exported)
                                 {
                                     // Otherwise it will get optimized-out with a big chance
@@ -6994,7 +7020,7 @@ namespace lit
                             break;
                         case Expression::Type::FieldDecl:
                             {
-                                StmtField* stmt = (StmtField*)statement;
+                                auto stmt = (StmtField*)statement;
                                 if(stmt->getter != nullptr)
                                 {
                                     opt_begin_scope();
@@ -7015,7 +7041,6 @@ namespace lit
                             {
                             }
                             break;
-
                     }
                 }
 
@@ -7046,9 +7071,7 @@ namespace lit
                 bool previous_was_expression_statement = false;
                 int emit_reference = 0;
 
-
             public:
-
                 void init(State* state)
                 {
                     this->m_state = state;
@@ -7547,7 +7570,7 @@ namespace lit
                 {
                     switch(expression->type)
                     {
-                        case Expression::Type::eral:
+                        case Expression::Type::Literal:
                             {
                                 Value value = ((ExprLiteral*)expression)->value;
                                 if(Object::isNumber(value) || Object::isString(value))
@@ -8717,14 +8740,6 @@ namespace lit
     }
     // endast
 
-    struct InterpretResult
-    {
-        /* the result of this interpret/call attempt */
-        InterpretResultType type;
-        /* the value returned from this interpret/call attempt */
-        Value result;
-    };
-
     struct State
     {
         public:
@@ -8877,106 +8892,7 @@ namespace lit
                 this->root_count -= amount;
             }
 
-            Class* getClassFor(Value value)
-            {
-                Value* slot;
-                Upvalue* upvalue;
-                if(Object::isObject(value))
-                {
-                    switch(OBJECT_TYPE(value))
-                    {
-                        case Object::Type::String:
-                            {
-                                return this->stringvalue_class;
-                            }
-                            break;
-                        case Object::Type::Userdata:
-                            {
-                                return this->objectvalue_class;
-                            }
-                            break;
-                        case Object::Type::Field:
-                        case Object::Type::Function:
-                        case Object::Type::Closure:
-                        case Object::Type::NativeFunction:
-                        case Object::Type::NativePrimitive:
-                        case Object::Type::BoundMethod:
-                        case Object::Type::PrimitiveMethod:
-                        case Object::Type::NativeMethod:
-                            {
-                                return this->functionvalue_class;
-                            }
-                            break;
-                        case Object::Type::Fiber:
-                            {
-                                //fprintf(stderr, "should return fiber class ....\n");
-                                return this->fibervalue_class;
-                            }
-                            break;
-                        case Object::Type::Module:
-                            {
-                                return this->modulevalue_class;
-                            }
-                            break;
-                        case Object::Type::Upvalue:
-                            {
-                                upvalue = Object::as<Upvalue>(value);
-                                if(upvalue->location == nullptr)
-                                {
-                                    return this->getClassFor(upvalue->closed);
-                                }
-                                return this->getClassFor(*upvalue->location);
-                            }
-                            break;
-                        case Object::Type::Instance:
-                            {
-                                return Object::as<Instance>(value)->klass;
-                            }
-                            break;
-                        case Object::Type::Class:
-                            {
-                                return this->classvalue_class;
-                            }
-                            break;
-                        case Object::Type::Array:
-                            {
-                                return this->arrayvalue_class;
-                            }
-                            break;
-                        case Object::Type::Map:
-                            {
-                                return this->mapvalue_class;
-                            }
-                            break;
-                        case Object::Type::Range:
-                            {
-                                return this->rangevalue_class;
-                            }
-                            break;
-                        case Object::Type::Reference:
-                            {
-                                slot = Object::as<Reference>(value)->slot;
-                                if(slot != nullptr)
-                                {
-                                    return this->getClassFor(*slot);
-                                }
 
-                                return this->objectvalue_class;
-                            }
-                            break;
-                    }
-                }
-                else if(Object::isNumber(value))
-                {
-                    return this->numbervalue_class;
-                }
-                else if(Object::isBool(value))
-                {
-                    return this->boolvalue_class;
-                }
-                //fprintf(stderr, "failed to find class object!\n");
-                return nullptr;
-            }
 
             void setVMGlobal(String* name, Value val);
             bool getVMGlobal(String* name, Value* dest);
@@ -9537,10 +9453,6 @@ namespace lit
     */
     char* lit_patch_file_name(char* file_name);
 
-    /* call a function in an instance */
-    InterpretResult lit_instance_call_method(State* state, Value callee, String* mthname, Value* argv, size_t argc);
-    Value lit_instance_get_method(State* state, Value callee, String* mthname);
-
     /*
      * Please, do not provide a const string source to the compiler, because it will
      * get modified, if it has any macros in it!
@@ -9559,8 +9471,6 @@ namespace lit
     void lit_trace_vm_stack(VM* vm, Writer* wr);
 
 
-
-    Value lit_call_new(VM* vm, const char* name, Value* args, size_t arg_count, bool ignfiber);
 
     double lit_check_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id);
     double lit_get_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id, double def);
@@ -9694,7 +9604,7 @@ namespace lit
 
             switch(expression->type)
             {
-                case Expression::Type::eral:
+                case Expression::Type::Literal:
                 {
                     Memory::reallocate(state, expression, sizeof(ExprLiteral), 0);
                     break;
@@ -10443,7 +10353,7 @@ namespace lit
                 RETURN_RUNTIME_ERROR();
             }
         }
-        klass = this->getClassFor(callee);
+        klass = Class::getClassFor(this, callee);
         if((Object::isInstance(callee) && Object::as<Instance>(callee)->fields.get(method_name, &mthval)) || klass->methods.get(method_name, &mthval))
         {
             return this->callMethod(callee, mthval, argv, argc, ignfiber);
@@ -10791,7 +10701,7 @@ namespace lit
         vm_invoke_from_class_advanced(klass, method_name, arg_count, error, stat, ignoring, vm_peek(fiber, arg_count))
 
     #define vm_invokemethod(instance, method_name, arg_count) \
-        Class* klass = this->getClassFor(instance); \
+        Class* klass = Class::getClassFor(this, instance); \
         if(klass == nullptr) \
         { \
             vm_rterror("invokemethod: only instances and classes have methods"); \
@@ -10867,7 +10777,7 @@ namespace lit
         } \
         else \
         { \
-            Class* type = this->getClassFor(receiver); \
+            Class* type = Class::getClassFor(this, receiver); \
             if(type == nullptr) \
             { \
                 vm_rterror("invokeoperation: only instances and classes have methods"); \
@@ -11533,7 +11443,7 @@ namespace lit
                     }
                     else
                     {
-                        klassobj = this->getClassFor(vobj);
+                        klassobj = Class::getClassFor(this, vobj);
                         if(klassobj == nullptr)
                         {
                             vm_rterror("GET_FIELD: only instances and classes have fields");
@@ -11638,7 +11548,7 @@ namespace lit
                     }
                     else
                     {
-                        klassobj = this->getClassFor(instval);
+                        klassobj = Class::getClassFor(this, instval);
                         if(klassobj == nullptr)
                         {
                             vm_rterror("SET_FIELD: only instances and classes have fields");
@@ -11796,7 +11706,7 @@ namespace lit
 
                         continue;
                     }
-                    instance_klass = this->getClassFor(instval);
+                    instance_klass = Class::getClassFor(this, instval);
                     klassval = vm_peek(fiber, 0);
                     if(instance_klass == nullptr || !Object::isClass(klassval))
                     {
@@ -12469,14 +12379,14 @@ namespace lit
     {
         bool had_before;
         size_t i;
-        TableEntry* entry;
+        Table::Entry* entry;
         wr->format("(%u) {", (unsigned int)size);
         had_before = false;
         if(size > 0)
         {
-            for(i = 0; i < (size_t)map->values.m_capacity; i++)
+            for(i = 0; i < (size_t)map->size(); i++)
             {
-                entry = &map->values.m_values[i];
+                entry = &map->values.m_inner.m_values[i];
                 if(entry->key != nullptr)
                 {
                     if(had_before)
@@ -12599,7 +12509,7 @@ namespace lit
                         */
                         wr->format("<instance '%s' ", Object::as<Instance>(value)->klass->name->chars);
                         map = Object::as<Map>(value);
-                        size = map->values.m_count;
+                        size = map->size();
                         printMap(state, wr, map, size);
                         wr->put(">");
                     }
@@ -12627,7 +12537,7 @@ namespace lit
                             wr->format("map");
                         #else
                             map = Object::as<Map>(value);
-                            size = map->values.m_count;
+                            size = map->size();
                             printMap(state, wr, map, size);
                         #endif
                     }
@@ -12678,10 +12588,10 @@ namespace lit
     void Table::markForGC(VM* vm)
     {
         size_t i;
-        TableEntry* entry;
-        for(i = 0; i <= this->m_capacity; i++)
+        Table::Entry* entry;
+        for(i = 0; i <= this->m_inner.m_capacity; i++)
         {
-            entry = &this->m_values[i];
+            entry = &this->m_inner.m_values[i];
             if(entry != nullptr)
             {
                 vm->markObject((Object*)entry->key);
@@ -12733,6 +12643,120 @@ namespace lit
         closure->upvalues = upvalues;
         closure->upvalue_count = function->upvalue_count;
         return closure;
+    }
+
+    // impl::class
+    Class* Class::getClassFor(State* state, Value value)
+    {
+        Value* slot;
+        Upvalue* upvalue;
+        if(Object::isObject(value))
+        {
+            switch(OBJECT_TYPE(value))
+            {
+                case Object::Type::String:
+                    {
+                        return state->stringvalue_class;
+                    }
+                    break;
+                case Object::Type::Userdata:
+                    {
+                        return state->objectvalue_class;
+                    }
+                    break;
+                case Object::Type::Field:
+                case Object::Type::Function:
+                case Object::Type::Closure:
+                case Object::Type::NativeFunction:
+                case Object::Type::NativePrimitive:
+                case Object::Type::BoundMethod:
+                case Object::Type::PrimitiveMethod:
+                case Object::Type::NativeMethod:
+                    {
+                        return state->functionvalue_class;
+                    }
+                    break;
+                case Object::Type::Fiber:
+                    {
+                        //fprintf(stderr, "should return fiber class ....\n");
+                        return state->fibervalue_class;
+                    }
+                    break;
+                case Object::Type::Module:
+                    {
+                        return state->modulevalue_class;
+                    }
+                    break;
+                case Object::Type::Upvalue:
+                    {
+                        upvalue = Object::as<Upvalue>(value);
+                        if(upvalue->location == nullptr)
+                        {
+                            return Class::getClassFor(state, upvalue->closed);
+                        }
+                        return Class::getClassFor(state, *upvalue->location);
+                    }
+                    break;
+                case Object::Type::Instance:
+                    {
+                        return Object::as<Instance>(value)->klass;
+                    }
+                    break;
+                case Object::Type::Class:
+                    {
+                        return state->classvalue_class;
+                    }
+                    break;
+                case Object::Type::Array:
+                    {
+                        return state->arrayvalue_class;
+                    }
+                    break;
+                case Object::Type::Map:
+                    {
+                        return state->mapvalue_class;
+                    }
+                    break;
+                case Object::Type::Range:
+                    {
+                        return state->rangevalue_class;
+                    }
+                    break;
+                case Object::Type::Reference:
+                    {
+                        slot = Object::as<Reference>(value)->slot;
+                        if(slot != nullptr)
+                        {
+                            return Class::getClassFor(state, *slot);
+                        }
+
+                        return state->objectvalue_class;
+                    }
+                    break;
+            }
+        }
+        else if(Object::isNumber(value))
+        {
+            return state->numbervalue_class;
+        }
+        else if(Object::isBool(value))
+        {
+            return state->boolvalue_class;
+        }
+        //fprintf(stderr, "failed to find class object!\n");
+        return nullptr;
+    }
+
+    // impl::instance
+    InterpretResult Instance::callMethod(State* state, Value callee, String* mthname, Value* argv, size_t argc)
+    {
+        Value mthval;
+        mthval = Instance::getMethod(state, callee, mthname);
+        if(!Object::isNull(mthval))
+        {
+            return state->call(mthval, argv, argc, false);
+        }
+        return INTERPRET_RUNTIME_FAIL;    
     }
 
 
@@ -13036,29 +13060,6 @@ namespace lit
         return true;
     }
 
-    Value lit_instance_get_method(State* state, Value callee, String* mthname)
-    {
-        Value mthval;
-        Class* klass;
-        klass = state->getClassFor(callee);
-        if((Object::isInstance(callee) && Object::as<Instance>(callee)->fields.get(mthname, &mthval)) || klass->methods.get(mthname, &mthval))
-        {
-            return mthval;
-        }
-        return Object::NullVal;
-    }
-
-    InterpretResult lit_instance_call_method(State* state, Value callee, String* mthname, Value* argv, size_t argc)
-    {
-        Value mthval;
-        mthval = lit_instance_get_method(state, callee, mthname);
-        if(!Object::isNull(mthval))
-        {
-            return state->call(mthval, argv, argc, false);
-        }
-        return INTERPRET_RUNTIME_FAIL;    
-    }
-
 
     double lit_check_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id)
     {
@@ -13187,25 +13188,6 @@ namespace lit
             lit_runtime_error_exiting(vm, error);
         }
     }
-
-    Value lit_call_new(VM* vm, const char* name, Value* args, size_t argc, bool ignfiber)
-    {
-        Value value;
-        Class* klass;
-        if(!vm->globals->values.get(String::intern(vm->m_state, name), &value))
-        {
-            lit_runtime_error(vm, "failed to create instance of class %s: class not found", name);
-            return Object::NullVal;
-        }
-        klass = Object::as<Class>(value);
-        if(klass->init_method == nullptr)
-        {
-            return Instance::make(vm->m_state, klass)->asValue();
-        }
-        return vm->m_state->callMethod(value, value, args, argc, ignfiber).result;
-    }
-
-
 
 
     static size_t print_simple_op(State* state, Writer* wr, const char* name, size_t offset)
@@ -13869,10 +13851,10 @@ namespace lit
             privates = &module->private_names->values;
             for(i = 0; i < module->private_count; i++)
             {
-                if(privates->m_values[i].key != nullptr)
+                if(privates->at(i).key != nullptr)
                 {
-                    FileIO::write_string(file, privates->m_values[i].key);
-                    FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->m_values[i].value));
+                    FileIO::write_string(file, privates->at(i).key);
+                    FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i).value));
                 }
             }
         }
@@ -14552,7 +14534,7 @@ namespace lit
         if(Object::isInstance(a))
         {
             args[0] = b;
-            inret = lit_instance_call_method(state, a, String::intern(state, "=="), args, 1);
+            inret = Instance::callMethod(state, a, String::intern(state, "=="), args, 1);
             if(inret.type == LITRESULT_OK)
             {
                 if(BOOL_VALUE(inret.result) == Object::TrueVal)
@@ -14971,7 +14953,7 @@ namespace lit
         LIT_ENSURE_ARGS(1);
         klass = Object::as<Class>(instance);
         index = argv[0] == Object::NullVal ? -1 : Object::toNumber(argv[0]);
-        mthcap = (int)klass->methods.m_capacity;
+        mthcap = (int)klass->methods.capacity();
         fields = index >= mthcap;
         value = (fields ? &klass->static_fields : &klass->methods)->iterator(fields ? index - mthcap : index);
         if(value == -1)
@@ -15001,7 +14983,7 @@ namespace lit
         Class* klass;
         index = lit_check_number(vm, argv, argc, 0);
         klass = Object::as<Class>(instance);
-        mthcap = klass->methods.m_capacity;
+        mthcap = klass->methods.capacity();
         fields = index >= mthcap;
         return (fields ? &klass->static_fields : &klass->methods)->iterKey(fields ? index - mthcap : index);
     }
@@ -16624,7 +16606,7 @@ namespace lit
         (void)vm;
         (void)argv;
         (void)argc;
-        Object::as<Map>(instance)->values.m_count = 0;
+        Object::as<Map>(instance)->values.m_inner .m_count = 0;
         return Object::NullVal;
     }
 
@@ -16673,7 +16655,7 @@ namespace lit
         State* state;
         Map* map;
         Table* values;
-        TableEntry* entry;
+        Table::Entry* entry;
         Value field;
         String* strobval;
         String* key;
@@ -16683,13 +16665,13 @@ namespace lit
         state = vm->m_state;
         map = Object::as<Map>(instance);
         values = &map->values;
-        if(values->m_count == 0)
+        if(values->size() == 0)
         {
             return String::internValue(state, "{}");
         }
         has_wrapper = map->index_fn != nullptr;
-        has_more = values->m_count > LIT_CONTAINER_OUTPUT_MAX;
-        value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->m_count;
+        has_more = values->size() > LIT_CONTAINER_OUTPUT_MAX;
+        value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->size();
         values_converted = LIT_ALLOCATE(vm->m_state, String*, value_amount+1);
         keys = LIT_ALLOCATE(vm->m_state, String*, value_amount+1);
         olength = 3;
@@ -16701,7 +16683,7 @@ namespace lit
         index = 0;
         do
         {
-            entry = &values->m_values[index++];
+            entry = &values->m_inner.m_values[index++];
             if(entry->key != nullptr)
             {
                 // Special hidden key
@@ -16773,7 +16755,7 @@ namespace lit
         (void)vm;
         (void)argc;
         (void)argv;
-        return Object::toValue(Object::as<Map>(instance)->values.m_count);
+        return Object::toValue(Object::as<Map>(instance)->size());
     }
 
     void lit_open_map_library(State* state)
@@ -17092,8 +17074,8 @@ namespace lit
             else if(Object::isMap(argv[0]))
             {
                 Map* map = Object::as<Map>(argv[0]);
-                size_t length = map->values.m_count;
-                size_t m_capacity = map->values.m_capacity;
+                size_t length = map->size();
+                size_t m_capacity = map->capacity();
 
                 if(length == 0)
                 {
@@ -17105,11 +17087,11 @@ namespace lit
 
                 for(size_t i = 0; i < m_capacity; i++)
                 {
-                    if(map->values.m_values[i].key != nullptr)
+                    if(map->at(i).key != nullptr)
                     {
                         if(index == target)
                         {
-                            return map->values.m_values[i].value;
+                            return map->values.m_inner.m_values[i].value;
                         }
 
                         index++;
@@ -17289,7 +17271,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return vm->m_state->getClassFor(instance)->asValue();
+        return Class::getClassFor(vm->m_state, instance)->asValue();
     }
 
     static Value objfn_object_super(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17297,7 +17279,7 @@ namespace lit
         (void)argc;
         (void)argv;
         Class* cl;
-        cl = vm->m_state->getClassFor(instance)->super;
+        cl = Class::getClassFor(vm->m_state, instance)->super;
         if(cl == nullptr)
         {
             return Object::NullVal;
@@ -17309,7 +17291,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "@ instance", vm->m_state->getClassFor(instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "@ instance", Class::getClassFor(vm->m_state, instance)->name->asValue())->asValue();
     }
 
     static void fillmap(State* state, Map* destmap, Table* fromtbl, bool includenullkeys)
@@ -17318,12 +17300,12 @@ namespace lit
         String* key;
         Value val;
         (void)includenullkeys;
-        for(i=0; i<(size_t)(fromtbl->m_count); i++)
+        for(i=0; i<fromtbl->size(); i++)
         {
-            key = fromtbl->m_values[i].key;
+            key = fromtbl->at(i).key;
             if(key != nullptr)
             {
-                val = fromtbl->m_values[i].value;
+                val = fromtbl->at(i).value;
                 destmap->set(key, val);
             }
         }
