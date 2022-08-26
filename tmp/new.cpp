@@ -181,10 +181,10 @@
 
 #define INTERPRET_RUNTIME_FAIL ((lit::InterpretResult){ LITRESULT_INVALID, lit::Object::NullVal })
 
-#define LIT_GET_FIELD(id) lit::Object::as<lit::Instance>(instance)->fields.getField(vm->m_state, id)
-#define LIT_GET_MAP_FIELD(id) lit::Object::as<lit::Instance>(instance).fields.getField(vm->m_state, id))
+#define LIT_GET_FIELD(id) lit::Object::as<lit::Instance>(instance)->fields.getField(id)
+#define LIT_GET_MAP_FIELD(id) lit::Object::as<lit::Instance>(instance).fields.getField(id))
 #define LIT_SET_FIELD(id, value) lit::Object::as<lit::Instance>(instance)->fields.setField(id, value)
-#define LIT_SET_MAP_FIELD(id, value) lit_set_map_field(vm->m_state, &lit::Object::as<lit::Instance>(instance)->fields, id, value)
+#define LIT_SET_MAP_FIELD(id, value) lit::Object::as<lit::Instance>(instance)->fields.setField(id, value)
 
 #define LIT_ENSURE_ARGS(count) \
     if(argc != count) \
@@ -2315,9 +2315,15 @@ namespace lit
                             return nullptr;
                         }
                     }
-                    else if(entry->key->length() == length && entry->key->hash == hash && memcmp(entry->key->chars, chars, length) == 0)
+                    else if(entry->key->length() == length)
                     {
-                        return entry->key;
+                        if(entry->key->hash == hash)
+                        {
+                            if(memcmp(entry->key->chars, chars, length) == 0)
+                            {
+                                return entry->key;
+                            }
+                        }
                     }
                     index = (index + 1) % this->m_capacity;
                 }
@@ -2386,30 +2392,26 @@ namespace lit
             }
     };
 
-    struct Local
-    {
-        const char* name;
-        size_t length;
-        int depth;
-        bool captured;
-        bool constant;
-    };
+    static uint8_t btmp;
+    static uint16_t stmp;
+    static uint32_t itmp;
+    static double dtmp;
 
-    class FileIO
+    struct FileIO
     {
         public:
-            struct EmulatedFile
+            struct Emulated
             {
                 public:
                     const char* source;
-                    size_t length;
+                    size_t srclen;
                     size_t position;
 
                 public:
-                    void init(const char* source, size_t len)
+                    void init(const char* src, size_t len)
                     {
-                        this->source = source;
-                        this->length = len;
+                        this->source = src;
+                        this->srclen = len;
                         this->position = 0;
                     }
 
@@ -2466,6 +2468,8 @@ namespace lit
             };
 
         public:
+
+
             static size_t write_uint8_t(FILE* file, uint8_t byte)
             {
                 return fwrite(&byte, sizeof(uint8_t), 1, file);
@@ -2504,7 +2508,6 @@ namespace lit
             {
                 size_t rt;
                 (void)rt;
-                static uint8_t btmp;
                 rt = fread(&btmp, sizeof(uint8_t), 1, file);
                 return btmp;
             }
@@ -2513,7 +2516,6 @@ namespace lit
             {
                 size_t rt;
                 (void)rt;
-                static uint16_t stmp;
                 rt = fread(&stmp, sizeof(uint16_t), 1, file);
                 return stmp;
             }
@@ -2522,7 +2524,6 @@ namespace lit
             {
                 size_t rt;
                 (void)rt;
-                static uint32_t itmp;
                 rt = fread(&itmp, sizeof(uint32_t), 1, file);
                 return itmp;
             }
@@ -2531,7 +2532,6 @@ namespace lit
             {
                 size_t rt;
                 (void)rt;
-                static double dtmp;
                 rt = fread(&dtmp, sizeof(double), 1, file);
                 return dtmp;
             }
@@ -2610,15 +2610,15 @@ namespace lit
                 return this->values.get(key, value);
             }
 
-            void lit_set_map_field(State* state, const char* name, Value value)
+            void setField(std::string_view name, Value value)
             {
-                this->values.set(String::intern(state, name), value);
+                this->values.set(String::intern(m_state, name), value);
             }
 
-            Value getField(State* state, const char* name)
+            Value getField(std::string_view name)
             {
                 Value value;
-                if(!this->values.get(String::intern(state, name), &value))
+                if(!this->values.get(String::intern(m_state, name), &value))
                 {
                     value = Object::NullVal;
                 }
@@ -2786,9 +2786,7 @@ namespace lit
                     this->stack_top = this->stack + (this->stack_top - old_stack);
                 }
             }
-
     };
-
 
     struct Class: public Object
     {
@@ -2819,10 +2817,8 @@ namespace lit
                 klass->super = nullptr;
                 klass->methods.init(state);
                 klass->static_fields.init(state);
-
                 klass->bindMethod("toString", defaultfn_tostring);
                 klass->setStaticMethod("toString", defaultfn_tostring);
-
                 return klass;
             }
 
@@ -2848,8 +2844,6 @@ namespace lit
             Class* super;
 
         public:
-
-        public:
             void inheritFrom(Class* superclass)
             {
                 this->super = superclass;
@@ -2869,7 +2863,6 @@ namespace lit
                 this->methods.set(nm, m->asValue());
             }
 
-
             void setField(const char* name, Value val)
             {
                 this->static_fields.setField(name, val);
@@ -2888,7 +2881,6 @@ namespace lit
                 bindField(String::copy(m_state, sv.data(), sv.size()), fnget, fnset);
             }
 
-
             void bindMethod(String* nm, NativeMethod::FuncType method)
             {
                 this->methods.set(nm, NativeMethod::make(m_state, method, name)->asValue());
@@ -2899,7 +2891,6 @@ namespace lit
                 auto nm = String::copy(m_state, sv.data(), sv.size());
                 bindMethod(nm, method);
             }
-
 
             void bindPrimitive(String* nm, PrimitiveMethod::FuncType method)
             {
@@ -3172,7 +3163,6 @@ namespace lit
 
     namespace AST
     {
-        
         struct Token
         {
             const char* start;
@@ -3195,7 +3185,7 @@ namespace lit
                 enum class Type
                 {
                     Unspecified,
-                    eral,
+                    Literal,
                     Binary,
                     Unary,
                     Variable,
@@ -3358,7 +3348,7 @@ namespace lit
             public:
                 static ExprLiteral* make(State* state, size_t line, Value value)
                 {
-                    auto rt = Expression::make<ExprLiteral>(state, line, Expression::Type::eral);
+                    auto rt = Expression::make<ExprLiteral>(state, line, Expression::Type::Literal);
                     rt->value = value;
                     return rt;
                 }
@@ -3906,7 +3896,7 @@ namespace lit
                 }
 
             public:
-                size_t length;
+                size_t srclength;
                 size_t line;
                 const char* start;
                 const char* current;
@@ -3919,12 +3909,12 @@ namespace lit
             public:
                 void init(State* state, const char* file_name, const char* source, size_t len)
                 {
-                    this->length = len;
+                    this->m_state = state;
                     this->line = 1;
                     this->start = source;
                     this->current = source;
                     this->file_name = file_name;
-                    this->m_state = state;
+                    this->srclength = len;
                     this->num_braces = 0;
                     this->had_error = false;
                 }
@@ -4623,6 +4613,15 @@ namespace lit
                     bool isLocal;
                 };
 
+                struct Local
+                {
+                    const char* name;
+                    size_t length;
+                    int depth;
+                    bool captured;
+                    bool constant;
+                };
+
             public:
                 PCGenericArray<Local> locals;
                 int scope_depth;
@@ -4642,6 +4641,9 @@ namespace lit
         struct Preprocessor
         {
             public:
+                static void add_definition(State* state, const char* name);
+
+            public:
                 State* m_state;
                 Table defined;
                 /*
@@ -4653,6 +4655,21 @@ namespace lit
                  * also has the same size (8 bytes)
                  */
                 PCGenericArray<Value> open_ifs;
+
+            private:
+                void override_source(char* source, int length)
+                {
+                    while(length-- > 0)
+                    {
+                        if(*source != '\n')
+                        {
+                            *source = ' ';
+                        }
+                        source++;
+                    }
+                }
+
+                void raiseError(Error e, size_t line, const char* extra);
 
             public:
                 void init(State* state)
@@ -4666,6 +4683,188 @@ namespace lit
                 {
                     this->defined.release();
                     this->open_ifs.release();
+                }
+
+                // NB. modifies $source!
+                bool preprocess(char* source, size_t len)
+                {
+                    bool close;
+                    bool in_macro;
+                    bool in_arg;
+                    bool on_new_line;
+                    int ignore_depth;
+                    int depth;
+                    char c;
+                    char* branch_start;
+                    char* macro_start;
+                    char* arg_start;
+                    char* current;
+                    State* state;
+                    Value tmp;
+                    String* arg;
+
+                    state = this->m_state;
+                    macro_start = source;
+                    arg_start = source;
+                    current = source;
+                    in_macro = false;
+                    in_arg = false;
+                    on_new_line = true;
+                    ignore_depth = -1;
+                    depth = 0;
+                    do
+                    {
+                        c = current[0];
+                        current++;
+                        // Single line comment
+                        if(c == '/' && current[0] == '/')
+                        {
+                            current++;
+                            do
+                            {
+                                c = current[0];
+                                current++;
+                            } while(c != '\n' && c != '\0');
+                            in_macro = false;
+                            on_new_line = true;
+                            continue;
+                        }
+                        else if(c == '/' && current[0] == '*')
+                        {
+                            // Multiline comment
+                            current++;
+                            do
+                            {
+                                c = current[0];
+                                current++;
+                            } while(c != '*' && c != '\0' && current[0] != '/');
+                            in_macro = false;
+                            on_new_line = true;
+                            continue;
+                        }
+                        if(in_macro)
+                        {
+                            if(!AST::Scanner::char_is_alpha(c) && !(((current - macro_start) > 1) && AST::Scanner::char_is_digit(c)))
+                            {
+                                if(in_arg)
+                                {
+                                    arg = String::copy(state, arg_start, (int)(current - arg_start) - 1);
+                                    if(memcmp(macro_start, "define", 6) == 0 || memcmp(macro_start, "undef", 5) == 0)
+                                    {
+                                        if(ignore_depth < 0)
+                                        {
+                                            close = macro_start[0] == 'u';
+                                            if(close)
+                                            {
+                                                this->defined.remove(arg);
+                                            }
+                                            else
+                                            {
+                                                this->defined.set(arg, Object::TrueVal);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {// ifdef || ifndef
+                                        depth++;
+                                        if(ignore_depth < 0)
+                                        {
+                                            close = macro_start[2] == 'n';
+                                            if((this->defined.get(arg, &tmp) ^ close) == false)
+                                            {
+                                                ignore_depth = depth;
+                                            }
+
+                                            this->open_ifs.push((Value)macro_start);
+                                        }
+                                    }
+                                    // Remove the macro from code
+                                    override_source(macro_start - 1, (int)(current - macro_start));
+                                    in_macro = false;
+                                    in_arg = false;
+                                }
+                                else
+                                {
+                                    if(memcmp(macro_start, "define", 6) == 0 || memcmp(macro_start, "undef", 5) == 0
+                                       || memcmp(macro_start, "ifdef", 5) == 0 || memcmp(macro_start, "ifndef", 6) == 0)
+                                    {
+                                        arg_start = current;
+                                        in_arg = true;
+                                    }
+                                    else if(memcmp(macro_start, "else", 4) == 0 || memcmp(macro_start, "endif", 5) == 0)
+                                    {
+                                        in_macro = false;
+                                        // If this is endif
+                                        if(macro_start[1] == 'n')
+                                        {
+                                            depth--;
+                                            if(ignore_depth > -1)
+                                            {
+                                                // Remove the whole if branch from code
+                                                branch_start = (char*)this->open_ifs.m_values[this->open_ifs.m_count - 1];
+                                                override_source(branch_start - 1, (int)(current - branch_start));
+                                                if(ignore_depth == depth + 1)
+                                                {
+                                                    ignore_depth = -1;
+                                                    this->open_ifs.m_count--;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                this->open_ifs.m_count--;
+                                                // Remove #endif
+                                                override_source(macro_start - 1, (int)(current - macro_start));
+                                            }
+                                        }
+                                        else if(ignore_depth < 0 || depth <= ignore_depth)
+                                        {
+                                            // #else
+                                            if(ignore_depth == depth)
+                                            {
+                                                // Remove the macro from code
+                                                branch_start = (char*)this->open_ifs.m_values[this->open_ifs.m_count - 1];
+                                                override_source(branch_start - 1, (int)(current - branch_start));
+                                                ignore_depth = -1;
+                                            }
+                                            else
+                                            {
+                                                this->open_ifs.m_values[this->open_ifs.m_count - 1] = (Value)macro_start;
+                                                ignore_depth = depth;
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        this->raiseError(Error::LITERROR_UNKNOWN_MACRO, (int)(current - macro_start) - 1, macro_start);
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            macro_start = current;
+                            if(c == '\n')
+                            {
+                                on_new_line = true;
+                            }
+                            else if(!(c == '\t' || c == ' ' || c == '#'))
+                            {
+                                on_new_line = false;
+                            }
+                            else
+                            {
+                                in_macro = on_new_line && c == '#';
+                            }
+                        }
+                    } while(c != '\0');
+                    if(in_macro || this->open_ifs.m_count > 0 || depth > 0)
+                    {
+                        this->raiseError(Error::LITERROR_UNCLOSED_MACRO, 0, nullptr);
+                        return false;
+                    }
+                    this->open_ifs.release();
+                    return true;
                 }
         };
 
@@ -6085,13 +6284,13 @@ namespace lit
                     }
                 }
 
-                bool parse(const char* file_name, const char* source, size_t length, Expression::List& statements)
+                bool parse(const char* file_name, const char* source, size_t len, Expression::List& statements)
                 {
                     Compiler compiler;
                     Expression* statement;
                     this->had_error = false;
                     this->panic_mode = false;
-                    this->getStateScanner(this->m_state)->init(this->m_state, file_name, source, length);
+                    this->getStateScanner(this->m_state)->init(this->m_state, file_name, source, len);
                     compiler.init(this);
                     this->advance();
                     this->ignore_new_lines();
@@ -6495,7 +6694,7 @@ namespace lit
                     }
                     switch(expression->type)
                     {
-                        case Expression::Type::eral:
+                        case Expression::Type::Literal:
                             {
                                 return ((ExprLiteral*)expression)->value;
                             }
@@ -6715,7 +6914,7 @@ namespace lit
                             break;
                         }
 
-                        case Expression::Type::eral:
+                        case Expression::Type::Literal:
                         case Expression::Type::This:
                         case Expression::Type::Super:
                         {
@@ -7193,11 +7392,11 @@ namespace lit
                     }
                     if(type == LITFUNC_METHOD || type == LITFUNC_STATIC_METHOD || type == LITFUNC_CONSTRUCTOR)
                     {
-                        compiler->locals.push(Local{ "this", 4, -1, false, false });
+                        compiler->locals.push(Compiler::Local{ "this", 4, -1, false, false });
                     }
                     else
                     {
-                        compiler->locals.push(Local{ "", 0, -1, false, false });
+                        compiler->locals.push(Compiler::Local{ "", 0, -1, false, false });
                     }
                     compiler->slots = 1;
                     compiler->max_slots = 1;
@@ -7251,7 +7450,7 @@ namespace lit
                 {
                     this->compiler->scope_depth--;
                     auto compiler = this->compiler;
-                    PCGenericArray<Local>* locals = &compiler->locals;
+                    PCGenericArray<Compiler::Local>* locals = &compiler->locals;
                     while(locals->m_count > 0 && locals->m_values[locals->m_count - 1].depth > compiler->scope_depth)
                     {
                         if(locals->m_values[locals->m_count - 1].captured)
@@ -7362,7 +7561,7 @@ namespace lit
                             error(line, Error::LITERROR_VAR_REDEFINED, length, name);
                         }
                     }
-                    locals->push(Local{ name, length, UINT16_MAX, false, constant });
+                    locals->push(Compiler::Local{ name, length, UINT16_MAX, false, constant });
                     return (int)locals->m_count - 1;
                 }
 
@@ -7547,7 +7746,7 @@ namespace lit
                 {
                     switch(expression->type)
                     {
-                        case Expression::Type::eral:
+                        case Expression::Type::Literal:
                             {
                                 Value value = ((ExprLiteral*)expression)->value;
                                 if(Object::isNumber(value) || Object::isString(value))
@@ -8176,8 +8375,8 @@ namespace lit
                     Function* getter;
                     Function* setter;
                     StmtFunction* funcstmt;
-                    Local* local;
-                    PCGenericArray<Local>* locals;
+                    Compiler::Local* local;
+                    PCGenericArray<Compiler::Local>* locals;
                     StmtMethod* mthstmt;
                     Expression* blockstmt;
                     Expression* s;
@@ -8592,7 +8791,7 @@ namespace lit
                         case Expression::Type::MethodDecl:
                             {
                                 mthstmt = (StmtMethod*)statement;
-                                constructor = mthstmt->name->length() == (sizeof(LIT_NAME_CONSTRUCTOR)-1) && memcmp(mthstmt->name->chars, LIT_NAME_CONSTRUCTOR, strlen(LIT_NAME_CONSTRUCTOR)-1) == 0;
+                                constructor = mthstmt->name->length() == (sizeof(LIT_NAME_CONSTRUCTOR)-1) && memcmp(mthstmt->name->chars, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0;
                                 if(constructor && mthstmt->is_static)
                                 {
                                     error(statement->line, Error::LITERROR_STATIC_CONSTRUCTOR);
@@ -9545,11 +9744,11 @@ namespace lit
      * Please, do not provide a const string source to the compiler, because it will
      * get modified, if it has any macros in it!
      */
-    Module* lit_compile_module(State* state, String* module_name, const char* code);
+    Module* lit_compile_module(State* state, String* module_name, const char* code, size_t len);
     Module* lit_get_module(State* state, const char* name);
 
-    InterpretResult lit_internal_interpret(State* state, String* module_name, const char* code, size_t length);
-    InterpretResult lit_interpret(State* state, const char* module_name, const char* code, size_t length);
+    InterpretResult lit_internal_interpret(State* state, String* module_name, const char* code, size_t len);
+    InterpretResult lit_interpret(State* state, const char* module_name, const char* code, size_t len);
     InterpretResult lit_interpret_file(State* state, const char* file);
     InterpretResult lit_dump_file(State* state, const char* file);
     bool lit_compile_and_save_files(State* state, char* files[], size_t num_files, const char* output_file);
@@ -9593,10 +9792,8 @@ namespace lit
     bool lit_file_exists(const char* path);
     bool lit_dir_exists(const char* path);
 
-
-
     void lit_save_module(Module* module, FILE* file);
-    Module* lit_load_module(State* state, const char* input, size_t length);
+    Module* lit_load_module(State* state, const char* input, size_t len);
     bool lit_generate_source_file(const char* file, const char* output);
     void lit_build_native_runner(const char* bytecode_file);
 
@@ -9610,9 +9807,6 @@ namespace lit
     void lit_open_gc_library(State* state);
 
     void lit_init_optimizer(State* state, AST::Optimizer* optimizer);
-    void lit_add_definition(State* state, const char* name);
-
-    bool lit_preprocess(AST::Preprocessor* preprocessor, char* source);
 
     static const int8_t stack_effects[] = {
     #define OPCODE(_, effect) effect,
@@ -9657,6 +9851,7 @@ namespace lit
         lit_runtime_error(m_state->vm, fmt, std::forward<ArgsT>(args)...);
     }
 
+    // impl::memory
     void Memory::setBytesAllocated(State* state, int64_t toadd)
     {
         state->bytes_allocated += toadd;
@@ -9694,7 +9889,7 @@ namespace lit
 
             switch(expression->type)
             {
-                case Expression::Type::eral:
+                case Expression::Type::Literal:
                 {
                     Memory::reallocate(state, expression, sizeof(ExprLiteral), 0);
                     break;
@@ -9957,6 +10152,26 @@ namespace lit
                     }
                     break;
             }
+        }
+
+        // impl::preprocessor
+        void Preprocessor::add_definition(State* state, const char* name)
+        {
+            state->preprocessor->defined.set(String::intern(state, name), Object::TrueVal);
+        }
+
+        void Preprocessor::raiseError(Error e, size_t line, const char* extra)
+        {
+            String* f;
+            if(extra)
+            {
+                f = lit_format_error(this->m_state, line, e, extra);
+            }
+            else
+            {
+                f = lit_format_error(this->m_state, line, e);
+            }
+            this->m_state->raiseError((ErrorType)0, f->chars);
         }
 
         void Compiler::init(Parser* parser)
@@ -12735,12 +12950,9 @@ namespace lit
         return closure;
     }
 
-
     /**
     * impls
     */
-
-
     const char* token_name(int t)
     {
         switch(t)
@@ -12833,208 +13045,6 @@ namespace lit
         return "?unknown?";
     }
 
-
-
-
-    void lit_add_definition(State* state, const char* name)
-    {
-        state->preprocessor->defined.set(String::intern(state, name), Object::TrueVal);
-    }
-
-    static void override(char* source, int length)
-    {
-        while(length-- > 0)
-        {
-            if(*source != '\n')
-            {
-                *source = ' ';
-            }
-            source++;
-        }
-    }
-
-    bool lit_preprocess(AST::Preprocessor* preprocessor, char* source)
-    {
-        bool close;
-        bool in_macro;
-        bool in_arg;
-        bool on_new_line;
-        int ignore_depth;
-        int depth;
-        char c;
-        char* branch_start;
-        char* macro_start;
-        char* arg_start;
-        char* current;
-        State* state;
-        Value tmp;
-        String* arg;
-
-        state = preprocessor->m_state;
-        macro_start = source;
-        arg_start = source;
-        current = source;
-        in_macro = false;
-        in_arg = false;
-        on_new_line = true;
-        ignore_depth = -1;
-        depth = 0;
-        do
-        {
-            c = current[0];
-            current++;
-            // Single line comment
-            if(c == '/' && current[0] == '/')
-            {
-                current++;
-                do
-                {
-                    c = current[0];
-                    current++;
-                } while(c != '\n' && c != '\0');
-                in_macro = false;
-                on_new_line = true;
-                continue;
-            }
-            else if(c == '/' && current[0] == '*')
-            {
-                // Multiline comment
-                current++;
-                do
-                {
-                    c = current[0];
-                    current++;
-                } while(c != '*' && c != '\0' && current[0] != '/');
-                in_macro = false;
-                on_new_line = true;
-                continue;
-            }
-            if(in_macro)
-            {
-                if(!AST::Scanner::char_is_alpha(c) && !(((current - macro_start) > 1) && AST::Scanner::char_is_digit(c)))
-                {
-                    if(in_arg)
-                    {
-                        arg = String::copy(state, arg_start, (int)(current - arg_start) - 1);
-                        if(memcmp(macro_start, "define", 6) == 0 || memcmp(macro_start, "undef", 5) == 0)
-                        {
-                            if(ignore_depth < 0)
-                            {
-                                close = macro_start[0] == 'u';
-                                if(close)
-                                {
-                                    preprocessor->defined.remove(arg);
-                                }
-                                else
-                                {
-                                    preprocessor->defined.set(arg, Object::TrueVal);
-                                }
-                            }
-                        }
-                        else
-                        {// ifdef || ifndef
-                            depth++;
-                            if(ignore_depth < 0)
-                            {
-                                close = macro_start[2] == 'n';
-                                if((preprocessor->defined.get(arg, &tmp) ^ close) == false)
-                                {
-                                    ignore_depth = depth;
-                                }
-
-                                preprocessor->open_ifs.push((Value)macro_start);
-                            }
-                        }
-                        // Remove the macro from code
-                        override(macro_start - 1, (int)(current - macro_start));
-                        in_macro = false;
-                        in_arg = false;
-                    }
-                    else
-                    {
-                        if(memcmp(macro_start, "define", 6) == 0 || memcmp(macro_start, "undef", 5) == 0
-                           || memcmp(macro_start, "ifdef", 5) == 0 || memcmp(macro_start, "ifndef", 6) == 0)
-                        {
-                            arg_start = current;
-                            in_arg = true;
-                        }
-                        else if(memcmp(macro_start, "else", 4) == 0 || memcmp(macro_start, "endif", 5) == 0)
-                        {
-                            in_macro = false;
-                            // If this is endif
-                            if(macro_start[1] == 'n')
-                            {
-                                depth--;
-                                if(ignore_depth > -1)
-                                {
-                                    // Remove the whole if branch from code
-                                    branch_start = (char*)preprocessor->open_ifs.m_values[preprocessor->open_ifs.m_count - 1];
-                                    override(branch_start - 1, (int)(current - branch_start));
-                                    if(ignore_depth == depth + 1)
-                                    {
-                                        ignore_depth = -1;
-                                        preprocessor->open_ifs.m_count--;
-                                    }
-                                }
-                                else
-                                {
-                                    preprocessor->open_ifs.m_count--;
-                                    // Remove #endif
-                                    override(macro_start - 1, (int)(current - macro_start));
-                                }
-                            }
-                            else if(ignore_depth < 0 || depth <= ignore_depth)
-                            {
-                                // #else
-                                if(ignore_depth == depth)
-                                {
-                                    // Remove the macro from code
-                                    branch_start = (char*)preprocessor->open_ifs.m_values[preprocessor->open_ifs.m_count - 1];
-                                    override(branch_start - 1, (int)(current - branch_start));
-                                    ignore_depth = -1;
-                                }
-                                else
-                                {
-                                    preprocessor->open_ifs.m_values[preprocessor->open_ifs.m_count - 1] = (Value)macro_start;
-                                    ignore_depth = depth;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            preprocessor->m_state->raiseError((ErrorType)0,
-                                      lit_format_error(preprocessor->m_state, 0, Error::LITERROR_UNKNOWN_MACRO, (int)(current - macro_start) - 1, macro_start)
-                                      ->chars);
-                            return false;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                macro_start = current;
-                if(c == '\n')
-                {
-                    on_new_line = true;
-                }
-                else if(!(c == '\t' || c == ' ' || c == '#'))
-                {
-                    on_new_line = false;
-                }
-                else
-                {
-                    in_macro = on_new_line && c == '#';
-                }
-            }
-        } while(c != '\0');
-        if(in_macro || preprocessor->open_ifs.m_count > 0 || depth > 0)
-        {
-            preprocessor->m_state->raiseError((ErrorType)0, lit_format_error(preprocessor->m_state, 0, Error::LITERROR_UNCLOSED_MACRO)->chars);
-            return false;
-        }
-        preprocessor->open_ifs.release();
-        return true;
-    }
 
     Value lit_instance_get_method(State* state, Value callee, String* mthname)
     {
@@ -13204,9 +13214,6 @@ namespace lit
         }
         return vm->m_state->callMethod(value, value, args, argc, ignfiber).result;
     }
-
-
-
 
     static size_t print_simple_op(State* state, Writer* wr, const char* name, size_t offset)
     {
@@ -13660,8 +13667,6 @@ namespace lit
         #define	S_ISREG(m)	(((m)&S_IFMT) == S_IFREG)	/* file */
     #endif
 
-
-
     char* lit_read_file(const char* path, size_t* destlen)
     {
         size_t toldsz;
@@ -13680,6 +13685,7 @@ namespace lit
         actualsz = fread(buffer, sizeof(char), toldsz, hnd);
         buffer[actualsz] = '\0';
         fclose(hnd);
+        *destlen = actualsz;
         return buffer;
     }
 
@@ -13697,10 +13703,8 @@ namespace lit
 
 
 
-
-
     static void save_chunk(FILE* file, Chunk* chunk);
-    static void load_chunk(State* state, FileIO::EmulatedFile* file, Module* module, Chunk* chunk);
+    static void load_chunk(State* state, FileIO::Emulated* file, Module* module, Chunk* chunk);
 
     static void save_function(FILE* file, Function* function)
     {
@@ -13712,7 +13716,7 @@ namespace lit
         FileIO::write_uint16_t(file, (uint16_t)function->max_slots);
     }
 
-    static Function* load_function(State* state, FileIO::EmulatedFile* file, Module* module)
+    static Function* load_function(State* state, FileIO::Emulated* file, Module* module)
     {
         Function* function = Function::make(state, module);
 
@@ -13730,6 +13734,7 @@ namespace lit
     static void save_chunk(FILE* file, Chunk* chunk)
     {
         FileIO::write_uint32_t(file, chunk->m_count);
+
         for(size_t i = 0; i < chunk->m_count; i++)
         {
             FileIO::write_uint8_t(file, chunk->code[i]);
@@ -13790,13 +13795,13 @@ namespace lit
         }
     }
 
-    static void load_chunk(State* state, FileIO::EmulatedFile* file, Module* module, Chunk* chunk)
+    static void load_chunk(State* state, FileIO::Emulated* file, Module* module, Chunk* chunk)
     {
         size_t i;
         size_t count;
         uint8_t type;
         chunk->init(state);
-        count = file->read_euint32_t();
+        count = file->read_euint16_t();
         chunk->code = (uint8_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint8_t) * count);
         chunk->m_count = count;
         chunk->m_capacity = count;
@@ -13879,19 +13884,20 @@ namespace lit
         save_function(file, module->main_function);
     }
 
-    Module* lit_load_module(State* state, const char* input, size_t length)
+    Module* lit_load_module(State* state, const char* input, size_t len)
     {
         bool enabled;
         uint16_t i;
         uint16_t j;
+        uint16_t endnum;
         uint16_t module_count;
         uint16_t privates_count;
         uint8_t bytecode_version;
         String* name;
         Table* privates;
         Module* module;
-        FileIO::EmulatedFile file;
-        file.init(input, length);
+        FileIO::Emulated file;
+        file.init(input, len);
         if(file.read_euint16_t() != LIT_BYTECODE_MAGIC_NUMBER)
         {
             state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown magic number");
@@ -13907,7 +13913,9 @@ namespace lit
         Module* first = nullptr;
         for(j = 0; j < module_count; j++)
         {
-            module = Module::make(state, file.read_estring(state));
+            auto mstr = file.read_estring(state);
+            fprintf(stderr, "populating module '%s'\n", mstr->chars);
+            module = Module::make(state, mstr);
             privates = &module->private_names->values;
             privates_count = file.read_euint16_t();
             enabled = !((bool)file.read_euint8_t());
@@ -13919,6 +13927,7 @@ namespace lit
                 if(enabled)
                 {
                     name = file.read_estring(state);
+                    fprintf(stderr, "reading module(%s).%s\n", mstr->chars, name->chars);
                     privates->set(name, Object::toValue(file.read_euint16_t()));
                 }
             }
@@ -13929,10 +13938,11 @@ namespace lit
                 first = module;
             }
         }
-        if(file.read_euint16_t() != LIT_BYTECODE_END_NUMBER)
+        if((endnum = file.read_euint16_t()) != LIT_BYTECODE_END_NUMBER)
         {
-            state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown end number");
-            return nullptr;
+            //state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown end number (got %d, expected %d)", endnum, LIT_BYTECODE_END_NUMBER);
+            //return nullptr;
+            fprintf(stderr, "FIXME: end number mismatch: expected %d, got %d instead\n", LIT_BYTECODE_END_NUMBER, endnum);
         }
         return first;
     }
@@ -13953,12 +13963,12 @@ namespace lit
     }
 
 
-    InterpretResult lit_interpret(State* state, const char* module_name, const char* code, size_t length)
+    InterpretResult lit_interpret(State* state, const char* module_name, const char* code, size_t len)
     {
-        return lit_internal_interpret(state, String::copy(state, module_name, strlen(module_name)), code, length);
+        return lit_internal_interpret(state, String::copy(state, module_name, strlen(module_name)), code, len);
     }
 
-    Module* lit_compile_module(State* state, String* module_name, const char* code, size_t length)
+    Module* lit_compile_module(State* state, String* module_name, const char* code, size_t len)
     {
         clock_t t;
         clock_t total_t;
@@ -13972,7 +13982,8 @@ namespace lit
         // This is a lbc format
         if((code[1] << 8 | code[0]) == LIT_BYTECODE_MAGIC_NUMBER)
         {
-            module = lit_load_module(state, code, length);
+            fprintf(stderr, "doing lit_load_module(): len=%d\n", len);
+            module = lit_load_module(state, code, len);
         }
         else
         {
@@ -13983,7 +13994,7 @@ namespace lit
                 total_t = t = clock();
             }
             /*
-            if(!lit_preprocess(state->preprocessor, code))
+            if(!state->preprocessor->preprocess(code, len))
             {
                 return nullptr;
             }
@@ -13994,7 +14005,7 @@ namespace lit
                 t = clock();
             }
             statements.init(state);
-            if(state->parser->parse(module_name->chars, code, length, statements))
+            if(state->parser->parse(module_name->chars, code, len, statements))
             {
                 AST::Expression::releaseStatementList(state, &statements);
                 return nullptr;
@@ -14033,7 +14044,7 @@ namespace lit
         return nullptr;
     }
 
-    InterpretResult lit_internal_interpret(State* state, String* module_name, const char* code, size_t length)
+    InterpretResult lit_internal_interpret(State* state, String* module_name, const char* code, size_t len)
     {
         intptr_t istack;
         intptr_t itop;
@@ -14041,7 +14052,7 @@ namespace lit
         Module* module;
         Fiber* fiber;
         InterpretResult result;
-        module = lit_compile_module(state, module_name, code, length);
+        module = lit_compile_module(state, module_name, code, len);
         if(module == nullptr)
         {
             return InterpretResult{ LITRESULT_COMPILE_ERROR, Object::NullVal };
@@ -14102,19 +14113,20 @@ namespace lit
     bool lit_compile_and_save_files(State* state, char* files[], size_t num_files, const char* output_file)
     {
         size_t i;
-        size_t length;
+        size_t srclen;
         char* file_name;
         char* source;
         FILE* file;
         String* module_name;
         Module* module;
         Module** compiled_modules;
+        srclen = 0;
         compiled_modules = LIT_ALLOCATE(state, Module*, num_files+1);
         AST::Optimizer::set_level(LITOPTLEVEL_EXTREME);
         for(i = 0; i < num_files; i++)
         {
             file_name = copy_string(files[i]);
-            source = lit_read_file(file_name, &length);
+            source = lit_read_file(file_name, &srclen);
             if(source == nullptr)
             {
                 state->raiseError(COMPILE_ERROR, "failed to open file '%s' for reading", file_name);
@@ -14122,7 +14134,7 @@ namespace lit
             }
             file_name = lit_patch_file_name(file_name);
             module_name = String::copy(state, file_name, strlen(file_name));
-            module = lit_compile_module(state, module_name, source, length);
+            module = lit_compile_module(state, module_name, source, srclen);
             compiled_modules[i] = module;
             free((void*)source);
             free((void*)file_name);
@@ -14152,7 +14164,6 @@ namespace lit
 
     static char* read_source(State* state, const char* file, size_t* destlen, char** patched_file_name)
     {
-        size_t length;
         clock_t t;
         char* file_name;
         char* source;
@@ -14178,16 +14189,16 @@ namespace lit
 
     InterpretResult lit_interpret_file(State* state, const char* file)
     {
-        size_t srclen;
+        size_t len;
         char* source;
         char* patched_file_name;
         InterpretResult result;
-        source = read_source(state, file, &srclen, &patched_file_name);
+        source = read_source(state, file, &len, &patched_file_name);
         if(source == nullptr)
         {
             return INTERPRET_RUNTIME_FAIL;
         }
-        result = lit_interpret(state, patched_file_name, source, srclen);
+        result = lit_interpret(state, patched_file_name, source, len);
         free((void*)source);
         free(patched_file_name);
         return result;
@@ -14227,19 +14238,19 @@ namespace lit
 
     InterpretResult lit_dump_file(State* state, const char* file)
     {
-        size_t length;
+        size_t srclen;
         char* patched_file_name;
         char* source;
         InterpretResult result;
         String* module_name;
         Module* module;
-        source = read_source(state, file, &length, &patched_file_name);
+        source = read_source(state, file, &srclen, &patched_file_name);
         if(source == nullptr)
         {
             return INTERPRET_RUNTIME_FAIL;
         }
         module_name = String::copy(state, patched_file_name, strlen(patched_file_name));
-        module = lit_compile_module(state, module_name, source, length);
+        module = lit_compile_module(state, module_name, source, srclen);
         if(module == nullptr)
         {
             result = INTERPRET_RUNTIME_FAIL;
@@ -15326,10 +15337,10 @@ namespace lit
         return true;
     }
 
-    static bool compile_and_interpret(VM* vm, String* modname, const char* source, size_t length)
+    static bool compile_and_interpret(VM* vm, String* modname, const char* source, size_t len)
     {
         Module* module;
-        module = lit_compile_module(vm->m_state, modname, source, length);
+        module = lit_compile_module(vm->m_state, modname, source, len);
         if(module == nullptr)
         {
             return false;
@@ -15350,8 +15361,8 @@ namespace lit
         bool rt;
         bool found;
         size_t i;
-        size_t srclength;
         size_t length;
+        size_t srclen;
         char c;
         char* source;
         char* dir_path;
@@ -15494,12 +15505,12 @@ namespace lit
                 return false;
             }
         }
-        source = lit_read_file(modname, &srclength);
+        source = lit_read_file(modname, &srclen);
         if(source == nullptr)
         {
             return false;
         }
-        if(compile_and_interpret(vm, name, source, srclength))
+        if(compile_and_interpret(vm, name, source, srclen))
         {
             should_update_locals = true;
         }
@@ -15624,10 +15635,9 @@ namespace lit
 
     static bool cfn_eval(VM* vm, size_t argc, Value* argv)
     {
-        char* code;
         (void)argc;
         (void)argv;
-        code = (char*)lit_check_string(vm, argv, argc, 0);
+        auto code = (char*)lit_check_string(vm, argv, argc, 0);
         return compile_and_interpret(vm, vm->fiber->module->name, code, strlen(code));
     }
 
@@ -18485,7 +18495,7 @@ int main(int argc, const char* argv[])
         arg = argv[i];
         if(arg[0] == '-' && arg[1] == 'D')
         {
-            lit_add_definition(state, arg + 2);
+            lit::AST::Preprocessor::add_definition(state, arg + 2);
         }
         else if(arg[0] == '-' && arg[1] == 'O')
         {
