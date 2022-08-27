@@ -12,6 +12,7 @@ class Foo
     }
 }
 
+println(Foo)
 let f = Foo()
 println(f.name)
 

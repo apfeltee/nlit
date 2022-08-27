@@ -98,7 +98,6 @@
     #define LIT_REPL_INPUT_MAX 1024
 #endif
 
-#define UNREACHABLE assert(false);
 #define UINT8_COUNT UINT8_MAX + 1
 #define UINT16_COUNT UINT16_MAX + 1
 
@@ -179,7 +178,7 @@
     (lit::Object::asObject(value)->type)
 
 
-#define INTERPRET_RUNTIME_FAIL ((lit::InterpretResult){ LITRESULT_INVALID, lit::Object::NullVal })
+#define INTERPRET_RUNTIME_FAIL ((lit::Result){ LITRESULT_INVALID, lit::Object::NullVal })
 
 #define LIT_GET_FIELD(id) lit::Object::as<lit::Instance>(instance)->fields.getField(vm->m_state, id)
 #define LIT_GET_MAP_FIELD(id) lit::Object::as<lit::Instance>(instance).fields.getField(vm->m_state, id))
@@ -210,9 +209,9 @@
 
 #define PUSH(value) (*fiber->stack_top++ = value)
 
-#define RETURN_OK(r) return InterpretResult{ LITRESULT_OK, r };
+#define RETURN_OK(r) return Result{ LITRESULT_OK, r };
 
-#define RETURN_RUNTIME_ERROR() return InterpretResult{ LITRESULT_RUNTIME_ERROR, Object::NullVal };
+#define RETURN_RUNTIME_ERROR() return Result{ LITRESULT_RUNTIME_ERROR, Object::NullVal };
 
 namespace lit
 {
@@ -539,24 +538,27 @@ namespace lit
     };
 
 
-    struct /**/Writer;
-    struct /**/State;
-    struct /**/VM;
-    struct /**/Array;
-    struct /**/Map;
-    struct /**/Userdata;
-    struct /**/String;
-    struct /**/Module;
-    struct /**/Fiber;
-    struct /**/Function;
-    struct /**/NativeMethod;
+    class /**/Writer;
+    class /**/State;
+    class /**/VM;
+    class /**/Array;
+    class /**/Map;
+    class /**/Userdata;
+    class /**/String;
+    class /**/Module;
+    class /**/Fiber;
+    class /**/Function;
+    class /**/NativeMethod;
 
     namespace AST
     {
-        struct /**/Parser;
-        struct /**/Scanner;
-        struct /**/Preprocessor;
-        struct /**/Compiler;
+        static bool measure_compilation_time = true;
+        static double last_source_time = 0;
+
+        class /**/Parser;
+        class /**/Scanner;
+        class /**/Preprocessor;
+        class /**/Compiler;
     }
 
     typedef uint64_t Value;
@@ -569,6 +571,71 @@ namespace lit
     bool lit_vruntime_error(VM* vm, const char* format, va_list args);
     bool lit_runtime_error(VM* vm, const char* format, ...);
     bool lit_runtime_error_exiting(VM* vm, const char* format, ...);
+
+    namespace Util
+    {
+        char* copyString(std::string_view sv)
+        {
+            size_t length;
+            char* rtbuf;
+            length = sv.size() + 1;
+            rtbuf = (char*)malloc(length);
+            memcpy(rtbuf, sv.data(), length);
+            return rtbuf;
+        }
+
+        char* readFile(const char* path, size_t* destlen)
+        {
+            size_t toldsz;
+            size_t actualsz;
+            char* buffer;
+            FILE* hnd;
+            hnd = fopen(path, "rb");
+            if(hnd == nullptr)
+            {
+                return nullptr;
+            }
+            fseek(hnd, 0L, SEEK_END);
+            toldsz = ftell(hnd);
+            rewind(hnd);
+            buffer = (char*)malloc(toldsz + 1);
+            actualsz = fread(buffer, sizeof(char), toldsz, hnd);
+            *destlen = actualsz;
+            buffer[actualsz] = '\0';
+            fclose(hnd);
+            return buffer;
+        }
+
+
+        char* patchFilename(char* file_name)
+        {
+            int i;
+            int name_length;
+            char c;
+            name_length = strlen(file_name);
+            // Check, if our file_name ends with .lit or lbc, and remove it
+            if(name_length > 4 && (memcmp(file_name + name_length - 4, ".lit", 4) == 0 || memcmp(file_name + name_length - 4, ".lbc", 4) == 0))
+            {
+                file_name[name_length - 4] = '\0';
+                name_length -= 4;
+            }
+            // Check, if our file_name starts with ./ and remove it (useless, and makes the module name be ..main)
+            if(name_length > 2 && memcmp(file_name, "./", 2) == 0)
+            {
+                file_name += 2;
+                name_length -= 2;
+            }
+            for(i = 0; i < name_length; i++)
+            {
+                c = file_name[i];
+                if(c == '/' || c == '\\')
+                {
+                    file_name[i] = '.';
+                }
+            }
+            return file_name;
+        }
+    }
 
     class Memory
     {
@@ -727,7 +794,7 @@ namespace lit
             }
     };
 
-    struct Writer
+    class Writer
     {
         public:
             using WriteByteFuncType = void(*)(Writer*, int);
@@ -869,7 +936,7 @@ namespace lit
     };
 
 
-    struct InterpretResult
+    struct Result
     {
         /* the result of this interpret/call attempt */
         InterpretResultType type;
@@ -877,7 +944,7 @@ namespace lit
         Value result;
     };
 
-    struct Object
+    class Object
     {
         public:
             enum class Type
@@ -1202,7 +1269,7 @@ namespace lit
             }
     };
 
-    struct Field: public Object
+    class Field: public Object
     {
         public:
             static Field* make(State* state, Object* getter, Object* setter)
@@ -1219,19 +1286,19 @@ namespace lit
             Object* setter;
     };
 
-    struct String: public Object
+    class String: public Object
     {
         public:
             static uint32_t makeHash(const char* key, size_t length)
             {
                 size_t i;
-                uint32_t hash = 2166136261u;
+                uint32_t hs = 2166136261u;
                 for(i = 0; i < length; i++)
                 {
-                    hash ^= key[i];
-                    hash *= 16777619;
+                    hs ^= key[i];
+                    hs *= 16777619;
                 }
-                return hash;
+                return hs;
             }
 
             static String* allocEmpty(State* state, size_t length, bool reuse)
@@ -1240,39 +1307,39 @@ namespace lit
                 string = Object::make<String>(state, Object::Type::String);
                 if(!reuse)
                 {
-                    string->chars = sdsempty();
+                    string->m_chars = sdsempty();
                     /* reserving the required space may reduce number of allocations */
-                    string->chars = sdsMakeRoomFor(string->chars, length);
+                    string->m_chars = sdsMakeRoomFor(string->m_chars, length);
                 }
-                //string->chars = nullptr;
-                string->hash = 0;
+                //string->m_chars = nullptr;
+                string->m_hash = 0;
                 return string;
             }
 
             /*
-            * if given $chars was alloc'd via sds, then only a String instance is created, without initializing
-            * string->chars.
+            * if given $m_chars was alloc'd via sds, then only a String instance is created, without initializing
+            * string->m_chars.
             * if it was not, and not scheduled for reuse, then first an empty sds string is created,
-            * and $chars is appended, and finally, $chars is freed.
+            * and $m_chars is appended, and finally, $m_chars is freed.
             * NB. do *not* actually allocate any sds instance here - this is already done in allocEmpty().
             */
-            static String* allocate(State* state, char* chars, size_t length, uint32_t hash, bool wassds, bool reuse)
+            static String* allocate(State* state, char* chars, size_t length, uint32_t hs, bool wassds, bool reuse)
             {
                 String* string;
                 string = String::allocEmpty(state, length, reuse);
                 if(wassds && reuse)
                 {
-                    string->chars = chars;
+                    string->m_chars = chars;
                 }
                 else
                 {
                     /*
-                    * string->chars is initialized in String::allocEmpty(),
+                    * string->m_chars is initialized in String::allocEmpty(),
                     * as an empty string!
                     */
-                    string->chars = sdscatlen(string->chars, chars, length);
+                    string->m_chars = sdscatlen(string->m_chars, chars, length);
                 }
-                string->hash = hash;
+                string->m_hash = hs;
                 if(!wassds)
                 {
                     LIT_FREE(state, char, chars);
@@ -1287,7 +1354,7 @@ namespace lit
 
             static void stateSetGCAllowed(State* state, bool v);
 
-            static String* stateFindInterned(State* state, const char* chars, size_t length, uint32_t hash);
+            static String* stateFindInterned(State* state, const char* chars, size_t length, uint32_t hs);
 
             /*
             * create a String by reusing $chars. ONLY use this if you're certain that $chars isn't being freed.
@@ -1297,10 +1364,10 @@ namespace lit
             static String* take(State* state, char* chars, size_t length, bool wassds)
             {
                 bool reuse;
-                uint32_t hash;
-                hash = String::makeHash(chars, length);
+                uint32_t hs;
+                hs = String::makeHash(chars, length);
                 String* interned;
-                interned = stateFindInterned(state, chars, length, hash);
+                interned = stateFindInterned(state, chars, length, hs);
                 if(interned != nullptr)
                 {
                     if(!wassds)
@@ -1311,17 +1378,17 @@ namespace lit
                     return interned;
                 }
                 reuse = wassds;
-                return String::allocate(state, (char*)chars, length, hash, wassds, reuse);
+                return String::allocate(state, (char*)chars, length, hs, wassds, reuse);
             }
 
             /* copy a string, creating a full newly allocated String. */
             static String* copy(State* state, const char* chars, size_t length)
             {
-                uint32_t hash;
+                uint32_t hs;
                 char* heap_chars;
                 String* interned;
-                hash= String::makeHash(chars, length);
-                interned = stateFindInterned(state, chars, length, hash);
+                hs = String::makeHash(chars, length);
+                interned = stateFindInterned(state, chars, length, hs);
                 if(interned != nullptr)
                 {
                     return interned;
@@ -1335,12 +1402,17 @@ namespace lit
             #ifdef LIT_LOG_ALLOCATION
                 printf("Allocated new string '%s'\n", chars);
             #endif
-                return String::allocate(state, heap_chars, length, hash, true, true);
+                return String::allocate(state, heap_chars, length, hs, true, true);
             }
 
             static String* copy(State* state, std::string_view sv)
             {
                 return String::copy(state, sv.data(), sv.size());
+            }
+
+            static String* make(State* state)
+            {
+                return String::copy(state, "");
             }
 
             static inline Value internValue(State* state, const char* str, size_t length)
@@ -1453,7 +1525,7 @@ namespace lit
                 uint8_t* to;
                 uint8_t* from;
                 char* bytes;
-                from = (uint8_t*)source->chars;
+                from = (uint8_t*)source->m_chars;
                 length = 0;
                 for(i = 0; i < count; i++)
                 {
@@ -1507,7 +1579,7 @@ namespace lit
                     *bytes = 0x80 | (value & 0x3f);
                     return 4;
                 }
-                UNREACHABLE
+                /* UNREACHABLE */
                 return 0;
             }
 
@@ -1555,7 +1627,7 @@ namespace lit
                 return value;
             }
 
-            static int utfcharOffset(char* str, int index)
+            static int utfcharOffset(const char* str, int index)
             {
             #define is_utf(c) (((c)&0xC0) != 0x80)
                 int offset;
@@ -1612,7 +1684,7 @@ namespace lit
                                 if(strval != nullptr)
                                 {
                                     length = strlen(strval);
-                                    result->chars = sdscatlen(result->chars, strval, length);
+                                    result->m_chars = sdscatlen(result->m_chars, strval, length);
                                 }
                                 else
                                 {
@@ -1635,10 +1707,10 @@ namespace lit
                                 }
                                 if(string != nullptr)
                                 {
-                                    length = sdslen(string->chars);
+                                    length = sdslen(string->m_chars);
                                     if(length > 0)
                                     {
-                                        result->chars = sdscatlen(result->chars, string->chars, length);
+                                        result->m_chars = sdscatlen(result->m_chars, string->m_chars, length);
                                     }
                                 }
                                 else
@@ -1650,10 +1722,10 @@ namespace lit
                         case '#':
                             {
                                 string = Object::as<String>(String::stringNumberToString(state, va_arg(arg_list, double)));
-                                length = sdslen(string->chars);
+                                length = sdslen(string->m_chars);
                                 if(length > 0)
                                 {
-                                    result->chars = sdscatlen(result->chars, string->chars, length);
+                                    result->m_chars = sdscatlen(result->m_chars, string->m_chars, length);
                                 }
                             }
                             break;
@@ -1661,13 +1733,13 @@ namespace lit
                             {
                                 default_ending_copying:
                                 ch = *c;
-                                result->chars = sdscatlen(result->chars, &ch, 1);
+                                result->m_chars = sdscatlen(result->m_chars, &ch, 1);
                             }
                             break;
                     }
                 }
                 va_end(arg_list);
-                result->hash = String::makeHash(result->chars, result->length());
+                result->m_hash = String::makeHash(result->m_chars, result->length());
                 String::statePutInterned(state, result);
                 stateSetGCAllowed(state, was_allowed);
                 return result;
@@ -1680,52 +1752,72 @@ namespace lit
                 {
                     return false;
                 }
-                return (sdscmp(a->chars, b->chars) == 0);
+                return (sdscmp(a->m_chars, b->m_chars) == 0);
             }
 
 
         public:
             /* the hash of this string - note that it is only unique to the context! */
-            uint32_t hash;
+            uint32_t m_hash;
+
             /* this is handled by sds - use lit_string_length to get the length! */
-            char* chars;
+            char* m_chars;
 
         public:
-            size_t length()
+            inline const char* data() const
             {
-                if(this->chars == nullptr)
+                return m_chars;
+            }
+
+            inline size_t length() const
+            {
+                if(m_chars == nullptr)
                 {
                     return 0;
                 }
-                return sdslen(this->chars);
+                return sdslen(m_chars);
+            }
+
+            inline constexpr int at(size_t i)
+            {
+                return m_chars[i];
+            }
+
+            void append(std::nullptr_t)
+            {
             }
 
             void append(const char* s, size_t len)
             {
                 if(len > 0)
                 {
-                    if(this->chars == nullptr)
+                    if(m_chars == nullptr)
                     {
-                        this->chars = sdsnewlen(s, len);
+                        m_chars = sdsnewlen(s, len);
                     }
                     else
                     {
-                        this->chars = sdscatlen(this->chars, s, len);
+                        m_chars = sdscatlen(m_chars, s, len);
                     }
                 }
             }
 
+            void append(std::string_view sv)
+            {
+                return append(sv.data(), sv.size());
+            }
+
             void append(String* other)
             {
-                append(other->chars, other->length());
+                append(other->m_chars, other->length());
             }
 
             void append(char ch)
             {
-                this->chars = sdscatlen(this->chars, (const char*)&ch, 1);
+                m_chars = sdscatlen(m_chars, (const char*)&ch, 1);
             }
 
-            bool contains(const char* findme, size_t fmlen, bool icase)
+            bool contains(const char* findme, size_t fmlen, bool icase) const
             {
                 int selfch;
                 int findch;
@@ -1733,7 +1825,7 @@ namespace lit
                 size_t j;
                 size_t slen;
                 size_t found;
-                slen = sdslen(this->chars);
+                slen = sdslen(m_chars);
                 found = 0;
                 if(slen >= fmlen)
                 {
@@ -1741,7 +1833,7 @@ namespace lit
                     {
                         do
                         {
-                            selfch = this->chars[i];
+                            selfch = m_chars[i];
                             findch = findme[j];
                             if(icase)
                             {
@@ -1770,20 +1862,20 @@ namespace lit
                 return false;
             }
 
-            size_t utfLength()
+            size_t utfLength() const
             {
                 size_t length;
                 uint32_t i;
                 length = 0;
                 for(i = 0; i < this->length();)
                 {
-                    i += String::decodeNumBytes(this->chars[i]);
+                    i += String::decodeNumBytes(m_chars[i]);
                     length++;
                 }
                 return length;
             }
 
-            String* codePointAt(uint32_t index)
+            String* codePointAt(uint32_t index) const
             {
                 char bytes[2];
                 int code_point;
@@ -1791,10 +1883,10 @@ namespace lit
                 {
                     return nullptr;
                 }
-                code_point = String::utfstringDecode((uint8_t*)this->chars + index, this->length() - index);
+                code_point = String::utfstringDecode((uint8_t*)m_chars + index, this->length() - index);
                 if(code_point == -1)
                 {
-                    bytes[0] = this->chars[index];
+                    bytes[0] = m_chars[index];
                     bytes[1] = '\0';
                     return String::copy(m_state, bytes, 1);
                 }
@@ -1802,7 +1894,7 @@ namespace lit
             }
     };
 
-    struct Chunk
+    class Chunk
     {
         public:
             State* m_state;
@@ -1960,7 +2052,7 @@ namespace lit
             }
     };
 
-    struct Function: public Object
+    class Function: public Object
     {
         public:
             static Function* make(State* state, Module* module)
@@ -1987,7 +2079,7 @@ namespace lit
             Module* module;
     };
 
-    struct Upvalue: public Object
+    class Upvalue: public Object
     {
         public:
             static Upvalue* make(State* state, Value* slot)
@@ -2007,7 +2099,7 @@ namespace lit
             Upvalue* next;
     };
 
-    struct Closure: public Object
+    class Closure: public Object
     {
         public:
             static Closure* make(State* state, Function* function);
@@ -2018,7 +2110,7 @@ namespace lit
             size_t upvalue_count;
     };
 
-    struct NativeFunction: public Object
+    class NativeFunction: public Object
     {
         public:
             using FuncType = Value(*)(VM*, size_t, Value*);
@@ -2041,7 +2133,7 @@ namespace lit
     };
 
 
-    struct NativePrimFunction: public Object
+    class NativePrimFunction: public Object
     {
         public:
             using FuncType = bool(*)(VM*, size_t, Value*);
@@ -2061,7 +2153,7 @@ namespace lit
             String* name;
     };
 
-    struct NativeMethod: public Object
+    class NativeMethod: public Object
     {
         public:
             using FuncType = Value(*)(VM*, Value, size_t arg_count, Value*);
@@ -2086,7 +2178,7 @@ namespace lit
             String* name;
     };
 
-    struct PrimitiveMethod: public Object
+    class PrimitiveMethod: public Object
     {
         public:
             using FuncType = bool (*)(VM*, Value, size_t, Value*);
@@ -2111,7 +2203,7 @@ namespace lit
             String* name;
     };
 
-    struct Table
+    class Table
     {
         public:
             struct Entry
@@ -2152,7 +2244,7 @@ namespace lit
                 uint32_t index;
                 Entry* entry;
                 Entry* tombstone;
-                index = key->hash % capacity;
+                index = key->m_hash % capacity;
                 tombstone = nullptr;
                 while(true)
                 {
@@ -2333,7 +2425,7 @@ namespace lit
                 return true;
             }
 
-            String* find(const char* chars, size_t length, uint32_t hash)
+            String* find(const char* str, size_t length, uint32_t hs)
             {
                 uint32_t index;
                 Entry* entry;
@@ -2341,7 +2433,7 @@ namespace lit
                 {
                     return nullptr;
                 }
-                index = hash % this->m_inner.m_capacity;
+                index = hs % this->m_inner.m_capacity;
                 while(true)
                 {
                     entry = &this->m_inner.m_values[index];
@@ -2352,7 +2444,7 @@ namespace lit
                             return nullptr;
                         }
                     }
-                    else if(entry->key->length() == length && entry->key->hash == hash && memcmp(entry->key->chars, chars, length) == 0)
+                    else if(entry->key->length() == length && entry->key->m_hash == hs && memcmp(entry->key->data(), str, length) == 0)
                     {
                         return entry->key;
                     }
@@ -2397,12 +2489,12 @@ namespace lit
                 {
                     return -1;
                 }
-                if(number >= this->m_inner.m_capacity)
+                if(number >= int64_t(this->m_inner.m_capacity))
                 {
                     return -1;
                 }
                 number++;
-                for(; number < (int64_t)this->m_inner.m_capacity; number++)
+                for(; number < int64_t(this->m_inner.m_capacity); number++)
                 {
                     if(this->m_inner.m_values[number].key != nullptr)
                     {
@@ -2415,7 +2507,7 @@ namespace lit
 
             Value iterKey(int64_t index)
             {
-                if(this->m_inner.m_capacity <= index)
+                if(int64_t(this->m_inner.m_capacity) <= index)
                 {
                     return Object::NullVal;
                 }
@@ -2436,7 +2528,7 @@ namespace lit
     class FileIO
     {
         public:
-            struct EmulatedFile
+            class EmulatedFile
             {
                 public:
                     const char* source;
@@ -2531,9 +2623,10 @@ namespace lit
                 size_t rt;
                 c = string->length();
                 rt = fwrite(&c, 2, 1, file);
+                auto ch = string->data();
                 for(i = 0; i < c; i++)
                 {
-                    write_uint8_t(file, (uint8_t)string->chars[i] ^ LIT_STRING_KEY);
+                    write_uint8_t(file, (uint8_t)ch[i] ^ LIT_STRING_KEY);
                 }
                 return (rt + i);
             }
@@ -2595,23 +2688,9 @@ namespace lit
             }
     };
 
-    struct Private
-    {
-        bool initialized;
-        bool constant;
-    };
 
-    struct CallFrame
-    {
-        Function* function;
-        Closure* closure;
-        uint8_t* ip;
-        Value* slots;
-        bool result_ignored;
-        bool return_to_c;
-    };
 
-    struct Map: public Object
+    class Map: public Object
     {
         public:
             using IndexFuncType = Value(*)(VM*, Map*, String*, Value*);
@@ -2621,31 +2700,31 @@ namespace lit
             {
                 Map* map;
                 map = Object::make<Map>(state, Object::Type::Map);
-                map->values.init(state);
-                map->index_fn = nullptr;
+                map->m_values.init(state);
+                map->m_indexfn = nullptr;
                 return map;
             }
 
         public:
             /* the table that holds the actual entries */
-            Table values;
+            Table m_values;
             /* the index function corresponding to operator[] */
-            IndexFuncType index_fn;
+            IndexFuncType m_indexfn;
 
         public:
             inline size_t capacity() const
             {
-                return values.capacity();
+                return m_values.capacity();
             }
 
             inline size_t size() const
             {
-                return values.size();
+                return m_values.size();
             }
 
             inline constexpr Table::Entry& at(size_t i)
             {
-                return values.at(i);
+                return m_values.at(i);
             }
 
             bool set(String* key, Value value)
@@ -2655,23 +2734,23 @@ namespace lit
                     this->remove(key);
                     return false;
                 }
-                return this->values.set(key, value);
+                return this->m_values.set(key, value);
             }
 
             bool get(String* key, Value* value)
             {
-                return this->values.get(key, value);
+                return m_values.get(key, value);
             }
 
             void lit_set_map_field(State* state, const char* name, Value value)
             {
-                this->values.set(String::intern(state, name), value);
+                m_values.set(String::intern(state, name), value);
             }
 
             Value getField(State* state, const char* name)
             {
                 Value value;
-                if(!this->values.get(String::intern(state, name), &value))
+                if(!m_values.get(String::intern(state, name), &value))
                 {
                     value = Object::NullVal;
                 }
@@ -2680,16 +2759,16 @@ namespace lit
 
             bool remove(String* key)
             {
-                return this->values.remove(key);
+                return m_values.remove(key);
             }
 
             void addAll(Map* other)
             {
-                this->values.addAll(&other->values);
+                m_values.addAll(&other->m_values);
             }
     };
 
-    struct Module: public Object
+    class Module: public Object
     {
         public:
             static Module* make(State* state, String* name)
@@ -2707,6 +2786,13 @@ namespace lit
                 return module;
             }
 
+            static Module* getModule(State* state, String* name);
+
+            static Module* getModule(State* state, std::string_view sv)
+            {
+                return getModule(state, String::intern(state, sv));
+            }
+
         public:
             Value return_value;
             String* name;
@@ -2718,8 +2804,19 @@ namespace lit
             bool ran;
     };
 
-    struct Fiber: public Object
+    class Fiber: public Object
     {
+        public:
+            struct CallFrame
+            {
+                Function* function;
+                Closure* closure;
+                uint8_t* ip;
+                Value* slots;
+                bool result_ignored;
+                bool return_to_c;
+            };
+
         public:
             static Fiber* make(State* state, Module* module, Function* function)
             {
@@ -2842,8 +2939,7 @@ namespace lit
 
     };
 
-
-    struct Class: public Object
+    class Class: public Object
     {
         public:
             static Value defaultfn_tostring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -3052,7 +3148,7 @@ namespace lit
 
     };
 
-    struct Instance: public Object
+    class Instance: public Object
     {
         public:
             static Instance* make(State* state, Class* klass)
@@ -3076,7 +3172,7 @@ namespace lit
                 return Object::NullVal;
             }
 
-            static InterpretResult callMethod(State* state, Value callee, String* mthname, Value* argv, size_t argc);
+            static Result callMethod(State* state, Value callee, String* mthname, Value* argv, size_t argc);
 
         public:
             /* the class that corresponds to this instance */
@@ -3084,24 +3180,24 @@ namespace lit
             Table fields;
     };
 
-    struct BoundMethod: public Object
+    class BoundMethod: public Object
     {
-        static BoundMethod* make(State* state, Value receiver, Value method)
-        {
-            BoundMethod* bound_method;
-            bound_method = Object::make<BoundMethod>(state, Object::Type::BoundMethod);
-            bound_method->receiver = receiver;
-            bound_method->method = method;
-            return bound_method;
-        }
-
+        public:
+            static BoundMethod* make(State* state, Value receiver, Value method)
+            {
+                BoundMethod* bound_method;
+                bound_method = Object::make<BoundMethod>(state, Object::Type::BoundMethod);
+                bound_method->receiver = receiver;
+                bound_method->method = method;
+                return bound_method;
+            }
 
         public:
             Value receiver;
             Value method;
     };
 
-    struct Array: public Object
+    class Array: public Object
     {
         public:
             static Array* make(State* state)
@@ -3174,7 +3270,7 @@ namespace lit
             }
     };
 
-    struct Userdata: public Object
+    class Userdata: public Object
     {
         public:
             using CleanupFuncType = void(*)(State*, Userdata*, bool);
@@ -3205,7 +3301,7 @@ namespace lit
             bool canfree;
     };
 
-    struct Range: public Object
+    class Range: public Object
     {
         public:
             static Range* make(State* state, double from, double to)
@@ -3222,7 +3318,7 @@ namespace lit
             double to;
     };
 
-    struct Reference: public Object
+    class Reference: public Object
     {
         public:
             static Reference* make(State* state, Value* slot)
@@ -3240,24 +3336,116 @@ namespace lit
 
     namespace AST
     {
-        
         struct Token
         {
-            const char* start;
-            TokenType type;
-            size_t length;
-            size_t line;
-            Value value;
+            public:
+                static const char* token_name(int t)
+                {
+                    switch(t)
+                    {
+                        case LITTOK_NEW_LINE: return "LITTOK_NEW_LINE";
+                        case LITTOK_LEFT_PAREN: return "LITTOK_LEFT_PAREN";
+                        case LITTOK_RIGHT_PAREN: return "LITTOK_RIGHT_PAREN";
+                        case LITTOK_LEFT_BRACE: return "LITTOK_LEFT_BRACE";
+                        case LITTOK_RIGHT_BRACE: return "LITTOK_RIGHT_BRACE";
+                        case LITTOK_LEFT_BRACKET: return "LITTOK_LEFT_BRACKET";
+                        case LITTOK_RIGHT_BRACKET: return "LITTOK_RIGHT_BRACKET";
+                        case LITTOK_COMMA: return "LITTOK_COMMA";
+                        case LITTOK_SEMICOLON: return "LITTOK_SEMICOLON";
+                        case LITTOK_COLON: return "LITTOK_COLON";
+                        case LITTOK_BAR_EQUAL: return "LITTOK_BAR_EQUAL";
+                        case LITTOK_BAR: return "LITTOK_BAR";
+                        case LITTOK_BAR_BAR: return "LITTOK_BAR_BAR";
+                        case LITTOK_AMPERSAND_EQUAL: return "LITTOK_AMPERSAND_EQUAL";
+                        case LITTOK_AMPERSAND: return "LITTOK_AMPERSAND";
+                        case LITTOK_AMPERSAND_AMPERSAND: return "LITTOK_AMPERSAND_AMPERSAND";
+                        case LITTOK_BANG: return "LITTOK_BANG";
+                        case LITTOK_BANG_EQUAL: return "LITTOK_BANG_EQUAL";
+                        case LITTOK_EQUAL: return "LITTOK_EQUAL";
+                        case LITTOK_EQUAL_EQUAL: return "LITTOK_EQUAL_EQUAL";
+                        case LITTOK_GREATER: return "LITTOK_GREATER";
+                        case LITTOK_GREATER_EQUAL: return "LITTOK_GREATER_EQUAL";
+                        case LITTOK_GREATER_GREATER: return "LITTOK_GREATER_GREATER";
+                        case LITTOK_LESS: return "LITTOK_LESS";
+                        case LITTOK_LESS_EQUAL: return "LITTOK_LESS_EQUAL";
+                        case LITTOK_LESS_LESS: return "LITTOK_LESS_LESS";
+                        case LITTOK_PLUS: return "LITTOK_PLUS";
+                        case LITTOK_PLUS_EQUAL: return "LITTOK_PLUS_EQUAL";
+                        case LITTOK_PLUS_PLUS: return "LITTOK_PLUS_PLUS";
+                        case LITTOK_MINUS: return "LITTOK_MINUS";
+                        case LITTOK_MINUS_EQUAL: return "LITTOK_MINUS_EQUAL";
+                        case LITTOK_MINUS_MINUS: return "LITTOK_MINUS_MINUS";
+                        case LITTOK_STAR: return "LITTOK_STAR";
+                        case LITTOK_STAR_EQUAL: return "LITTOK_STAR_EQUAL";
+                        case LITTOK_STAR_STAR: return "LITTOK_STAR_STAR";
+                        case LITTOK_SLASH: return "LITTOK_SLASH";
+                        case LITTOK_SLASH_EQUAL: return "LITTOK_SLASH_EQUAL";
+                        case LITTOK_QUESTION: return "LITTOK_QUESTION";
+                        case LITTOK_QUESTION_QUESTION: return "LITTOK_QUESTION_QUESTION";
+                        case LITTOK_PERCENT: return "LITTOK_PERCENT";
+                        case LITTOK_PERCENT_EQUAL: return "LITTOK_PERCENT_EQUAL";
+                        case LITTOK_ARROW: return "LITTOK_ARROW";
+                        case LITTOK_SMALL_ARROW: return "LITTOK_SMALL_ARROW";
+                        case LITTOK_TILDE: return "LITTOK_TILDE";
+                        case LITTOK_CARET: return "LITTOK_CARET";
+                        case LITTOK_CARET_EQUAL: return "LITTOK_CARET_EQUAL";
+                        case LITTOK_DOT: return "LITTOK_DOT";
+                        case LITTOK_DOT_DOT: return "LITTOK_DOT_DOT";
+                        case LITTOK_DOT_DOT_DOT: return "LITTOK_DOT_DOT_DOT";
+                        case LITTOK_SHARP: return "LITTOK_SHARP";
+                        case LITTOK_SHARP_EQUAL: return "LITTOK_SHARP_EQUAL";
+                        case LITTOK_IDENTIFIER: return "LITTOK_IDENTIFIER";
+                        case LITTOK_STRING: return "LITTOK_STRING";
+                        case LITTOK_INTERPOLATION: return "LITTOK_INTERPOLATION";
+                        case LITTOK_NUMBER: return "LITTOK_NUMBER";
+                        case LITTOK_CLASS: return "LITTOK_CLASS";
+                        case LITTOK_ELSE: return "LITTOK_ELSE";
+                        case LITTOK_FALSE: return "LITTOK_FALSE";
+                        case LITTOK_FOR: return "LITTOK_FOR";
+                        case LITTOK_FUNCTION: return "LITTOK_FUNCTION";
+                        case LITTOK_IF: return "LITTOK_IF";
+                        case LITTOK_NULL: return "LITTOK_NULL";
+                        case LITTOK_RETURN: return "LITTOK_RETURN";
+                        case LITTOK_SUPER: return "LITTOK_SUPER";
+                        case LITTOK_THIS: return "LITTOK_THIS";
+                        case LITTOK_TRUE: return "LITTOK_TRUE";
+                        case LITTOK_VAR: return "LITTOK_VAR";
+                        case LITTOK_WHILE: return "LITTOK_WHILE";
+                        case LITTOK_CONTINUE: return "LITTOK_CONTINUE";
+                        case LITTOK_BREAK: return "LITTOK_BREAK";
+                        case LITTOK_NEW: return "LITTOK_NEW";
+                        case LITTOK_EXPORT: return "LITTOK_EXPORT";
+                        case LITTOK_IS: return "LITTOK_IS";
+                        case LITTOK_STATIC: return "LITTOK_STATIC";
+                        case LITTOK_OPERATOR: return "LITTOK_OPERATOR";
+                        case LITTOK_GET: return "LITTOK_GET";
+                        case LITTOK_SET: return "LITTOK_SET";
+                        case LITTOK_IN: return "LITTOK_IN";
+                        case LITTOK_CONST: return "LITTOK_CONST";
+                        case LITTOK_REF: return "LITTOK_REF";
+                        case LITTOK_ERROR: return "LITTOK_ERROR";
+                        case LITTOK_EOF: return "LITTOK_EOF";
+                        default:
+                            break;
+                    }
+                    return "?unknown?";
+                }
+            public:
+                const char* start;
+                TokenType type;
+                size_t length;
+                size_t line;
+                Value value;
         };
 
-        struct SyntaxNode
+        class SyntaxNode
         {
             public:
                 State* m_state;
                 size_t line = 0;
         };
 
-        struct Expression: public SyntaxNode
+        class Expression: public SyntaxNode
         {
             public:
                 enum class Type
@@ -3409,7 +3597,7 @@ namespace lit
             Expression** declaration;
         };
 
-        struct ParseRule
+        class ParseRule
         {
             public:
                 using PrefixFuncType = Expression* (*)(Parser*, bool);
@@ -3421,7 +3609,7 @@ namespace lit
                 Precedence precedence;
         };
 
-        struct ExprLiteral: public Expression
+        class ExprLiteral: public Expression
         {
             public:
                 static ExprLiteral* make(State* state, size_t line, Value value)
@@ -3435,7 +3623,7 @@ namespace lit
                 Value value;
         };
 
-        struct ExprBinary: public Expression
+        class ExprBinary: public Expression
         {
             public:
                 static ExprBinary* make(State* state, size_t line, Expression* left, Expression* right, TokenType op)
@@ -3455,7 +3643,7 @@ namespace lit
                 bool ignore_left;
         };
 
-        struct ExprUnary: public Expression
+        class ExprUnary: public Expression
         {
             public:
                 static ExprUnary* make(State* state, size_t line, Expression* right, TokenType op)
@@ -3471,7 +3659,7 @@ namespace lit
                 TokenType op;
         };
 
-        struct ExprVar: public Expression
+        class ExprVar: public Expression
         {
             public:
                 static ExprVar* make(State* state, size_t line, const char* name, size_t length)
@@ -3487,7 +3675,7 @@ namespace lit
                 size_t length;
         };
 
-        struct ExprAssign: public Expression
+        class ExprAssign: public Expression
         {
             public:
                 static ExprAssign* make(State* state, size_t line, Expression* to, Expression* value)
@@ -3503,7 +3691,7 @@ namespace lit
                 Expression* value;
         };
 
-        struct ExprCall: public Expression
+        class ExprCall: public Expression
         {
             public:
                 static ExprCall* make(State* state, size_t line, Expression* callee)
@@ -3521,7 +3709,7 @@ namespace lit
                 Expression* objexpr;
         };
 
-        struct ExprIndexGet: public Expression
+        class ExprIndexGet: public Expression
         {
             public:
                static ExprIndexGet* make(State* state, size_t line, Expression* where, const char* name, size_t length, bool questionable, bool ignore_result)
@@ -3545,7 +3733,7 @@ namespace lit
                 bool ignore_result;
         };
 
-        struct ExprIndexSet: public Expression
+        class ExprIndexSet: public Expression
         {
             public:
                 static ExprIndexSet* make(State* state, size_t line, Expression* where, const char* name, size_t length, Expression* value)
@@ -3572,7 +3760,7 @@ namespace lit
             Expression* default_value;
         };
 
-        struct ExprLambda: public Expression
+        class ExprLambda: public Expression
         {
             public:
                 static ExprLambda* make(State* state, size_t line)
@@ -3588,7 +3776,7 @@ namespace lit
                 Expression* body;
         };
 
-        struct ExprArray: public Expression
+        class ExprArray: public Expression
         {
             public:
                 static ExprArray* make(State* state, size_t line)
@@ -3602,7 +3790,7 @@ namespace lit
                 Expression::List values;
         };
 
-        struct ExprObject: public Expression
+        class ExprObject: public Expression
         {
             public:
                 static ExprObject* make(State* state, size_t line)
@@ -3618,7 +3806,7 @@ namespace lit
                 Expression::List values;
         };
 
-        struct ExprSubscript: public Expression
+        class ExprSubscript: public Expression
         {
             public:
                 static ExprSubscript* make(State* state, size_t line, Expression* array, Expression* index)
@@ -3634,7 +3822,7 @@ namespace lit
                 Expression* index;
         };
 
-        struct ExprThis: public Expression
+        class ExprThis: public Expression
         {
             public:
                 static ExprThis* make(State* state, size_t line)
@@ -3643,7 +3831,7 @@ namespace lit
                 }
         };
 
-        struct ExprSuper: public Expression
+        class ExprSuper: public Expression
         {
             public:
                 static ExprSuper* make(State* state, size_t line, String* method, bool ignore_result)
@@ -3661,7 +3849,7 @@ namespace lit
                 bool ignore_result;
         };
 
-        struct ExprRange: public Expression
+        class ExprRange: public Expression
         {
             public:
                 static ExprRange* make(State* state, size_t line, Expression* from, Expression* to)
@@ -3677,7 +3865,7 @@ namespace lit
                 Expression* to;
         };
 
-        struct ExprIfClause: public Expression
+        class ExprIfClause: public Expression
         {
             public:
                 static ExprIfClause* make(State* state, size_t line, Expression* condition, Expression* if_branch, Expression* else_branch)
@@ -3695,7 +3883,7 @@ namespace lit
                 Expression* else_branch;
         };
 
-        struct ExprInterpolation: public Expression
+        class ExprInterpolation: public Expression
         {
             public:
                 static ExprInterpolation* make(State* state, size_t line)
@@ -3709,7 +3897,7 @@ namespace lit
                 Expression::List expressions;
         };
 
-        struct ExprReference: public Expression
+        class ExprReference: public Expression
         {
             public:
                 static ExprReference* make(State* state, size_t line, Expression* to)
@@ -3723,7 +3911,7 @@ namespace lit
                 Expression* to;
         };
 
-        struct ExprStatement: public Expression
+        class ExprStatement: public Expression
         {
             public:
                 static ExprStatement* make(State* state, size_t line, Expression* expression)
@@ -3739,7 +3927,7 @@ namespace lit
                 bool pop;
         };
 
-        struct StmtBlock: public Expression
+        class StmtBlock: public Expression
         {
             public:
                 static StmtBlock* make(State* state, size_t line)
@@ -3753,7 +3941,7 @@ namespace lit
                 Expression::List statements;
         };
 
-        struct StmtVar: public Expression
+        class StmtVar: public Expression
         {
             public:
                 static StmtVar* make(State* state, size_t line, const char* name, size_t length, Expression* exprinit, bool constant)
@@ -3773,7 +3961,7 @@ namespace lit
                 Expression* valexpr;
         };
 
-        struct StmtIfClause: public Expression
+        class StmtIfClause: public Expression
         {
             public:
                 static StmtIfClause* make(State* state,
@@ -3801,7 +3989,7 @@ namespace lit
                 Expression::List* elseif_branches;
         };
 
-        struct StmtWhileLoop: public Expression
+        class StmtWhileLoop: public Expression
         {
             public:
                 static StmtWhileLoop* make(State* state, size_t line, Expression* condition, Expression* body)
@@ -3817,7 +4005,7 @@ namespace lit
                 Expression* body;
         };
 
-        struct StmtForLoop: public Expression
+        class StmtForLoop: public Expression
         {
             public:
                 static StmtForLoop* make(State* state,
@@ -3848,7 +4036,7 @@ namespace lit
                 bool c_style;
         };
 
-        struct StmtContinue: public Expression
+        class StmtContinue: public Expression
         {
             public:
                 static StmtContinue* make(State* state, size_t line)
@@ -3858,7 +4046,7 @@ namespace lit
 
         };
 
-        struct StmtBreak: public Expression
+        class StmtBreak: public Expression
         {
             public:
                 static StmtBreak* make(State* state, size_t line)
@@ -3867,7 +4055,7 @@ namespace lit
                 }
         };
 
-        struct StmtFunction: public Expression
+        class StmtFunction: public Expression
         {
             public:
                 static StmtFunction* make(State* state, size_t line, const char* name, size_t length)
@@ -3888,7 +4076,7 @@ namespace lit
                 bool exported;
         };
 
-        struct StmtReturn: public Expression
+        class StmtReturn: public Expression
         {
             public:
                 static StmtReturn* make(State* state, size_t line, Expression* expression)
@@ -3902,7 +4090,7 @@ namespace lit
                 Expression* expression;
         };
 
-        struct StmtMethod: public Expression
+        class StmtMethod: public Expression
         {
             public:
                 static StmtMethod* make(State* state, size_t line, String* name, bool is_static)
@@ -3922,7 +4110,7 @@ namespace lit
                 bool is_static;
         };
 
-        struct StmtClass: public Expression
+        class StmtClass: public Expression
         {
             public:
                 static StmtClass* make(State* state, size_t line, String* name, String* parent)
@@ -3940,7 +4128,7 @@ namespace lit
                 Expression::List fields;
         };
 
-        struct StmtField: public Expression
+        class StmtField: public Expression
         {
             public:
                 static StmtField* make(State* state, size_t line, String* name, Expression* getter, Expression* setter, bool is_static)
@@ -3960,7 +4148,7 @@ namespace lit
                 bool is_static;
         };
 
-        struct Scanner
+        class Scanner
         {
             public:
                 static inline bool char_is_digit(char c)
@@ -3974,36 +4162,36 @@ namespace lit
                 }
 
             public:
-                size_t length;
-                size_t line;
-                const char* start;
-                const char* current;
-                const char* file_name;
+                size_t m_length;
+                size_t m_line;
+                const char* m_startsrc;
+                const char* m_currsrc;
+                const char* m_filename;
                 State* m_state;
-                size_t braces[LIT_MAX_INTERPOLATION_NESTING];
-                size_t num_braces;
-                bool had_error;
+                size_t m_braces[LIT_MAX_INTERPOLATION_NESTING];
+                size_t m_numbraces;
+                bool m_haderror;
 
             public:
-                void init(State* state, const char* file_name, const char* source, size_t len)
+                void init(State* state, const char* fname, const char* source, size_t len)
                 {
-                    this->length = len;
-                    this->line = 1;
-                    this->start = source;
-                    this->current = source;
-                    this->file_name = file_name;
-                    this->m_state = state;
-                    this->num_braces = 0;
-                    this->had_error = false;
+                    m_length = len;
+                    m_line = 1;
+                    m_startsrc = source;
+                    m_currsrc = source;
+                    m_filename = fname;
+                    m_state = state;
+                    m_numbraces = 0;
+                    m_haderror = false;
                 }
 
                 Token make_token(TokenType type)
                 {
                     Token token;
                     token.type = type;
-                    token.start = this->start;
-                    token.length = (size_t)(this->current - this->start);
-                    token.line = this->line;
+                    token.start = m_startsrc;
+                    token.length = (size_t)(m_currsrc - m_startsrc);
+                    token.line = m_line;
                     return token;
                 }
 
@@ -4012,26 +4200,26 @@ namespace lit
                     va_list args;
                     Token token;
                     String* result;
-                    this->had_error = true;
+                    m_haderror = true;
                     va_start(args, error);
-                    result = lit_vformat_error(this->m_state, this->line, error, args);
+                    result = lit_vformat_error(this->m_state, m_line, error, args);
                     va_end(args);
                     token.type = LITTOK_ERROR;
-                    token.start = result->chars;
+                    token.start = result->data();
                     token.length = result->length();
-                    token.line = this->line;
+                    token.line = m_line;
                     return token;
                 }
 
                 bool is_at_end()
                 {
-                    return *this->current == '\0';
+                    return *m_currsrc == '\0';
                 }
 
                 char advance()
                 {
-                    this->current++;
-                    return this->current[-1];
+                    m_currsrc++;
+                    return m_currsrc[-1];
                 }
 
                 bool match(char expected)
@@ -4041,11 +4229,11 @@ namespace lit
                         return false;
                     }
 
-                    if(*this->current != expected)
+                    if(*m_currsrc != expected)
                     {
                         return false;
                     }
-                    this->current++;
+                    m_currsrc++;
                     return true;
                 }
 
@@ -4061,7 +4249,7 @@ namespace lit
 
                 char peek()
                 {
-                    return *this->current;
+                    return *m_currsrc;
                 }
 
                 char peek_next()
@@ -4070,7 +4258,7 @@ namespace lit
                     {
                         return '\0';
                     }
-                    return this->current[1];
+                    return m_currsrc[1];
                 }
 
                 bool skip_whitespace()
@@ -4094,7 +4282,7 @@ namespace lit
                                 break;
                             case '\n':
                                 {
-                                    this->start = this->current;
+                                    m_startsrc = m_currsrc;
                                     advance();
                                     return true;
                                 }
@@ -4119,7 +4307,7 @@ namespace lit
                                         {
                                             if(peek() == '\n')
                                             {
-                                                this->line++;
+                                                m_line++;
                                             }
                                             advance();
                                         }
@@ -4160,12 +4348,12 @@ namespace lit
                         }
                         else if(interpolation && c == '{')
                         {
-                            if(this->num_braces >= LIT_MAX_INTERPOLATION_NESTING)
+                            if(m_numbraces >= LIT_MAX_INTERPOLATION_NESTING)
                             {
                                 return make_error_token(Error::LITERROR_INTERPOLATION_NESTING_TOO_DEEP, LIT_MAX_INTERPOLATION_NESTING);
                             }
                             string_type = LITTOK_INTERPOLATION;
-                            this->braces[this->num_braces++] = 1;
+                            m_braces[m_numbraces++] = 1;
                             break;
                         }
                         switch(c)
@@ -4177,7 +4365,7 @@ namespace lit
                                 break;
                             case '\n':
                                 {
-                                    this->line++;
+                                    m_line++;
                                     bytes.push(c);
                                 }
                                 break;
@@ -4247,21 +4435,12 @@ namespace lit
                                             break;
                                         default:
                                             {
-                                                return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, this->current[-1]);
+                                                return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, m_currsrc[-1]);
 
-                                                fprintf(stderr, "this->current[-1] = '%c', c = '%c'\n", this->current[-1], c);
-                                                if(isdigit(this->current[-1]))
+                                                fprintf(stderr, "m_currsrc[-1] = '%c', c = '%c'\n", m_currsrc[-1], c);
+                                                if(isdigit(m_currsrc[-1]))
                                                 {
-                                                    //c*10 + (ls->current - '0')
-
-                                                    /*
-                                                    c = c*10 + (ls->current - '0');
-                                                    if (lj_char_isdigit(next(ls)))
-                                                    {
-                                                        c = c*10 + (ls->current - '0');
-                                                    */
-
-                                                    newc = this->current[-1] - '0';
+                                                    newc = m_currsrc[-1] - '0';
                                                     octval = 0;
                                                     octval |= (newc * 8);
                                                     while(true)
@@ -4281,7 +4460,7 @@ namespace lit
                                                 }
                                                 else
                                                 {
-                                                    return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, this->current[-1]);
+                                                    return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, m_currsrc[-1]);
                                                 }
                                             }
                                             break;
@@ -4317,7 +4496,7 @@ namespace lit
                     {
                         return (c - 'A' + 10);
                     }
-                    this->current--;
+                    m_currsrc--;
                     return -1;
                 }
 
@@ -4329,7 +4508,7 @@ namespace lit
                     {
                         return c - '0';
                     }
-                    this->current--;
+                    m_currsrc--;
                     return -1;
                 }
 
@@ -4340,15 +4519,15 @@ namespace lit
                     errno = 0;
                     if(is_hex)
                     {
-                        value = Object::toValue((double)strtoll(this->start, nullptr, 16));
+                        value = Object::toValue((double)strtoll(m_startsrc, nullptr, 16));
                     }
                     else if(is_binary)
                     {
-                        value = Object::toValue((int)strtoll(this->start + 2, nullptr, 2));
+                        value = Object::toValue((int)strtoll(m_startsrc + 2, nullptr, 2));
                     }
                     else
                     {
-                        value = Object::toValue(strtod(this->start, nullptr));
+                        value = Object::toValue(strtod(m_startsrc, nullptr));
                     }
 
                     if(errno == ERANGE)
@@ -4398,7 +4577,7 @@ namespace lit
 
                 TokenType check_keyword(int start, int length, const char* rest, TokenType type)
                 {
-                    if(this->current - this->start == start + length && memcmp(this->start + start, rest, length) == 0)
+                    if(m_currsrc - m_startsrc == start + length && memcmp(m_startsrc + start, rest, length) == 0)
                     {
                         return type;
                     }
@@ -4407,24 +4586,24 @@ namespace lit
 
                 TokenType scan_identtype()
                 {
-                    switch(this->start[0])
+                    switch(m_startsrc[0])
                     {
                         case 'b':
                             return check_keyword(1, 4, "reak", LITTOK_BREAK);
 
                         case 'c':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 'l':
                                             return check_keyword(2, 3, "ass", LITTOK_CLASS);
                                         case 'o':
                                         {
-                                            if(this->current - this->start > 3)
+                                            if(m_currsrc - m_startsrc > 3)
                                             {
-                                                switch(this->start[3])
+                                                switch(m_startsrc[3])
                                                 {
                                                     case 's':
                                                         return check_keyword(2, 3, "nst", LITTOK_CONST);
@@ -4439,9 +4618,9 @@ namespace lit
                             break;
                         case 'e':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 'l':
                                             return check_keyword(2, 2, "se", LITTOK_ELSE);
@@ -4453,9 +4632,9 @@ namespace lit
                             break;
                         case 'f':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 'a':
                                             return check_keyword(2, 3, "lse", LITTOK_FALSE);
@@ -4469,9 +4648,9 @@ namespace lit
                             break;
                         case 'i':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 's':
                                             return check_keyword(2, 0, "", LITTOK_IS);
@@ -4485,9 +4664,9 @@ namespace lit
                             break;
                         case 'n':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 'u':
                                             return check_keyword(2, 2, "ll", LITTOK_NULL);
@@ -4499,9 +4678,9 @@ namespace lit
                             break;
                         case 'r':
                             {
-                                if(this->current - this->start > 2)
+                                if(m_currsrc - m_startsrc > 2)
                                 {
-                                    switch(this->start[2])
+                                    switch(m_startsrc[2])
                                     {
                                         case 'f':
                                             return check_keyword(3, 0, "", LITTOK_REF);
@@ -4515,9 +4694,9 @@ namespace lit
                             return check_keyword(1, 7, "perator", LITTOK_OPERATOR);
                         case 's':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 'u':
                                             return check_keyword(2, 3, "per", LITTOK_SUPER);
@@ -4531,9 +4710,9 @@ namespace lit
                             break;
                         case 't':
                             {
-                                if(this->current - this->start > 1)
+                                if(m_currsrc - m_startsrc > 1)
                                 {
-                                    switch(this->start[1])
+                                    switch(m_startsrc[1])
                                     {
                                         case 'h':
                                             return check_keyword(2, 2, "is", LITTOK_THIS);
@@ -4568,11 +4747,11 @@ namespace lit
                     if(skip_whitespace())
                     {
                         Token token = make_token(LITTOK_NEW_LINE);
-                        this->line++;
+                        m_line++;
 
                         return token;
                     }
-                    this->start = this->current;
+                    m_startsrc = m_currsrc;
                     if(is_at_end())
                     {
                         return make_token(LITTOK_EOF);
@@ -4594,18 +4773,18 @@ namespace lit
                             return make_token(LITTOK_RIGHT_PAREN);
                         case '{':
                             {
-                                if(this->num_braces > 0)
+                                if(m_numbraces > 0)
                                 {
-                                    this->braces[this->num_braces - 1]++;
+                                    m_braces[m_numbraces - 1]++;
                                 }
                                 return make_token(LITTOK_LEFT_BRACE);
                             }
                             break;
                         case '}':
                             {
-                                if(this->num_braces > 0 && --this->braces[this->num_braces - 1] == 0)
+                                if(m_numbraces > 0 && --m_braces[m_numbraces - 1] == 0)
                                 {
-                                    this->num_braces--;
+                                    m_numbraces--;
                                     return scan_string(true);
                                 }
                                 return make_token(LITTOK_RIGHT_BRACE);
@@ -4682,7 +4861,7 @@ namespace lit
                 }
         };
 
-        struct Compiler
+        class Compiler
         {
             public:
                 struct CCUpvalue
@@ -4707,7 +4886,7 @@ namespace lit
                 void init(Parser* parser);
         };
 
-        struct Preprocessor
+        class Preprocessor
         {
             public:
                 State* m_state;
@@ -4737,13 +4916,13 @@ namespace lit
                 }
         };
 
-        struct Parser
+        class Parser
         {
             public:
                 static Expression* parse_block(Parser* parser)
                 {
                     parser->begin_scope();
-                    auto statement = StmtBlock::make(parser->m_state, parser->previous.line);
+                    auto statement = StmtBlock::make(parser->m_state, parser->m_prevtoken.line);
                     while(true)
                     {
                         parser->ignore_new_lines();
@@ -4774,15 +4953,15 @@ namespace lit
                     Token previous;
                     (void)new_line;
                     prev_newline = false;
-                    previous = parser->previous;
+                    previous = parser->m_prevtoken;
                     parser->advance();
-                    prefix_rule = parser->get_rule(parser->previous.type)->prefix;
+                    prefix_rule = parser->get_rule(parser->m_prevtoken.type)->prefix;
                     if(prefix_rule == nullptr)
                     {
-                        //fprintf(stderr, "parser->previous.type=%s, parser->current.type=%s\n", token_name(parser->previous.type), token_name(parser->current.type));
-                        if(parser->previous.type == LITTOK_SEMICOLON)
+                        //fprintf(stderr, "parser->m_prevtoken.type=%s, parser->m_currtoken.type=%s\n", token_name(parser->m_prevtoken.type), token_name(parser->m_currtoken.type));
+                        if(parser->m_prevtoken.type == LITTOK_SEMICOLON)
                         {
-                            if(parser->current.type == LITTOK_NEW_LINE)
+                            if(parser->m_currtoken.type == LITTOK_NEW_LINE)
                             {
                                 parser->advance();
                                 return parse_precedence(parser, precedence, err);
@@ -4791,12 +4970,12 @@ namespace lit
                         }
                         // todo: file start
                         new_line = previous.start != nullptr && *previous.start == '\n';
-                        parser_prev_newline = parser->previous.start != nullptr && *parser->previous.start == '\n';
+                        parser_prev_newline = parser->m_prevtoken.start != nullptr && *parser->m_prevtoken.start == '\n';
                         parser->raiseError(Error::LITERROR_EXPECTED_EXPRESSION,
                             (prev_newline ? 8 : previous.length),
                             (prev_newline ? "new line" : previous.start),
-                            (parser_prev_newline ? 8 : parser->previous.length),
-                            (parser_prev_newline ? "new line" : parser->previous.start)
+                            (parser_prev_newline ? 8 : parser->m_prevtoken.length),
+                            (parser_prev_newline ? "new line" : parser->m_prevtoken.start)
                         );
                         return nullptr;
                         
@@ -4804,10 +4983,10 @@ namespace lit
                     can_assign = precedence <= LITPREC_ASSIGNMENT;
                     expr = prefix_rule(parser, can_assign);
                     parser->ignore_new_lines();
-                    while(precedence <= parser->get_rule(parser->current.type)->precedence)
+                    while(precedence <= parser->get_rule(parser->m_currtoken.type)->precedence)
                     {
                         parser->advance();
-                        infix_rule = parser->get_rule(parser->previous.type)->infix;
+                        infix_rule = parser->get_rule(parser->m_prevtoken.type)->infix;
                         expr = infix_rule(parser, expr, can_assign);
                     }
                     if(err && can_assign && parser->match(LITTOK_EQUAL))
@@ -4820,7 +4999,7 @@ namespace lit
                 static Expression* parse_number(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    return (Expression*)ExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value);
+                    return (Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value);
                 }
 
                 static Expression* parse_lambda(Parser* parser, ExprLambda* lambda)
@@ -4845,8 +5024,8 @@ namespace lit
                             return;
                         }
                         parser->consume(LITTOK_IDENTIFIER, "argument name");
-                        arg_name = parser->previous.start;
-                        arg_length = parser->previous.length;
+                        arg_name = parser->m_prevtoken.start;
+                        arg_length = parser->m_prevtoken.length;
                         default_value = nullptr;
                         if(parser->match(LITTOK_EQUAL))
                         {
@@ -4888,19 +5067,19 @@ namespace lit
                     if(parser->match(LITTOK_RIGHT_PAREN))
                     {
                         parser->consume(LITTOK_ARROW, "=> after lambda arguments");
-                        return parse_lambda(parser, ExprLambda::make(parser->m_state, parser->previous.line));
+                        return parse_lambda(parser, ExprLambda::make(parser->m_state, parser->m_prevtoken.line));
                     }
-                    start = parser->previous.start;
-                    line = parser->previous.line;
+                    start = parser->m_prevtoken.start;
+                    line = parser->m_prevtoken.line;
                     if(parser->match(LITTOK_IDENTIFIER) || parser->match(LITTOK_DOT_DOT_DOT))
                     {
                         auto state = parser->m_state;
-                        first_arg_start = parser->previous.start;
-                        first_arg_length = parser->previous.length;
+                        first_arg_start = parser->m_prevtoken.start;
+                        first_arg_length = parser->m_prevtoken.length;
                         if(parser->match(LITTOK_COMMA) || (parser->match(LITTOK_RIGHT_PAREN) && parser->match(LITTOK_ARROW)))
                         {
-                            had_array = parser->previous.type == LITTOK_ARROW;
-                            had_vararg= parser->previous.type == LITTOK_DOT_DOT_DOT;
+                            had_array = parser->m_prevtoken.type == LITTOK_ARROW;
+                            had_vararg= parser->m_prevtoken.type == LITTOK_DOT_DOT_DOT;
                             // This is a lambda
                             auto lambda = ExprLambda::make(state, line);
                             Expression* def_value = nullptr;
@@ -4910,7 +5089,7 @@ namespace lit
                                 def_value = parse_expression(parser);
                             }
                             lambda->parameters.push(ExprFuncParam{ first_arg_start, first_arg_length, def_value });
-                            if(!had_vararg && parser->previous.type == LITTOK_COMMA)
+                            if(!had_vararg && parser->m_prevtoken.type == LITTOK_COMMA)
                             {
                                 do
                                 {
@@ -4924,8 +5103,8 @@ namespace lit
                                         parser->consume(LITTOK_IDENTIFIER, "argument name");
                                     }
 
-                                    arg_name = parser->previous.start;
-                                    arg_length = parser->previous.length;
+                                    arg_name = parser->m_prevtoken.start;
+                                    arg_length = parser->m_prevtoken.length;
                                     default_value = nullptr;
                                     if(parser->match(LITTOK_EQUAL))
                                     {
@@ -4956,9 +5135,9 @@ namespace lit
                         {
                             // Ouch, this was a grouping with a single identifier
                             scanner = parser->getStateScanner(state);
-                            scanner->current = start;
-                            scanner->line = line;
-                            parser->current = scanner->scan_token();
+                            scanner->m_currsrc = start;
+                            scanner->m_line = line;
+                            parser->m_currtoken = scanner->scan_token();
                             parser->advance();
                         }
                     }
@@ -4973,7 +5152,7 @@ namespace lit
                     Expression* e;
                     ExprVar* ee;
                     ExprCall* expression;
-                    expression = ExprCall::make(parser->m_state, parser->previous.line, prev);
+                    expression = ExprCall::make(parser->m_state, parser->m_prevtoken.line, prev);
                     while(!parser->check(LITTOK_RIGHT_PAREN))
                     {
                         e = parse_expression(parser);
@@ -5003,8 +5182,8 @@ namespace lit
                 static Expression* parse_unary(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    auto op = parser->previous.type;
-                    auto line = parser->previous.line;
+                    auto op = parser->m_prevtoken.type;
+                    auto line = parser->m_prevtoken.line;
                     auto expression = parse_precedence(parser, LITPREC_UNARY, true);
                     return (Expression*)ExprUnary::make(parser->m_state, line, expression, op);
                 }
@@ -5017,13 +5196,13 @@ namespace lit
                     ParseRule* rule;
                     Expression* expression;
                     TokenType op;
-                    invert = parser->previous.type == LITTOK_BANG;
+                    invert = parser->m_prevtoken.type == LITTOK_BANG;
                     if(invert)
                     {
                         parser->consume(LITTOK_IS, "'is' after '!'");
                     }
-                    op = parser->previous.type;
-                    line = parser->previous.line;
+                    op = parser->m_prevtoken.type;
+                    line = parser->m_prevtoken.line;
                     rule = parser->get_rule(op);
                     expression = parse_precedence(parser, (Precedence)(rule->precedence + 1), true);
                     expression = (Expression*)ExprBinary::make(parser->m_state, line, prev, expression, op);
@@ -5039,8 +5218,8 @@ namespace lit
                     (void)can_assign;
                     size_t line;
                     TokenType op;
-                    op = parser->previous.type;
-                    line = parser->previous.line;
+                    op = parser->m_prevtoken.type;
+                    line = parser->m_prevtoken.line;
                     return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_AND, true), op);
                 }
 
@@ -5049,8 +5228,8 @@ namespace lit
                     (void)can_assign;
                     size_t line;
                     TokenType op;
-                    op = parser->previous.type;
-                    line = parser->previous.line;
+                    op = parser->m_prevtoken.type;
+                    line = parser->m_prevtoken.line;
                     return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_OR, true), op);
                 }
 
@@ -5059,8 +5238,8 @@ namespace lit
                     (void)can_assign;
                     size_t line;
                     TokenType op;
-                    op = parser->previous.type;
-                    line = parser->previous.line;
+                    op = parser->m_prevtoken.type;
+                    line = parser->m_prevtoken.line;
                     return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_NULL, true), op);
                 }
 
@@ -5125,7 +5304,6 @@ namespace lit
                             break;
                         default:
                             {
-                                UNREACHABLE
                             }
                             break;
                     }
@@ -5140,8 +5318,8 @@ namespace lit
                     Expression* expression;
                     ParseRule* rule;
                     TokenType op;
-                    op = parser->previous.type;
-                    line = parser->previous.line;
+                    op = parser->m_prevtoken.type;
+                    line = parser->m_prevtoken.line;
                     rule = parser->get_rule(op);
                     if(op == LITTOK_PLUS_PLUS || op == LITTOK_MINUS_MINUS)
                     {
@@ -5160,8 +5338,8 @@ namespace lit
                 {
                     (void)can_assign;
                     size_t line;
-                    line = parser->previous.line;
-                    switch(parser->previous.type)
+                    line = parser->m_prevtoken.line;
+                    switch(parser->m_prevtoken.type)
                     {
                         case LITTOK_TRUE:
                             {
@@ -5180,7 +5358,6 @@ namespace lit
                             break;
                         default:
                             {
-                                UNREACHABLE
                             }
                             break;
                     }
@@ -5190,7 +5367,7 @@ namespace lit
                 static Expression* parse_string(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    auto expression = (Expression*)ExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value);
+                    auto expression = (Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value);
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
                         return parse_subscript(parser, expression, can_assign);
@@ -5201,19 +5378,19 @@ namespace lit
                 static Expression* parse_interpolation(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    auto expression = ExprInterpolation::make(parser->m_state, parser->previous.line);
+                    auto expression = ExprInterpolation::make(parser->m_state, parser->m_prevtoken.line);
                     do
                     {
-                        if(Object::as<String>(parser->previous.value)->length() > 0)
+                        if(Object::as<String>(parser->m_prevtoken.value)->length() > 0)
                         {
-                            expression->expressions.push((Expression*)ExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value));
+                            expression->expressions.push((Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value));
                         }
                         expression->expressions.push(parse_expression(parser));
                     } while(parser->match(LITTOK_INTERPOLATION));
                     parser->consume(LITTOK_STRING, "end of interpolation");
-                    if(Object::as<String>(parser->previous.value)->length() > 0)
+                    if(Object::as<String>(parser->m_prevtoken.value)->length() > 0)
                     {
-                        expression->expressions.push((Expression*)ExprLiteral::make(parser->m_state, parser->previous.line, parser->previous.value));
+                        expression->expressions.push((Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value));
                     }
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
@@ -5225,13 +5402,13 @@ namespace lit
                 static Expression* parse_object(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    auto objexpr = ExprObject::make(parser->m_state, parser->previous.line);
+                    auto objexpr = ExprObject::make(parser->m_state, parser->m_prevtoken.line);
                     parser->ignore_new_lines();
                     while(!parser->check(LITTOK_RIGHT_BRACE))
                     {
                         parser->ignore_new_lines();
                         parser->consume(LITTOK_IDENTIFIER, "key string after '{'");
-                        objexpr->keys.push(String::copy(parser->m_state, parser->previous.start, parser->previous.length)->asValue());
+                        objexpr->keys.push(String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length)->asValue());
                         parser->ignore_new_lines();
                         parser->consume(LITTOK_EQUAL, "'=' after key string");
                         parser->ignore_new_lines();
@@ -5251,7 +5428,7 @@ namespace lit
                     (void)can_assign;
                     bool had_args;
                     ExprCall* call;
-                    auto expression = (Expression*)ExprVar::make(parser->m_state, parser->previous.line, parser->previous.start, parser->previous.length);
+                    auto expression = (Expression*)ExprVar::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.start, parser->m_prevtoken.length);
                     if(isnew)
                     {
                         had_args = parser->check(LITTOK_LEFT_PAREN);
@@ -5272,7 +5449,7 @@ namespace lit
                         else if(!had_args)
                         {
                             parser->errorAtCurrent(Error::LITERROR_EXPECTATION_UNMET, "argument list for instance creation",
-                                             parser->previous.length, parser->previous.start);
+                                             parser->m_prevtoken.length, parser->m_prevtoken.start);
                         }
                         return (Expression*)call;
                     }
@@ -5282,7 +5459,7 @@ namespace lit
                     }
                     if(can_assign && parser->match(LITTOK_EQUAL))
                     {
-                        return (Expression*)ExprAssign::make(parser->m_state, parser->previous.line, expression,
+                        return (Expression*)ExprAssign::make(parser->m_state, parser->m_prevtoken.line, expression,
                                                                             parse_expression(parser));
                     }
                     return expression;
@@ -5307,14 +5484,14 @@ namespace lit
                     size_t line;
                     size_t length;
                     const char* name;
-                    line = parser->previous.line;
-                    ignored = parser->previous.type == LITTOK_SMALL_ARROW;
+                    line = parser->m_prevtoken.line;
+                    ignored = parser->m_prevtoken.type == LITTOK_SMALL_ARROW;
                     if(!(parser->match(LITTOK_CLASS) || parser->match(LITTOK_SUPER)))
                     {// class and super are allowed field names
                         parser->consume(LITTOK_IDENTIFIER, ignored ? "propety name after '->'" : "property name after '.'");
                     }
-                    name = parser->previous.start;
-                    length = parser->previous.length;
+                    name = parser->m_prevtoken.start;
+                    length = parser->m_prevtoken.length;
                     if(!ignored && can_assign && parser->match(LITTOK_EQUAL))
                     {
                         return (Expression*)ExprIndexSet::make(parser->m_state, line, previous, name, length, parse_expression(parser));
@@ -5331,7 +5508,7 @@ namespace lit
                 {
                     (void)can_assign;
                     size_t line;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     return (Expression*)ExprRange::make(parser->m_state, line, previous, parse_expression(parser));
                 }
 
@@ -5340,13 +5517,13 @@ namespace lit
                     (void)can_assign;
                     bool ignored;
                     size_t line;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     if(parser->match(LITTOK_DOT) || parser->match(LITTOK_SMALL_ARROW))
                     {
-                        ignored = parser->previous.type == LITTOK_SMALL_ARROW;
+                        ignored = parser->m_prevtoken.type == LITTOK_SMALL_ARROW;
                         parser->consume(LITTOK_IDENTIFIER, ignored ? "property name after '->'" : "property name after '.'");
-                        return (Expression*)ExprIndexGet::make(parser->m_state, line, previous, parser->previous.start,
-                                                                         parser->previous.length, true, ignored);
+                        return (Expression*)ExprIndexGet::make(parser->m_state, line, previous, parser->m_prevtoken.start,
+                                                                         parser->m_prevtoken.length, true, ignored);
                     }
                     auto if_branch = parse_expression(parser);
                     parser->consume(LITTOK_COLON, "':' after expression");
@@ -5357,7 +5534,7 @@ namespace lit
                 static Expression* parse_array(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
-                    auto array = ExprArray::make(parser->m_state, parser->previous.line);
+                    auto array = ExprArray::make(parser->m_state, parser->m_prevtoken.line);
                     parser->ignore_new_lines();
                     while(!parser->check(LITTOK_RIGHT_BRACKET))
                     {
@@ -5380,7 +5557,7 @@ namespace lit
                 static Expression* parse_subscript(Parser* parser, Expression* previous, bool can_assign)
                 {
                     size_t line;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     auto index = parse_expression(parser);
                     parser->consume(LITTOK_RIGHT_BRACKET, "']' after subscript");
                     auto expression = (Expression*)ExprSubscript::make(parser->m_state, line, previous, index);
@@ -5390,14 +5567,14 @@ namespace lit
                     }
                     else if(can_assign && parser->match(LITTOK_EQUAL))
                     {
-                        return (Expression*)ExprAssign::make(parser->m_state, parser->previous.line, expression, parse_expression(parser));
+                        return (Expression*)ExprAssign::make(parser->m_state, parser->m_prevtoken.line, expression, parse_expression(parser));
                     }
                     return expression;
                 }
 
                 static Expression* parse_this(Parser* parser, bool can_assign)
                 {
-                    auto expression = (Expression*)ExprThis::make(parser->m_state, parser->previous.line);
+                    auto expression = (Expression*)ExprThis::make(parser->m_state, parser->m_prevtoken.line);
                     if(parser->match(LITTOK_LEFT_BRACKET))
                     {
                         return parse_subscript(parser, expression, can_assign);
@@ -5411,7 +5588,7 @@ namespace lit
                     bool ignoring;
                     size_t line;
                     Expression* expression;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     if(!(parser->match(LITTOK_DOT) || parser->match(LITTOK_SMALL_ARROW)))
                     {
                         expression = (Expression*)ExprSuper::make(
@@ -5419,10 +5596,10 @@ namespace lit
                         parser->consume(LITTOK_LEFT_PAREN, "'(' after 'super'");
                         return parse_call(parser, expression, false);
                     }
-                    ignoring = parser->previous.type == LITTOK_SMALL_ARROW;
+                    ignoring = parser->m_prevtoken.type == LITTOK_SMALL_ARROW;
                     parser->consume(LITTOK_IDENTIFIER, ignoring ? "super method name after '->'" : "super method name after '.'");
                     expression = (Expression*)ExprSuper::make(
-                    parser->m_state, line, String::copy(parser->m_state, parser->previous.start, parser->previous.length), ignoring);
+                    parser->m_state, line, String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length), ignoring);
                     if(parser->match(LITTOK_LEFT_PAREN))
                     {
                         return parse_call(parser, expression, false);
@@ -5434,7 +5611,7 @@ namespace lit
                 {
                     (void)can_assign;
                     size_t line;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     parser->ignore_new_lines();
                     auto expression = ExprReference::make(parser->m_state, line, parse_precedence(parser, LITPREC_CALL, false));
                     if(parser->match(LITTOK_EQUAL))
@@ -5457,11 +5634,11 @@ namespace lit
                     size_t length;
                     const char* name;
                     Expression* vexpr;
-                    constant = parser->previous.type == LITTOK_CONST;
-                    line = parser->previous.line;
+                    constant = parser->m_prevtoken.type == LITTOK_CONST;
+                    line = parser->m_prevtoken.line;
                     parser->consume(LITTOK_IDENTIFIER, "variable name");
-                    name = parser->previous.start;
-                    length = parser->previous.length;
+                    name = parser->m_prevtoken.start;
+                    length = parser->m_prevtoken.length;
                     vexpr = nullptr;
                     if(parser->match(LITTOK_EQUAL))
                     {
@@ -5481,7 +5658,7 @@ namespace lit
                     Expression::List* elseif_branches;
                     Expression* else_branch;
                     Expression* e;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     invert = parser->match(LITTOK_BANG);
                     had_paren = parser->match(LITTOK_LEFT_PAREN);
                     condition = parse_expression(parser);
@@ -5548,7 +5725,7 @@ namespace lit
                     Expression* increment;
                     Expression* var;
                     Expression* exprinit;
-                    line= parser->previous.line;
+                    line= parser->m_prevtoken.line;
                     had_paren = parser->match(LITTOK_LEFT_PAREN);
                     var = nullptr;
                     exprinit = nullptr;
@@ -5595,7 +5772,7 @@ namespace lit
                     bool had_paren;
                     size_t line;
                     Expression* body;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     had_paren = parser->match(LITTOK_LEFT_PAREN);
                     Expression* condition = parse_expression(parser);
                     if(had_paren)
@@ -5617,22 +5794,22 @@ namespace lit
                     StmtFunction* function;
                     ExprLambda* lambda;
                     ExprIndexSet* to;
-                    isexport = parser->previous.type == LITTOK_EXPORT;
+                    isexport = parser->m_prevtoken.type == LITTOK_EXPORT;
                     if(isexport)
                     {
                         parser->consume(LITTOK_FUNCTION, "'function' after 'export'");
                     }
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     parser->consume(LITTOK_IDENTIFIER, "function name");
-                    function_name = parser->previous.start;
-                    function_length = parser->previous.length;
+                    function_name = parser->m_prevtoken.start;
+                    function_length = parser->m_prevtoken.length;
                     if(parser->match(LITTOK_DOT))
                     {
                         parser->consume(LITTOK_IDENTIFIER, "function name");
                         lambda = ExprLambda::make(parser->m_state, line);
                         to = ExprIndexSet::make(
                         parser->m_state, line, (Expression*)ExprVar::make(parser->m_state, line, function_name, function_length),
-                        parser->previous.start, parser->previous.length, (Expression*)lambda);
+                        parser->m_prevtoken.start, parser->m_prevtoken.length, (Expression*)lambda);
                         parser->consume(LITTOK_LEFT_PAREN, "'(' after function name");
                         compiler.init(parser);
                         parser->begin_scope();
@@ -5669,7 +5846,7 @@ namespace lit
                 {
                     size_t line;
                     Expression* expression;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     expression = nullptr;
                     if(!parser->check(LITTOK_NEW_LINE) && !parser->check(LITTOK_RIGHT_BRACE))
                     {
@@ -5683,7 +5860,7 @@ namespace lit
                     size_t line;
                     Expression* getter;
                     Expression* setter;
-                    line = parser->previous.line;
+                    line = parser->m_prevtoken.line;
                     getter = nullptr;
                     setter = nullptr;
                     if(parser->match(LITTOK_ARROW))
@@ -5748,26 +5925,26 @@ namespace lit
                             }
                             i++;
                         }
-                        if(parser->previous.type == LITTOK_LEFT_BRACKET)
+                        if(parser->m_prevtoken.type == LITTOK_LEFT_BRACKET)
                         {
                             parser->consume(LITTOK_RIGHT_BRACKET, "']' after '[' in op method declaration");
                             name = String::copy(parser->m_state, "[]", 2);
                         }
                         else
                         {
-                            name = String::copy(parser->m_state, parser->previous.start, parser->previous.length);
+                            name = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
                         }
                     }
                     else
                     {
                         parser->consume(LITTOK_IDENTIFIER, "method name");
-                        name = String::copy(parser->m_state, parser->previous.start, parser->previous.length);
+                        name = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
                         if(parser->check(LITTOK_LEFT_BRACE) || parser->check(LITTOK_ARROW))
                         {
                             return parse_field(parser, name, is_static);
                         }
                     }
-                    method = StmtMethod::make(parser->m_state, parser->previous.line, name, is_static);
+                    method = StmtMethod::make(parser->m_state, parser->m_prevtoken.line, name, is_static);
                     compiler.init(parser);
                     parser->begin_scope();
                     parser->consume(LITTOK_LEFT_PAREN, "'(' after method name");
@@ -5794,23 +5971,23 @@ namespace lit
                     StmtClass* klass;
                     Expression* var;
                     Expression* method;
-                    if(setjmp(parser->prs_jmpbuffer))
+                    if(setjmp(parser->m_jumpbuffer))
                     {
                         return nullptr;
                     }
-                    line = parser->previous.line;
-                    is_static = parser->previous.type == LITTOK_STATIC;
+                    line = parser->m_prevtoken.line;
+                    is_static = parser->m_prevtoken.type == LITTOK_STATIC;
                     if(is_static)
                     {
                         parser->consume(LITTOK_CLASS, "'class' after 'static'");
                     }
                     parser->consume(LITTOK_IDENTIFIER, "class name after 'class'");
-                    name = String::copy(parser->m_state, parser->previous.start, parser->previous.length);
+                    name = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
                     super = nullptr;
                     if(parser->match(LITTOK_COLON))
                     {
                         parser->consume(LITTOK_IDENTIFIER, "super class name after ':'");
-                        super = String::copy(parser->m_state, parser->previous.start, parser->previous.length);
+                        super = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
                         if(super == name)
                         {
                             parser->raiseError(Error::LITERROR_SELF_INHERITED_CLASS);
@@ -5861,7 +6038,7 @@ namespace lit
                 {
                     Expression* expression;
                     parser->ignore_new_lines();
-                    if(setjmp(parser->prs_jmpbuffer))
+                    if(setjmp(parser->m_jumpbuffer))
                     {
                         return nullptr;
                     }
@@ -5883,11 +6060,11 @@ namespace lit
                     }
                     else if(parser->match(LITTOK_CONTINUE))
                     {
-                        return (Expression*)StmtContinue::make(parser->m_state, parser->previous.line);
+                        return (Expression*)StmtContinue::make(parser->m_state, parser->m_prevtoken.line);
                     }
                     else if(parser->match(LITTOK_BREAK))
                     {
-                        return (Expression*)StmtBreak::make(parser->m_state, parser->previous.line);
+                        return (Expression*)StmtBreak::make(parser->m_state, parser->m_prevtoken.line);
                     }
                     else if(parser->match(LITTOK_FUNCTION) || parser->match(LITTOK_EXPORT))
                     {
@@ -5902,7 +6079,7 @@ namespace lit
                         return parse_block(parser);
                     }
                     expression = parse_expression(parser);
-                    return expression == nullptr ? nullptr : (Expression*)ExprStatement::make(parser->m_state, parser->previous.line, expression);
+                    return expression == nullptr ? nullptr : (Expression*)ExprStatement::make(parser->m_state, parser->m_prevtoken.line, expression);
                 }
 
                 static Expression* parse_declaration(Parser* parser)
@@ -5920,16 +6097,15 @@ namespace lit
                     return statement;
                 }
 
+            // parservars
             public:
                 State* m_state;
-                bool had_error;
-                bool panic_mode;
-                Token previous;
-                Token current;
-                Compiler* compiler;
-                uint8_t expression_root_count;
-                uint8_t statement_root_count;
-                jmp_buf prs_jmpbuffer;
+                bool m_haderror;
+                bool m_panicmode;
+                Token m_prevtoken;
+                Token m_currtoken;
+                Compiler* m_compiler;
+                jmp_buf m_jumpbuffer;
 
             public:
                 static ParseRule rules[LITTOK_EOF + 1];
@@ -6007,17 +6183,17 @@ namespace lit
 
                 void end_compiler(Compiler* compiler)
                 {
-                    this->compiler = (Compiler*)compiler->enclosing;
+                    m_compiler = (Compiler*)compiler->enclosing;
                 }
 
                 void begin_scope()
                 {
-                    this->compiler->scope_depth++;
+                    m_compiler->scope_depth++;
                 }
 
                 void end_scope()
                 {
-                    this->compiler->scope_depth--;
+                    m_compiler->scope_depth--;
                 }
 
                 ParseRule* get_rule(TokenType type)
@@ -6027,7 +6203,7 @@ namespace lit
 
                 inline bool is_at_end()
                 {
-                    return this->current.type == LITTOK_EOF;
+                    return m_currtoken.type == LITTOK_EOF;
                 }
 
                 //todo
@@ -6035,14 +6211,14 @@ namespace lit
 
                 void errorAt(Token* token, Error error, va_list args)
                 {
-                    stringError(token, lit_vformat_error(this->m_state, token->line, error, args)->chars);
+                    stringError(token, lit_vformat_error(this->m_state, token->line, error, args)->data());
                 }
 
                 void errorAtCurrent(Error error, ...)
                 {
                     va_list args;
                     va_start(args, error);
-                    errorAt(&this->current, error, args);
+                    errorAt(&m_currtoken, error, args);
                     va_end(args);
                 }
 
@@ -6050,32 +6226,32 @@ namespace lit
                 {
                     va_list args;
                     va_start(args, error);
-                    errorAt(&this->previous, error, args);
+                    errorAt(&m_prevtoken, error, args);
                     va_end(args);
                 }
 
                 void advance()
                 {
-                    this->previous = this->current;
+                    m_prevtoken = m_currtoken;
                     while(true)
                     {
-                        this->current = getStateScanner(this->m_state)->scan_token();
-                        if(this->current.type != LITTOK_ERROR)
+                        m_currtoken = getStateScanner(this->m_state)->scan_token();
+                        if(m_currtoken.type != LITTOK_ERROR)
                         {
                             break;
                         }
-                        stringError(&this->current, this->current.start);
+                        stringError(&m_currtoken, m_currtoken.start);
                     }
                 }
 
                 bool check(TokenType type)
                 {
-                    return this->current.type == type;
+                    return m_currtoken.type == type;
                 }
 
                 bool match(TokenType type)
                 {
-                    if(this->current.type == type)
+                    if(m_currtoken.type == type)
                     {
                         advance();
                         return true;
@@ -6106,29 +6282,29 @@ namespace lit
                     size_t olen;
                     const char* fmt;
                     const char* otext;
-                    if(this->current.type == type)
+                    if(m_currtoken.type == type)
                     {
                         advance();
                         return;
                     }
-                    line = this->previous.type == LITTOK_NEW_LINE;
-                    olen = (line ? 8 : this->previous.length);
-                    otext = (line ? "new line" : this->previous.start);
-                    fmt = lit_format_error(this->m_state, this->current.line, Error::LITERROR_EXPECTATION_UNMET, error, olen, otext)->chars;
-                    stringError(&this->current,fmt);
+                    line = m_prevtoken.type == LITTOK_NEW_LINE;
+                    olen = (line ? 8 : m_prevtoken.length);
+                    otext = (line ? "new line" : m_prevtoken.start);
+                    fmt = lit_format_error(this->m_state, m_currtoken.line, Error::LITERROR_EXPECTATION_UNMET, error, olen, otext)->data();
+                    stringError(&m_currtoken,fmt);
                 }
 
                 void sync()
                 {
-                    this->panic_mode = false;
-                    while(this->current.type != LITTOK_EOF)
+                    m_panicmode = false;
+                    while(m_currtoken.type != LITTOK_EOF)
                     {
-                        if(this->previous.type == LITTOK_NEW_LINE)
+                        if(m_prevtoken.type == LITTOK_NEW_LINE)
                         {
-                            longjmp(prs_jmpbuffer, 1);
+                            longjmp(m_jumpbuffer, 1);
                             return;
                         }
-                        switch(this->current.type)
+                        switch(m_currtoken.type)
                         {
                             case LITTOK_CLASS:
                             case LITTOK_FUNCTION:
@@ -6141,7 +6317,7 @@ namespace lit
                             case LITTOK_WHILE:
                             case LITTOK_RETURN:
                                 {
-                                    longjmp(prs_jmpbuffer, 1);
+                                    longjmp(m_jumpbuffer, 1);
                                     return;
                                 }
                                 break;
@@ -6153,13 +6329,13 @@ namespace lit
                     }
                 }
 
-                bool parse(const char* file_name, const char* source, size_t length, Expression::List& statements)
+                bool parse(const char* filename, const char* source, size_t length, Expression::List& statements)
                 {
                     Compiler compiler;
                     Expression* statement;
-                    this->had_error = false;
-                    this->panic_mode = false;
-                    this->getStateScanner(this->m_state)->init(this->m_state, file_name, source, length);
+                    m_haderror = false;
+                    m_panicmode = false;
+                    this->getStateScanner(this->m_state)->init(this->m_state, filename, source, length);
                     compiler.init(this);
                     this->advance();
                     this->ignore_new_lines();
@@ -6181,13 +6357,13 @@ namespace lit
                             }
                         } while(!this->is_at_end());
                     }
-                    return this->had_error || this->getStateScanner(this->m_state)->had_error;
+                    return m_haderror || this->getStateScanner(this->m_state)->m_haderror;
                 }
 
         };
 
 
-        struct Optimizer
+        class Optimizer
         {
             #define LIT_DEBUG_OPTIMIZER
 
@@ -6279,17 +6455,18 @@ namespace lit
 
             public:
                 State* m_state;
-                PCGenericArray<Variable> variables;
-                int depth;
-                bool mark_used;
+                PCGenericArray<Variable> m_variables;
+                int m_depth;
+                bool m_markused;
+                size_t m_optcount = 0;
 
             public:
                 void init(State* state)
                 {
-                    this->m_state = state;
-                    this->depth = -1;
-                    this->mark_used = false;
-                    this->variables.init(state);
+                    m_state = state;
+                    m_depth = -1;
+                    m_markused = false;
+                    m_variables.init(state);
                 }
 
                 bool is_empty(Expression* statement)
@@ -6305,6 +6482,7 @@ namespace lit
                             {
                                 if(Object::isNumber(value))
                                 {
+                                    m_optcount++;
                                     optdbg("translating constant unary minus on number to literal value");
                                     return Object::toValue(-Object::toNumber(value));
                                 }
@@ -6312,6 +6490,7 @@ namespace lit
                             break;
                         case LITTOK_BANG:
                             {
+                                m_optcount++;
                                 optdbg("translating constant expression of '=' to literal value");
                                 return BOOL_VALUE(Object::isFalsey(value));
                             }
@@ -6320,6 +6499,7 @@ namespace lit
                             {
                                 if(Object::isNumber(value))
                                 {
+                                    m_optcount++;
                                     optdbg("translating unary tile (~) on number to literal value");
                                     return Object::toValue(~((int)Object::toNumber(value)));
                                 }
@@ -6440,9 +6620,7 @@ namespace lit
                     return Object::NullVal;
                 }
 
-
                 void optimize(Expression::List* statements);
-
 
                 #if defined(LIT_DEBUG_OPTIMIZER)
                 void optdbg(const char* fmt, ...)
@@ -6458,10 +6636,9 @@ namespace lit
                     #define optdbg(msg, ...)
                 #endif
 
-
                 void opt_begin_scope()
                 {
-                    this->depth++;
+                    m_depth++;
                 }
 
                 void opt_end_scope()
@@ -6469,10 +6646,10 @@ namespace lit
                     bool remove_unused;
                     Variable* variable;
                     PCGenericArray<Variable>* variables;
-                    this->depth--;
-                    variables = &this->variables;
+                    m_depth--;
+                    variables = &m_variables;
                     remove_unused = Optimizer::is_enabled(LITOPTSTATE_UNUSED_VAR);
-                    while(variables->m_count > 0 && variables->m_values[variables->m_count - 1].depth > this->depth)
+                    while(variables->m_count > 0 && variables->m_values[variables->m_count - 1].depth > m_depth)
                     {
                         if(remove_unused && !variables->m_values[variables->m_count - 1].used)
                         {
@@ -6486,8 +6663,8 @@ namespace lit
 
                 Variable* add_variable(const char* name, size_t length, bool constant, Expression** declaration)
                 {
-                    this->variables.push(Variable{ name, length, this->depth, constant, this->mark_used, Object::NullVal, declaration });
-                    return &this->variables.m_values[this->variables.m_count - 1];
+                    m_variables.push(Variable{ name, length, m_depth, constant, m_markused, Object::NullVal, declaration });
+                    return &m_variables.m_values[m_variables.m_count - 1];
                 }
 
                 Variable* resolve_variable(const char* name, size_t length)
@@ -6495,7 +6672,7 @@ namespace lit
                     int i;
                     PCGenericArray<Variable>* variables;
                     Variable* variable;
-                    variables = &this->variables;
+                    variables = &m_variables;
                     for(i = variables->m_count - 1; i >= 0; i--)
                     {
                         variable = &variables->m_values[i];
@@ -6645,7 +6822,6 @@ namespace lit
                                         break;
                                     default:
                                         {
-                                            UNREACHABLE
                                         }
                                         break;
                                 }
@@ -6926,12 +7102,12 @@ namespace lit
                                 auto stmt = (StmtForLoop*)statement;
                                 opt_begin_scope();
                                 // This is required, so that this doesn't optimize out our i variable (and such)
-                                this->mark_used = true;
+                                m_markused = true;
                                 optimize_expression(&stmt->exprinit);
                                 optimize_expression(&stmt->condition);
                                 optimize_expression(&stmt->increment);
                                 optimize_statement(&stmt->var);
-                                this->mark_used = false;
+                                m_markused = false;
                                 optimize_statement(&stmt->body);
                                 opt_end_scope();
                                 if(Optimizer::is_enabled(LITOPTSTATE_EMPTY_BODY) && is_empty(stmt->body))
@@ -7041,6 +7217,8 @@ namespace lit
                             {
                             }
                             break;
+                        default:
+                            break;
                     }
                 }
 
@@ -7054,44 +7232,51 @@ namespace lit
                 }
         };
 
-        struct Emitter
+        class Emitter
         {
             public:
+                struct Private
+                {
+                    bool initialized;
+                    bool constant;
+                };
+
+            public:
                 State* m_state = nullptr;
-                Chunk* chunk = nullptr;
-                Compiler* compiler = nullptr;
-                size_t last_line = 0;
-                size_t loop_start = 0;
-                PCGenericArray<Private> privates;
-                PCGenericArray<size_t> breaks;
-                PCGenericArray<size_t> continues;
-                Module* module = nullptr;
-                String* class_name = nullptr;
-                bool class_has_super = false;
-                bool previous_was_expression_statement = false;
-                int emit_reference = 0;
+                Chunk* m_chunk = nullptr;
+                Compiler* m_compiler = nullptr;
+                size_t m_lastline = 0;
+                size_t m_loopstart = 0;
+                PCGenericArray<Private> m_privates;
+                PCGenericArray<size_t> m_breaks;
+                PCGenericArray<size_t> m_continues;
+                Module* m_module = nullptr;
+                String* m_classname = nullptr;
+                bool m_havesuperclass = false;
+                bool m_prevwasexprstmt = false;
+                int m_emitreference = 0;
 
             public:
                 void init(State* state)
                 {
                     this->m_state = state;
-                    this->loop_start = 0;
-                    this->emit_reference = 0;
-                    this->class_name = nullptr;
-                    this->compiler = nullptr;
-                    this->chunk = nullptr;
-                    this->module = nullptr;
-                    this->previous_was_expression_statement = false;
-                    this->class_has_super = false;
-                    this->privates.init(state);
-                    this->breaks.init(state);
-                    this->continues.init(state);
+                    m_loopstart = 0;
+                    m_emitreference = 0;
+                    m_classname = nullptr;
+                    m_compiler = nullptr;
+                    m_chunk = nullptr;
+                    m_module = nullptr;
+                    m_prevwasexprstmt = false;
+                    m_havesuperclass = false;
+                    m_privates.init(state);
+                    m_breaks.init(state);
+                    m_continues.init(state);
                 }
 
                 void release()
                 {
-                    this->breaks.release();
-                    this->continues.release();
+                    m_breaks.release();
+                    m_continues.release();
                 }
 
                 void error(size_t line, Error error, ...);
@@ -7109,30 +7294,30 @@ namespace lit
 
                 void emit_byte(uint16_t line, uint8_t byte)
                 {
-                    if(line < this->last_line)
+                    if(line < m_lastline)
                     {
                         // Egor-fail proofing
-                        line = this->last_line;
+                        line = m_lastline;
                     }
-                    this->chunk->write_chunk(byte, line);
-                    this->last_line = line;
+                    m_chunk->write_chunk(byte, line);
+                    m_lastline = line;
                 }
 
                 void emit_bytes(uint16_t line, uint8_t a, uint8_t b)
                 {
-                    if(line < this->last_line)
+                    if(line < m_lastline)
                     {
                         // Egor-fail proofing
-                        line = this->last_line;
+                        line = m_lastline;
                     }
-                    this->chunk->write_chunk(a, line);
-                    this->chunk->write_chunk(b, line);
-                    this->last_line = line;
+                    m_chunk->write_chunk(a, line);
+                    m_chunk->write_chunk(b, line);
+                    m_lastline = line;
                 }
 
                 void emit_op(uint16_t line, OpCode op)
                 {
-                    auto compiler = this->compiler;
+                    auto compiler = m_compiler;
                     emit_byte(line, (uint8_t)op);
                     compiler->slots += getStackEffect((int)op);
                     if(compiler->slots > (int)compiler->function->max_slots)
@@ -7143,7 +7328,7 @@ namespace lit
 
                 void emit_ops(uint16_t line, OpCode a, OpCode b)
                 {
-                    auto compiler = this->compiler;
+                    auto compiler = m_compiler;
                     emit_bytes(line, (uint8_t)a, (uint8_t)b);
                     compiler->slots += getStackEffect((int)a) + getStackEffect((int)b);
                     if(compiler->slots > (int)compiler->function->max_slots)
@@ -7154,7 +7339,7 @@ namespace lit
 
                 void emit_varying_op(uint16_t line, OpCode op, uint8_t arg)
                 {
-                    auto compiler = this->compiler;
+                    auto compiler = m_compiler;
                     emit_bytes(line, (uint8_t)op, arg);
                     compiler->slots -= arg;
                     if(compiler->slots > (int)compiler->function->max_slots)
@@ -7165,7 +7350,7 @@ namespace lit
 
                 void emit_arged_op(uint16_t line, OpCode op, uint8_t arg)
                 {
-                    auto compiler = this->compiler;
+                    auto compiler = m_compiler;
                     emit_bytes(line, (uint8_t)op, arg);
                     compiler->slots += getStackEffect((int)op);
                     if(compiler->slots > (int)compiler->function->max_slots)
@@ -7192,27 +7377,27 @@ namespace lit
                     }
                 }
 
-                const char* getStateScannerFilename(State* state);
+                const char* getStateScannerFilename();
 
                 void init_compiler(Compiler* compiler, FunctionType type)
                 {
                     compiler->locals.init(this->m_state);
                     compiler->type = type;
                     compiler->scope_depth = 0;
-                    compiler->enclosing = (Compiler*)this->compiler;
+                    compiler->enclosing = (Compiler*)m_compiler;
                     compiler->skip_return = false;
-                    compiler->function = Function::make(this->m_state, this->module);
+                    compiler->function = Function::make(this->m_state, m_module);
                     compiler->loop_depth = 0;
-                    this->compiler = compiler;
-                    const char* name = getStateScannerFilename(this->m_state);
-                    if(this->compiler == nullptr)
+                    m_compiler = compiler;
+                    const char* name = getStateScannerFilename();
+                    if(m_compiler == nullptr)
                     {
                         compiler->function->name = String::copy(this->m_state, name, strlen(name));
                     }
-                    this->chunk = &compiler->function->chunk;
+                    m_chunk = &compiler->function->chunk;
                     if(Optimizer::is_enabled(LITOPTSTATE_LINE_INFO))
                     {
-                        this->chunk->has_line_info = false;
+                        m_chunk->has_line_info = false;
                     }
                     if(type == LITFUNC_METHOD || type == LITFUNC_STATIC_METHOD || type == LITFUNC_CONSTRUCTOR)
                     {
@@ -7228,14 +7413,14 @@ namespace lit
 
                 void emit_return(size_t line)
                 {
-                    if(this->compiler->type == LITFUNC_CONSTRUCTOR)
+                    if(m_compiler->type == LITFUNC_CONSTRUCTOR)
                     {
                         emit_arged_op(line, OP_GET_LOCAL, 0);
                         emit_op(line, OP_RETURN);
                     }
-                    else if(this->previous_was_expression_statement && this->chunk->m_count > 0)
+                    else if(m_prevwasexprstmt && m_chunk->m_count > 0)
                     {
-                        this->chunk->m_count--;// Remove the OP_POP
+                        m_chunk->m_count--;// Remove the OP_POP
                         emit_op(line, OP_RETURN);
                     }
                     else
@@ -7246,34 +7431,34 @@ namespace lit
 
                 Function* end_compiler(String* name)
                 {
-                    if(!this->compiler->skip_return)
+                    if(!m_compiler->skip_return)
                     {
-                        emit_return(this->last_line);
-                        this->compiler->skip_return = true;
+                        emit_return(m_lastline);
+                        m_compiler->skip_return = true;
                     }
-                    auto function = this->compiler->function;
-                    this->compiler->locals.release();
-                    this->compiler = (Compiler*)this->compiler->enclosing;
-                    this->chunk = this->compiler == nullptr ? nullptr : &this->compiler->function->chunk;
+                    auto function = m_compiler->function;
+                    m_compiler->locals.release();
+                    m_compiler = (Compiler*)m_compiler->enclosing;
+                    m_chunk = m_compiler == nullptr ? nullptr : &m_compiler->function->chunk;
                     if(name != nullptr)
                     {
                         function->name = name;
                     }
                 #ifdef LIT_TRACE_CHUNK
-                    lit_disassemble_chunk(&function->chunk, function->name->chars, nullptr);
+                    lit_disassemble_chunk(&function->chunk, function->name->data(), nullptr);
                 #endif
                     return function;
                 }
 
                 void begin_scope()
                 {
-                    this->compiler->scope_depth++;
+                    m_compiler->scope_depth++;
                 }
 
                 void end_scope(uint16_t line)
                 {
-                    this->compiler->scope_depth--;
-                    auto compiler = this->compiler;
+                    m_compiler->scope_depth--;
+                    auto compiler = m_compiler;
                     PCGenericArray<Local>* locals = &compiler->locals;
                     while(locals->m_count > 0 && locals->m_values[locals->m_count - 1].depth > compiler->scope_depth)
                     {
@@ -7292,7 +7477,7 @@ namespace lit
 
                 uint16_t add_constant(size_t line, Value value)
                 {
-                    size_t constant = this->chunk->add_constant(value);
+                    size_t constant = m_chunk->add_constant(value);
                     if(constant >= UINT16_MAX)
                     {
                         error(line, Error::LITERROR_TOO_MANY_CONSTANTS);
@@ -7302,7 +7487,7 @@ namespace lit
 
                 size_t emit_constant(size_t line, Value value)
                 {
-                    size_t constant = this->chunk->add_constant(value);
+                    size_t constant = m_chunk->add_constant(value);
                     if(constant < UINT8_MAX)
                     {
                         emit_arged_op(line, OP_CONSTANT, constant);
@@ -7322,12 +7507,12 @@ namespace lit
 
                 int add_private(const char* name, size_t length, size_t line, bool constant)
                 {
-                    auto privates = &this->privates;
+                    auto privates = &m_privates;
                     if(privates->m_count == UINT16_MAX)
                     {
                         error(line, Error::LITERROR_TOO_MANY_PRIVATES);
                     }
-                    auto private_names = &this->module->private_names->values;
+                    auto private_names = &m_module->private_names->m_values;
                     auto key = private_names->find(name, length, String::makeHash(name, length));
                     if(key != nullptr)
                     {
@@ -7342,13 +7527,13 @@ namespace lit
                     int index = (int)privates->m_count;
                     privates->push(Private{ false, constant });
                     private_names->set(String::copy(state, name, length), Object::toValue(index));
-                    this->module->private_count++;
+                    m_module->private_count++;
                     return index;
                 }
 
                 int resolve_private(const char* name, size_t length, size_t line)
                 {
-                    auto private_names = &this->module->private_names->values;
+                    auto private_names = &m_module->private_names->m_values;
                     auto key = private_names->find(name, length, String::makeHash(name, length));
                     if(key != nullptr)
                     {
@@ -7356,7 +7541,7 @@ namespace lit
                         if(private_names->get(key, &index))
                         {
                             int number_index = Object::toNumber(index);
-                            if(!this->privates.m_values[number_index].initialized)
+                            if(!m_privates.m_values[number_index].initialized)
                             {
                                 error(line, Error::LITERROR_VARIABLE_USED_IN_INIT, length, name);
                             }
@@ -7367,7 +7552,7 @@ namespace lit
                 }
                 int add_local(const char* name, size_t length, size_t line, bool constant)
                 {
-                    auto compiler = this->compiler;
+                    auto compiler = m_compiler;
                     auto locals = &compiler->locals;
                     if(locals->m_count == UINT16_MAX)
                     {
@@ -7450,36 +7635,36 @@ namespace lit
 
                 void mark_local_initialized(size_t index)
                 {
-                    this->compiler->locals.m_values[index].depth = this->compiler->scope_depth;
+                    m_compiler->locals.m_values[index].depth = m_compiler->scope_depth;
                 }
 
                 void mark_private_initialized(size_t index)
                 {
-                    this->privates.m_values[index].initialized = true;
+                    m_privates.m_values[index].initialized = true;
                 }
 
                 size_t emit_jump(OpCode code, size_t line)
                 {
                     emit_op(line, code);
                     emit_bytes(line, 0xff, 0xff);
-                    return this->chunk->m_count - 2;
+                    return m_chunk->m_count - 2;
                 }
 
                 void patch_jump(size_t offset, size_t line)
                 {
-                    size_t jump = this->chunk->m_count - offset - 2;
+                    size_t jump = m_chunk->m_count - offset - 2;
                     if(jump > UINT16_MAX)
                     {
                         error(line, Error::LITERROR_JUMP_TOO_BIG);
                     }
-                    this->chunk->code[offset] = (jump >> 8) & 0xff;
-                    this->chunk->code[offset + 1] = jump & 0xff;
+                    m_chunk->code[offset] = (jump >> 8) & 0xff;
+                    m_chunk->code[offset + 1] = jump & 0xff;
                 }
 
                 void emit_loop(size_t start, size_t line)
                 {
                     emit_op(line, OP_JUMP_BACK);
-                    size_t offset = this->chunk->m_count - start + 2;
+                    size_t offset = m_chunk->m_count - start + 2;
                     if(offset > UINT16_MAX)
                     {
                         error(line, Error::LITERROR_JUMP_TOO_BIG);
@@ -7587,7 +7772,7 @@ namespace lit
                                 }
                                 else
                                 {
-                                    UNREACHABLE;
+                                    /* UNREACHABLE */
                                 }
                             }
                             break;
@@ -7603,9 +7788,9 @@ namespace lit
                                 if(op == LITTOK_AMPERSAND_AMPERSAND || op == LITTOK_BAR_BAR || op == LITTOK_QUESTION_QUESTION)
                                 {
                                     size_t jump = emit_jump(op == LITTOK_BAR_BAR ? OP_OR : (op == LITTOK_QUESTION_QUESTION ? OP_NULL_OR : OP_AND),
-                                                          this->last_line);
+                                                          m_lastline);
                                     emit_expression(expr->right);
-                                    patch_jump(jump, this->last_line);
+                                    patch_jump(jump, m_lastline);
                                     break;
                                 }
                                 emit_expression(expr->right);
@@ -7708,7 +7893,7 @@ namespace lit
                                         break;
                                     default:
                                         {
-                                            UNREACHABLE;
+                                            /* UNREACHABLE */
                                         }
                                     break;
                                 }
@@ -7737,7 +7922,7 @@ namespace lit
                                         break;
                                     default:
                                         {
-                                            UNREACHABLE;
+                                            /* UNREACHABLE */
                                         }
                                         break;
                                 }
@@ -7746,15 +7931,15 @@ namespace lit
                         case Expression::Type::Variable:
                             {
                                 auto expr = (ExprVar*)expression;
-                                bool ref = this->emit_reference > 0;
+                                bool ref = m_emitreference > 0;
                                 if(ref)
                                 {
-                                    this->emit_reference--;
+                                    m_emitreference--;
                                 }
-                                int index = resolve_local(this->compiler, expr->name, expr->length, expression->line);
+                                int index = resolve_local(m_compiler, expr->name, expr->length, expression->line);
                                 if(index == -1)
                                 {
-                                    index = resolve_upvalue(this->compiler, expr->name, expr->length, expression->line);
+                                    index = resolve_upvalue(m_compiler, expr->name, expr->length, expression->line);
                                     if(index == -1)
                                     {
                                         index = resolve_private(expr->name, expr->length, expression->line);
@@ -7804,10 +7989,10 @@ namespace lit
                                 {
                                     emit_expression(expr->value);
                                     auto e = (ExprVar*)expr->to;
-                                    int index = resolve_local(this->compiler, e->name, e->length, expr->to->line);
+                                    int index = resolve_local(m_compiler, e->name, e->length, expr->to->line);
                                     if(index == -1)
                                     {
-                                        index = resolve_upvalue(this->compiler, e->name, e->length, expr->to->line);
+                                        index = resolve_upvalue(m_compiler, e->name, e->length, expr->to->line);
                                         if(index == -1)
                                         {
                                             index = resolve_private(e->name, e->length, expr->to->line);
@@ -7820,7 +8005,7 @@ namespace lit
                                             }
                                             else
                                             {
-                                                if(this->privates.m_values[index].constant)
+                                                if(m_privates.m_values[index].constant)
                                                 {
                                                     error(expression->line, Error::LITERROR_CONSTANT_MODIFIED, e->length, e->name);
                                                 }
@@ -7835,7 +8020,7 @@ namespace lit
                                     }
                                     else
                                     {
-                                        if(this->compiler->locals.m_values[index].constant)
+                                        if(m_compiler->locals.m_values[index].constant)
                                         {
                                             error(expression->line, Error::LITERROR_CONSTANT_MODIFIED, e->length, e->name);
                                         }
@@ -7849,8 +8034,8 @@ namespace lit
                                     auto e = (ExprIndexGet*)expr->to;
                                     emit_expression(e->where);
                                     emit_expression(expr->value);
-                                    emit_constant(this->last_line, String::copy(this->m_state, e->name, e->length)->asValue());
-                                    emit_ops(this->last_line, OP_SET_FIELD, OP_POP);
+                                    emit_constant(m_lastline, String::copy(this->m_state, e->name, e->length)->asValue());
+                                    emit_ops(m_lastline, OP_SET_FIELD, OP_POP);
                                 }
                                 else if(expr->to->type == Expression::Type::Subscript)
                                 {
@@ -7858,7 +8043,7 @@ namespace lit
                                     emit_expression(e->array);
                                     emit_expression(e->index);
                                     emit_expression(expr->value);
-                                    emit_op(this->last_line, OP_SUBSCRIPT_SET);
+                                    emit_op(m_lastline, OP_SUBSCRIPT_SET);
                                 }
                                 else if(expr->to->type == Expression::Type::Reference)
                                 {
@@ -7900,7 +8085,7 @@ namespace lit
                                         if(ee->length == 3 && memcmp(ee->name, "...", 3) == 0)
                                         {
                                             emit_arged_op(e->line, OP_VARARG,
-                                                          resolve_local(this->compiler, "...", 3, expression->line));
+                                                          resolve_local(m_compiler, "...", 3, expression->line));
                                             break;
                                         }
                                     }
@@ -7914,19 +8099,19 @@ namespace lit
                                         emit_varying_op(expression->line,
                                                         ((ExprIndexGet*)expr->callee)->ignore_result ? OP_INVOKE_IGNORING : OP_INVOKE,
                                                         (uint8_t)expr->args.m_count);
-                                        emit_short(this->last_line,
-                                                   add_constant(this->last_line,
+                                        emit_short(m_lastline,
+                                                   add_constant(m_lastline,
                                                                 String::copy(this->m_state, e->name, e->length)->asValue()));
                                     }
                                     else
                                     {
                                         auto e = (ExprSuper*)expr->callee;
-                                        uint8_t index = resolve_upvalue(this->compiler, "super", 5, this->last_line);
+                                        uint8_t index = resolve_upvalue(m_compiler, "super", 5, m_lastline);
                                         emit_arged_op(expression->line, OP_GET_UPVALUE, index);
-                                        emit_varying_op(this->last_line,
+                                        emit_varying_op(m_lastline,
                                                         ((ExprSuper*)expr->callee)->ignore_result ? OP_INVOKE_SUPER_IGNORING : OP_INVOKE_SUPER,
                                                         (uint8_t)expr->args.m_count);
-                                        emit_short(this->last_line, add_constant(this->last_line, e->method->asValue()));
+                                        emit_short(m_lastline, add_constant(m_lastline, e->method->asValue()));
                                     }
                                 }
                                 else
@@ -7943,7 +8128,7 @@ namespace lit
                                             auto getter = (ExprIndexGet*)get;
                                             if(getter->jump > 0)
                                             {
-                                                patch_jump(getter->jump, this->last_line);
+                                                patch_jump(getter->jump, m_lastline);
                                             }
                                             get = getter->where;
                                         }
@@ -7965,37 +8150,37 @@ namespace lit
                                 for(size_t i = 0; i < objinit->values.m_count; i++)
                                 {
                                     auto e = objinit->values.m_values[i];
-                                    this->last_line = e->line;
-                                    emit_constant(this->last_line, objinit->keys.m_values[i]);
+                                    m_lastline = e->line;
+                                    emit_constant(m_lastline, objinit->keys.m_values[i]);
                                     emit_expression(e);
-                                    emit_op(this->last_line, OP_PUSH_OBJECT_FIELD);
+                                    emit_op(m_lastline, OP_PUSH_OBJECT_FIELD);
                                 }
                             }
                             break;
                         case Expression::Type::Get:
                             {
                                 auto expr = (ExprIndexGet*)expression;
-                                bool ref = this->emit_reference > 0;
+                                bool ref = m_emitreference > 0;
                                 if(ref)
                                 {
-                                    this->emit_reference--;
+                                    m_emitreference--;
                                 }
                                 emit_expression(expr->where);
                                 if(expr->jump == 0)
                                 {
-                                    expr->jump = emit_jump(OP_JUMP_IF_NULL, this->last_line);
+                                    expr->jump = emit_jump(OP_JUMP_IF_NULL, m_lastline);
                                     if(!expr->ignore_emit)
                                     {
-                                        emit_constant(this->last_line,
+                                        emit_constant(m_lastline,
                                                       String::copy(this->m_state, expr->name, expr->length)->asValue());
-                                        emit_op(this->last_line, ref ? OP_REFERENCE_FIELD : OP_GET_FIELD);
+                                        emit_op(m_lastline, ref ? OP_REFERENCE_FIELD : OP_GET_FIELD);
                                     }
-                                    patch_jump(expr->jump, this->last_line);
+                                    patch_jump(expr->jump, m_lastline);
                                 }
                                 else if(!expr->ignore_emit)
                                 {
-                                    emit_constant(this->last_line, String::copy(this->m_state, expr->name, expr->length)->asValue());
-                                    emit_op(this->last_line, ref ? OP_REFERENCE_FIELD : OP_GET_FIELD);
+                                    emit_constant(m_lastline, String::copy(this->m_state, expr->name, expr->length)->asValue());
+                                    emit_op(m_lastline, ref ? OP_REFERENCE_FIELD : OP_GET_FIELD);
                                 }
                             }
                             break;
@@ -8004,14 +8189,14 @@ namespace lit
                                 auto expr = (ExprIndexSet*)expression;
                                 emit_expression(expr->where);
                                 emit_expression(expr->value);
-                                emit_constant(this->last_line, String::copy(this->m_state, expr->name, expr->length)->asValue());
-                                emit_op(this->last_line, OP_SET_FIELD);
+                                emit_constant(m_lastline, String::copy(this->m_state, expr->name, expr->length)->asValue());
+                                emit_op(m_lastline, OP_SET_FIELD);
                             }
                             break;
                         case Expression::Type::Lambda:
                             {
                                 auto expr = (ExprLambda*)expression;
-                                auto name = String::format(this->m_state, "lambda @:@", this->module->name->asValue(),
+                                auto name = String::format(this->m_state, "<lambda @:@>", m_module->name->asValue(),
                                                                               String::stringNumberToString(this->m_state, expression->line));
                                 Compiler compiler;
                                 init_compiler(&compiler, LITFUNC_REGULAR);
@@ -8028,26 +8213,26 @@ namespace lit
                                     emit_statement(expr->body);
                                     if(single_expression)
                                     {
-                                        emit_op(this->last_line, OP_RETURN);
+                                        emit_op(m_lastline, OP_RETURN);
                                     }
                                 }
-                                end_scope(this->last_line);
+                                end_scope(m_lastline);
                                 auto function = end_compiler(name);
                                 function->arg_count = expr->parameters.m_count;
                                 function->max_slots += function->arg_count;
                                 function->vararg = vararg;
                                 if(function->upvalue_count > 0)
                                 {
-                                    emit_op(this->last_line, OP_CLOSURE);
-                                    emit_short(this->last_line, add_constant(this->last_line, function->asValue()));
+                                    emit_op(m_lastline, OP_CLOSURE);
+                                    emit_short(m_lastline, add_constant(m_lastline, function->asValue()));
                                     for(size_t i = 0; i < function->upvalue_count; i++)
                                     {
-                                        emit_bytes(this->last_line, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
+                                        emit_bytes(m_lastline, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
                                     }
                                 }
                                 else
                                 {
-                                    emit_constant(this->last_line, function->asValue());
+                                    emit_constant(m_lastline, function->asValue());
                                 }
                             }
                             break;
@@ -8058,7 +8243,7 @@ namespace lit
                                 for(size_t i = 0; i < expr->values.m_count; i++)
                                 {
                                     emit_expression(expr->values.m_values[i]);
-                                    emit_op(this->last_line, OP_PUSH_ARRAY_ELEMENT);
+                                    emit_op(m_lastline, OP_PUSH_ARRAY_ELEMENT);
                                 }
                             }
                             break;
@@ -8068,9 +8253,9 @@ namespace lit
                                 emit_op(expression->line, OP_OBJECT);
                                 for(size_t i = 0; i < expr->values.m_count; i++)
                                 {
-                                    emit_constant(this->last_line, expr->keys.m_values[i]);
+                                    emit_constant(m_lastline, expr->keys.m_values[i]);
                                     emit_expression(expr->values.m_values[i]);
-                                    emit_op(this->last_line, OP_PUSH_OBJECT_FIELD);
+                                    emit_op(m_lastline, OP_PUSH_OBJECT_FIELD);
                                 }
                             }
                             break;
@@ -8084,7 +8269,7 @@ namespace lit
                             break;
                         case Expression::Type::This:
                             {
-                                FunctionType type = this->compiler->type;
+                                FunctionType type = m_compiler->type;
                                 if(type == LITFUNC_STATIC_METHOD)
                                 {
                                     error(expression->line, Error::LITERROR_THIS_MISSUSE, "in static methods");
@@ -8095,33 +8280,33 @@ namespace lit
                                 }
                                 else
                                 {
-                                    if(this->compiler->enclosing == nullptr)
+                                    if(m_compiler->enclosing == nullptr)
                                     {
                                         error(expression->line, Error::LITERROR_THIS_MISSUSE, "in functions outside of any class");
                                     }
                                     else
                                     {
-                                        int local = resolve_local((Compiler*)this->compiler->enclosing, "this", 4, expression->line);
+                                        int local = resolve_local((Compiler*)m_compiler->enclosing, "this", 4, expression->line);
                                         emit_arged_op(expression->line, OP_GET_UPVALUE,
-                                                      add_upvalue(this->compiler, local, expression->line, true));
+                                                      add_upvalue(m_compiler, local, expression->line, true));
                                     }
                                 }
                             }
                             break;
                         case Expression::Type::Super:
                             {
-                                if(this->compiler->type == LITFUNC_STATIC_METHOD)
+                                if(m_compiler->type == LITFUNC_STATIC_METHOD)
                                 {
                                     error(expression->line, Error::LITERROR_SUPER_MISSUSE, "in static methods");
                                 }
-                                else if(!this->class_has_super)
+                                else if(!m_havesuperclass)
                                 {
-                                    error(expression->line, Error::LITERROR_NO_SUPER, this->class_name->chars);
+                                    error(expression->line, Error::LITERROR_NO_SUPER, m_classname->data());
                                 }
                                 auto expr = (ExprSuper*)expression;
                                 if(!expr->ignore_emit)
                                 {
-                                    uint8_t index = resolve_upvalue(this->compiler, "super", 5, this->last_line);
+                                    uint8_t index = resolve_upvalue(m_compiler, "super", 5, m_lastline);
                                     emit_arged_op(expression->line, OP_GET_LOCAL, 0);
                                     emit_arged_op(expression->line, OP_GET_UPVALUE, index);
                                     emit_op(expression->line, OP_GET_SUPER_METHOD);
@@ -8143,11 +8328,11 @@ namespace lit
                                 emit_expression(expr->condition);
                                 uint64_t else_jump = emit_jump(OP_JUMP_IF_FALSE, expression->line);
                                 emit_expression(expr->if_branch);
-                                uint64_t end_jump = emit_jump(OP_JUMP, this->last_line);
+                                uint64_t end_jump = emit_jump(OP_JUMP, m_lastline);
                                 patch_jump(else_jump, expr->else_branch->line);
                                 emit_expression(expr->else_branch);
 
-                                patch_jump(end_jump, this->last_line);
+                                patch_jump(end_jump, m_lastline);
                             }
                             break;
                         case Expression::Type::Interpolation:
@@ -8157,11 +8342,11 @@ namespace lit
                                 for(size_t i = 0; i < expr->expressions.m_count; i++)
                                 {
                                     emit_expression(expr->expressions.m_values[i]);
-                                    emit_op(this->last_line, OP_PUSH_ARRAY_ELEMENT);
+                                    emit_op(m_lastline, OP_PUSH_ARRAY_ELEMENT);
                                 }
-                                emit_varying_op(this->last_line, OP_INVOKE, 0);
-                                emit_short(this->last_line,
-                                           add_constant(this->last_line, String::internValue(this->m_state, "join")));
+                                emit_varying_op(m_lastline, OP_INVOKE, 0);
+                                emit_short(m_lastline,
+                                           add_constant(m_lastline, String::internValue(this->m_state, "join")));
                             }
                             break;
                         case Expression::Type::Reference:
@@ -8172,10 +8357,10 @@ namespace lit
                                     error(expression->line, Error::LITERROR_INVALID_REFERENCE_TARGET);
                                     break;
                                 }
-                                int old = this->emit_reference;
-                                this->emit_reference++;
+                                int old = m_emitreference;
+                                m_emitreference++;
                                 emit_expression(to);
-                                this->emit_reference = old;
+                                m_emitreference = old;
                             }
                             break;
                         default:
@@ -8264,14 +8449,14 @@ namespace lit
                                         }
                                     }
                                 }
-                                end_scope(this->last_line);
+                                end_scope(m_lastline);
                             }
                             break;
                         case Expression::Type::VarDecl:
                             {
                                 varstmt = (StmtVar*)statement;
                                 line = statement->line;
-                                isprivate = this->compiler->enclosing == nullptr && this->compiler->scope_depth == 0;
+                                isprivate = m_compiler->enclosing == nullptr && m_compiler->scope_depth == 0;
                                 index = isprivate ? resolve_private(varstmt->name, varstmt->length, statement->line) :
                                                       add_local(varstmt->name, varstmt->length, statement->line, varstmt->constant);
                                 if(varstmt->valexpr == nullptr)
@@ -8313,7 +8498,7 @@ namespace lit
                                     emit_expression(ifstmt->condition);
                                     else_jump = emit_jump(OP_JUMP_IF_FALSE, statement->line);
                                     emit_statement(ifstmt->if_branch);
-                                    end_jump = emit_jump(OP_JUMP, this->last_line);
+                                    end_jump = emit_jump(OP_JUMP, m_lastline);
                                 }
                                 size_t jmpcnt = (ifstmt->elseif_branches == nullptr ? 1 : ifstmt->elseif_branches->m_count);
                                 //uint64_t end_jumps[ifstmt->elseif_branches == nullptr ? 1 : ifstmt->elseif_branches->m_count];
@@ -8330,9 +8515,9 @@ namespace lit
                                         }
                                         patch_jump(else_jump, e->line);
                                         emit_expression(e);
-                                        else_jump = emit_jump(OP_JUMP_IF_FALSE, this->last_line);
+                                        else_jump = emit_jump(OP_JUMP_IF_FALSE, m_lastline);
                                         emit_statement(ifstmt->elseif_branches->m_values[i]);
-                                        end_jumps[i] = emit_jump(OP_JUMP, this->last_line);
+                                        end_jumps[i] = emit_jump(OP_JUMP, m_lastline);
                                     }
                                 }
                                 if(ifstmt->else_branch != nullptr)
@@ -8342,11 +8527,11 @@ namespace lit
                                 }
                                 else
                                 {
-                                    patch_jump(else_jump, this->last_line);
+                                    patch_jump(else_jump, m_lastline);
                                 }
                                 if(end_jump != 0)
                                 {
-                                    patch_jump(end_jump, this->last_line);
+                                    patch_jump(end_jump, m_lastline);
                                 }
                                 if(ifstmt->elseif_branches != nullptr)
                                 {
@@ -8365,24 +8550,24 @@ namespace lit
                         case Expression::Type::WhileLoop:
                             {
                                 whilestmt = (StmtWhileLoop*)statement;
-                                start = this->chunk->m_count;
-                                this->loop_start = start;
-                                this->compiler->loop_depth++;
+                                start = m_chunk->m_count;
+                                m_loopstart = start;
+                                m_compiler->loop_depth++;
                                 emit_expression(whilestmt->condition);
                                 exit_jump = emit_jump(OP_JUMP_IF_FALSE, statement->line);
                                 emit_statement(whilestmt->body);
-                                patch_loop_jumps(&this->continues, this->last_line);
-                                emit_loop(start, this->last_line);
-                                patch_jump(exit_jump, this->last_line);
-                                patch_loop_jumps(&this->breaks, this->last_line);
-                                this->compiler->loop_depth--;
+                                patch_loop_jumps(&m_continues, m_lastline);
+                                emit_loop(start, m_lastline);
+                                patch_jump(exit_jump, m_lastline);
+                                patch_loop_jumps(&m_breaks, m_lastline);
+                                m_compiler->loop_depth--;
                             }
                             break;
                         case Expression::Type::ForLoop:
                             {
                                 forstmt = (StmtForLoop*)statement;
                                 begin_scope();
-                                this->compiler->loop_depth++;
+                                m_compiler->loop_depth++;
                                 if(forstmt->c_style)
                                 {
                                     if(forstmt->var != nullptr)
@@ -8393,24 +8578,24 @@ namespace lit
                                     {
                                         emit_expression(forstmt->exprinit);
                                     }
-                                    start = this->chunk->m_count;
+                                    start = m_chunk->m_count;
                                     exit_jump = 0;
                                     if(forstmt->condition != nullptr)
                                     {
                                         emit_expression(forstmt->condition);
-                                        exit_jump = emit_jump(OP_JUMP_IF_FALSE, this->last_line);
+                                        exit_jump = emit_jump(OP_JUMP_IF_FALSE, m_lastline);
                                     }
                                     if(forstmt->increment != nullptr)
                                     {
-                                        body_jump = emit_jump(OP_JUMP, this->last_line);
-                                        increment_start = this->chunk->m_count;
+                                        body_jump = emit_jump(OP_JUMP, m_lastline);
+                                        increment_start = m_chunk->m_count;
                                         emit_expression(forstmt->increment);
-                                        emit_op(this->last_line, OP_POP);
-                                        emit_loop(start, this->last_line);
+                                        emit_op(m_lastline, OP_POP);
+                                        emit_loop(start, m_lastline);
                                         start = increment_start;
-                                        patch_jump(body_jump, this->last_line);
+                                        patch_jump(body_jump, m_lastline);
                                     }
-                                    this->loop_start = start;
+                                    m_loopstart = start;
                                     begin_scope();
                                     if(forstmt->body != nullptr)
                                     {
@@ -8427,12 +8612,12 @@ namespace lit
                                             emit_statement(forstmt->body);
                                         }
                                     }
-                                    patch_loop_jumps(&this->continues, this->last_line);
-                                    end_scope(this->last_line);
-                                    emit_loop(start, this->last_line);
+                                    patch_loop_jumps(&m_continues, m_lastline);
+                                    end_scope(m_lastline);
+                                    emit_loop(start, m_lastline);
                                     if(forstmt->condition != nullptr)
                                     {
-                                        patch_jump(exit_jump, this->last_line);
+                                        patch_jump(exit_jump, m_lastline);
                                     }
                                 }
                                 else
@@ -8440,33 +8625,33 @@ namespace lit
                                     sequence = add_local("seq ", 4, statement->line, false);
                                     mark_local_initialized(sequence);
                                     emit_expression(forstmt->condition);
-                                    emit_byte_or_short(this->last_line, OP_SET_LOCAL, OP_SET_LOCAL_LONG, sequence);
+                                    emit_byte_or_short(m_lastline, OP_SET_LOCAL, OP_SET_LOCAL_LONG, sequence);
                                     iterator = add_local("iter ", 5, statement->line, false);
                                     mark_local_initialized(iterator);
-                                    emit_op(this->last_line, OP_NULL);
-                                    emit_byte_or_short(this->last_line, OP_SET_LOCAL, OP_SET_LOCAL_LONG, iterator);
-                                    start = this->chunk->m_count;
-                                    this->loop_start = this->chunk->m_count;
+                                    emit_op(m_lastline, OP_NULL);
+                                    emit_byte_or_short(m_lastline, OP_SET_LOCAL, OP_SET_LOCAL_LONG, iterator);
+                                    start = m_chunk->m_count;
+                                    m_loopstart = m_chunk->m_count;
                                     // iter = seq.iterator(iter)
-                                    emit_byte_or_short(this->last_line, OP_GET_LOCAL, OP_GET_LOCAL_LONG, sequence);
-                                    emit_byte_or_short(this->last_line, OP_GET_LOCAL, OP_GET_LOCAL_LONG, iterator);
-                                    emit_varying_op(this->last_line, OP_INVOKE, 1);
-                                    emit_short(this->last_line,
-                                               add_constant(this->last_line, String::internValue(this->m_state, "iterator")));
-                                    emit_byte_or_short(this->last_line, OP_SET_LOCAL, OP_SET_LOCAL_LONG, iterator);
+                                    emit_byte_or_short(m_lastline, OP_GET_LOCAL, OP_GET_LOCAL_LONG, sequence);
+                                    emit_byte_or_short(m_lastline, OP_GET_LOCAL, OP_GET_LOCAL_LONG, iterator);
+                                    emit_varying_op(m_lastline, OP_INVOKE, 1);
+                                    emit_short(m_lastline,
+                                               add_constant(m_lastline, String::internValue(this->m_state, "iterator")));
+                                    emit_byte_or_short(m_lastline, OP_SET_LOCAL, OP_SET_LOCAL_LONG, iterator);
                                     // If iter is null, just get out of the loop
-                                    exit_jump = emit_jump(OP_JUMP_IF_NULL_POPPING, this->last_line);
+                                    exit_jump = emit_jump(OP_JUMP_IF_NULL_POPPING, m_lastline);
                                     begin_scope();
                                     // var i = seq.iteratorValue(iter)
                                     var = (StmtVar*)forstmt->var;
                                     localcnt = add_local(var->name, var->length, statement->line, false);
                                     mark_local_initialized(localcnt);
-                                    emit_byte_or_short(this->last_line, OP_GET_LOCAL, OP_GET_LOCAL_LONG, sequence);
-                                    emit_byte_or_short(this->last_line, OP_GET_LOCAL, OP_GET_LOCAL_LONG, iterator);
-                                    emit_varying_op(this->last_line, OP_INVOKE, 1);
-                                    emit_short(this->last_line,
-                                               add_constant(this->last_line, String::internValue(this->m_state, "iteratorValue")));
-                                    emit_byte_or_short(this->last_line, OP_SET_LOCAL, OP_SET_LOCAL_LONG, localcnt);
+                                    emit_byte_or_short(m_lastline, OP_GET_LOCAL, OP_GET_LOCAL_LONG, sequence);
+                                    emit_byte_or_short(m_lastline, OP_GET_LOCAL, OP_GET_LOCAL_LONG, iterator);
+                                    emit_varying_op(m_lastline, OP_INVOKE, 1);
+                                    emit_short(m_lastline,
+                                               add_constant(m_lastline, String::internValue(this->m_state, "iteratorValue")));
+                                    emit_byte_or_short(m_lastline, OP_SET_LOCAL, OP_SET_LOCAL_LONG, localcnt);
                                     if(forstmt->body != nullptr)
                                     {
                                         if(forstmt->body->type == Expression::Type::Block)
@@ -8482,37 +8667,37 @@ namespace lit
                                             emit_statement(forstmt->body);
                                         }
                                     }
-                                    patch_loop_jumps(&this->continues, this->last_line);
-                                    end_scope(this->last_line);
-                                    emit_loop(start, this->last_line);
-                                    patch_jump(exit_jump, this->last_line);
+                                    patch_loop_jumps(&m_continues, m_lastline);
+                                    end_scope(m_lastline);
+                                    emit_loop(start, m_lastline);
+                                    patch_jump(exit_jump, m_lastline);
                                 }
-                                patch_loop_jumps(&this->breaks, this->last_line);
-                                end_scope(this->last_line);
-                                this->compiler->loop_depth--;
+                                patch_loop_jumps(&m_breaks, m_lastline);
+                                end_scope(m_lastline);
+                                m_compiler->loop_depth--;
                             }
                             break;
 
                         case Expression::Type::ContinueClause:
                         {
-                            if(this->compiler->loop_depth == 0)
+                            if(m_compiler->loop_depth == 0)
                             {
                                 error(statement->line, Error::LITERROR_LOOP_JUMP_MISSUSE, "continue");
                             }
-                            this->continues.push(emit_jump(OP_JUMP, statement->line));
+                            m_continues.push(emit_jump(OP_JUMP, statement->line));
                             break;
                         }
 
                         case Expression::Type::BreakClause:
                             {
-                                if(this->compiler->loop_depth == 0)
+                                if(m_compiler->loop_depth == 0)
                                 {
                                     error(statement->line, Error::LITERROR_LOOP_JUMP_MISSUSE, "break");
                                 }
                                 emit_op(statement->line, OP_POP_LOCALS);
-                                depth = this->compiler->scope_depth;
+                                depth = m_compiler->scope_depth;
                                 local_count = 0;
-                                locals = &this->compiler->locals;
+                                locals = &m_compiler->locals;
                                 for(ii = locals->m_count - 1; ii >= 0; ii--)
                                 {
                                     local = &locals->m_values[ii];
@@ -8527,14 +8712,14 @@ namespace lit
                                     }
                                 }
                                 emit_short(statement->line, local_count);
-                                this->breaks.push(emit_jump(OP_JUMP, statement->line));
+                                m_breaks.push(emit_jump(OP_JUMP, statement->line));
                             }
                             break;
                         case Expression::Type::FunctionDecl:
                             {
                                 funcstmt = (StmtFunction*)statement;
                                 isexport = funcstmt->exported;
-                                isprivate = !isexport && this->compiler->enclosing == nullptr && this->compiler->scope_depth == 0;
+                                isprivate = !isexport && m_compiler->enclosing == nullptr && m_compiler->scope_depth == 0;
                                 islocal = !(isexport || isprivate);
                                 index = 0;
                                 if(!isexport)
@@ -8555,59 +8740,59 @@ namespace lit
                                 begin_scope();
                                 vararg = emit_parameters(&funcstmt->parameters, statement->line);
                                 emit_statement(funcstmt->body);
-                                end_scope(this->last_line);
+                                end_scope(m_lastline);
                                 function = end_compiler(name);
                                 function->arg_count = funcstmt->parameters.m_count;
                                 function->max_slots += function->arg_count;
                                 function->vararg = vararg;
                                 if(function->upvalue_count > 0)
                                 {
-                                    emit_op(this->last_line, OP_CLOSURE);
-                                    emit_short(this->last_line, add_constant(this->last_line, function->asValue()));
+                                    emit_op(m_lastline, OP_CLOSURE);
+                                    emit_short(m_lastline, add_constant(m_lastline, function->asValue()));
                                     for(i = 0; i < function->upvalue_count; i++)
                                     {
-                                        emit_bytes(this->last_line, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
+                                        emit_bytes(m_lastline, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
                                     }
                                 }
                                 else
                                 {
-                                    emit_constant(this->last_line, function->asValue());
+                                    emit_constant(m_lastline, function->asValue());
                                 }
                                 if(isexport)
                                 {
-                                    emit_op(this->last_line, OP_SET_GLOBAL);
-                                    emit_short(this->last_line, add_constant(this->last_line, name->asValue()));
+                                    emit_op(m_lastline, OP_SET_GLOBAL);
+                                    emit_short(m_lastline, add_constant(m_lastline, name->asValue()));
                                 }
                                 else if(isprivate)
                                 {
-                                    emit_byte_or_short(this->last_line, OP_SET_PRIVATE, OP_SET_PRIVATE_LONG, index);
+                                    emit_byte_or_short(m_lastline, OP_SET_PRIVATE, OP_SET_PRIVATE_LONG, index);
                                 }
                                 else
                                 {
-                                    emit_byte_or_short(this->last_line, OP_SET_LOCAL, OP_SET_LOCAL_LONG, index);
+                                    emit_byte_or_short(m_lastline, OP_SET_LOCAL, OP_SET_LOCAL_LONG, index);
                                 }
-                                emit_op(this->last_line, OP_POP);
+                                emit_op(m_lastline, OP_POP);
                             }
                             break;
                         case Expression::Type::ReturnClause:
                             {
-                                if(this->compiler->type == LITFUNC_CONSTRUCTOR)
+                                if(m_compiler->type == LITFUNC_CONSTRUCTOR)
                                 {
                                     error(statement->line, Error::LITERROR_RETURN_FROM_CONSTRUCTOR);
                                 }
                                 expression = ((StmtReturn*)statement)->expression;
                                 if(expression == nullptr)
                                 {
-                                    emit_op(this->last_line, OP_NULL);
+                                    emit_op(m_lastline, OP_NULL);
                                 }
                                 else
                                 {
                                     emit_expression(expression);
                                 }
-                                emit_op(this->last_line, OP_RETURN);
-                                if(this->compiler->scope_depth == 0)
+                                emit_op(m_lastline, OP_RETURN);
+                                if(m_compiler->scope_depth == 0)
                                 {
-                                    this->compiler->skip_return = true;
+                                    m_compiler->skip_return = true;
                                 }
                                 return true;
                             }
@@ -8615,7 +8800,7 @@ namespace lit
                         case Expression::Type::MethodDecl:
                             {
                                 mthstmt = (StmtMethod*)statement;
-                                constructor = mthstmt->name->length() == (sizeof(LIT_NAME_CONSTRUCTOR)-1) && memcmp(mthstmt->name->chars, LIT_NAME_CONSTRUCTOR, strlen(LIT_NAME_CONSTRUCTOR)-1) == 0;
+                                constructor = mthstmt->name->length() == (sizeof(LIT_NAME_CONSTRUCTOR)-1) && memcmp(mthstmt->name->data(), LIT_NAME_CONSTRUCTOR, strlen(LIT_NAME_CONSTRUCTOR)-1) == 0;
                                 if(constructor && mthstmt->is_static)
                                 {
                                     error(statement->line, Error::LITERROR_STATIC_CONSTRUCTOR);
@@ -8625,46 +8810,46 @@ namespace lit
                                 begin_scope();
                                 vararg = emit_parameters(&mthstmt->parameters, statement->line);
                                 emit_statement(mthstmt->body);
-                                end_scope(this->last_line);
-                                function = end_compiler(String::format(this->m_state, "@:@", this->class_name->asValue(), mthstmt->name->asValue()));
+                                end_scope(m_lastline);
+                                function = end_compiler(String::format(this->m_state, "@:@", m_classname->asValue(), mthstmt->name->asValue()));
                                 function->arg_count = mthstmt->parameters.m_count;
                                 function->max_slots += function->arg_count;
                                 function->vararg = vararg;
                                 if(function->upvalue_count > 0)
                                 {
-                                    emit_op(this->last_line, OP_CLOSURE);
-                                    emit_short(this->last_line, add_constant(this->last_line, function->asValue()));
+                                    emit_op(m_lastline, OP_CLOSURE);
+                                    emit_short(m_lastline, add_constant(m_lastline, function->asValue()));
                                     for(i = 0; i < function->upvalue_count; i++)
                                     {
-                                        emit_bytes(this->last_line, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
+                                        emit_bytes(m_lastline, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
                                     }
                                 }
                                 else
                                 {
-                                    emit_constant(this->last_line, function->asValue());
+                                    emit_constant(m_lastline, function->asValue());
                                 }
-                                emit_op(this->last_line, mthstmt->is_static ? OP_STATIC_FIELD : OP_METHOD);
-                                emit_short(this->last_line, add_constant(statement->line, mthstmt->name->asValue()));
+                                emit_op(m_lastline, mthstmt->is_static ? OP_STATIC_FIELD : OP_METHOD);
+                                emit_short(m_lastline, add_constant(statement->line, mthstmt->name->asValue()));
 
                             }
                             break;
                         case Expression::Type::ClassDecl:
                             {
                                 clstmt = (StmtClass*)statement;
-                                this->class_name = clstmt->name;
+                                m_classname = clstmt->name;
                                 if(clstmt->parent != nullptr)
                                 {
-                                    emit_op(this->last_line, OP_GET_GLOBAL);
-                                    emit_short(this->last_line, add_constant(this->last_line, clstmt->parent->asValue()));
+                                    emit_op(m_lastline, OP_GET_GLOBAL);
+                                    emit_short(m_lastline, add_constant(m_lastline, clstmt->parent->asValue()));
                                 }
                                 emit_op(statement->line, OP_CLASS);
-                                emit_short(this->last_line, add_constant(this->last_line, clstmt->name->asValue()));
+                                emit_short(m_lastline, add_constant(m_lastline, clstmt->name->asValue()));
                                 if(clstmt->parent != nullptr)
                                 {
-                                    emit_op(this->last_line, OP_INHERIT);
-                                    this->class_has_super = true;
+                                    emit_op(m_lastline, OP_INHERIT);
+                                    m_havesuperclass = true;
                                     begin_scope();
-                                    super = add_local("super", 5, this->last_line, false);
+                                    super = add_local("super", 5, m_lastline, false);
                                     
                                     mark_local_initialized(super);
                                 }
@@ -8685,13 +8870,13 @@ namespace lit
                                         emit_statement(s);
                                     }
                                 }
-                                emit_op(this->last_line, OP_POP);
+                                emit_op(m_lastline, OP_POP);
                                 if(clstmt->parent != nullptr)
                                 {
-                                    end_scope(this->last_line);
+                                    end_scope(m_lastline);
                                 }
-                                this->class_name = nullptr;
-                                this->class_has_super = false;
+                                m_classname = nullptr;
+                                m_havesuperclass = false;
                             }
                             break;
                         case Expression::Type::FieldDecl:
@@ -8704,8 +8889,8 @@ namespace lit
                                     init_compiler(&compiler, fieldstmt->is_static ? LITFUNC_STATIC_METHOD : LITFUNC_METHOD);
                                     begin_scope();
                                     emit_statement(fieldstmt->getter);
-                                    end_scope(this->last_line);
-                                    getter = end_compiler(String::format(this->m_state, "@:get @", this->class_name->asValue(), fieldstmt->name));
+                                    end_scope(m_lastline);
+                                    getter = end_compiler(String::format(this->m_state, "@:get @", m_classname->asValue(), fieldstmt->name));
                                 }
                                 if(fieldstmt->setter != nullptr)
                                 {
@@ -8713,8 +8898,8 @@ namespace lit
                                     mark_local_initialized(add_local("value", 5, statement->line, false));
                                     begin_scope();
                                     emit_statement(fieldstmt->setter);
-                                    end_scope(this->last_line);
-                                    setter = end_compiler(String::format(this->m_state, "@:set @", this->class_name->asValue(), fieldstmt->name));
+                                    end_scope(m_lastline);
+                                    setter = end_compiler(String::format(this->m_state, "@:set @", m_classname->asValue(), fieldstmt->name));
                                     setter->arg_count = 1;
                                     setter->max_slots++;
                                 }
@@ -8730,7 +8915,7 @@ namespace lit
                             }
                             break;
                     }
-                    this->previous_was_expression_statement = statement->type == Expression::Type::Expression;
+                    m_prevwasexprstmt = statement->type == Expression::Type::Expression;
                     return false;
                 }
 
@@ -8740,7 +8925,7 @@ namespace lit
     }
     // endast
 
-    struct State
+    class State
     {
         public:
             using ErrorFuncType = void(*)(State*, const char*);
@@ -8770,6 +8955,7 @@ namespace lit
 
             static State* make();
 
+
         public:
             /* how much was allocated in total? */
             int64_t bytes_allocated;
@@ -8790,7 +8976,7 @@ namespace lit
             * using 'state->vm->m_state' will in turn mean this instance, etc.
             */
             VM* vm;
-            bool had_error;
+            bool m_haderror;
             
             jmp_buf jump_buffer;
 
@@ -8846,7 +9032,7 @@ namespace lit
                 vsnprintf(buffer, buffer_size, message, args);
                 va_end(args);
                 this->error_fn(this, buffer);
-                this->had_error = true;
+                m_haderror = true;
                 /* TODO: is this safe? */
                 free(buffer);
             }
@@ -8949,23 +9135,23 @@ namespace lit
 
             Upvalue* captureUpvalue(Value* local);
 
-            InterpretResult execModule(Module* module);
+            Result execModule(Module* module);
 
-            InterpretResult execFiber(Fiber* fiber);
+            Result execFiber(Fiber* fiber);
 
-            CallFrame* setupCall(Function* callee, Value* argv, uint8_t argc, bool ignfiber);
+            Fiber::CallFrame* setupCall(Function* callee, Value* argv, size_t argc);
 
-            InterpretResult execCall(CallFrame* frame);
+            Result execCall(Fiber::CallFrame* frame);
 
-            InterpretResult callFunction(Function* callee, Value* argv, uint8_t argc, bool ignfiber)
+            Result callFunction(Function* callee, Value* argv, size_t argc)
             {
-                return execCall(this->setupCall(callee, argv, argc, ignfiber));
+                return execCall(this->setupCall(callee, argv, argc));
             }
 
-            InterpretResult callClosure(Closure* callee, Value* argv, uint8_t argc, bool ignfiber)
+            Result callClosure(Closure* callee, Value* argv, size_t argc)
             {
-                CallFrame* frame;
-                frame = this->setupCall(callee->function, argv, argc, ignfiber);
+                Fiber::CallFrame* frame;
+                frame = this->setupCall(callee->function, argv, argc);
                 if(frame == nullptr)
                 {
                     RETURN_RUNTIME_ERROR();
@@ -8974,19 +9160,110 @@ namespace lit
                 return this->execCall(frame);
             }
 
-            InterpretResult callMethod(Value instance, Value callee, Value* argv, uint8_t argc, bool ignfiber);
+            Result callMethod(Value instance, Value callee, Value* argv, size_t argc);
 
-            InterpretResult call(Value callee, Value* argv, uint8_t argc, bool ignfiber)
+            Result call(Value callee, Value* argv, size_t argc)
             {
-                return this->callMethod(callee, callee, argv, argc, ignfiber);
+                return this->callMethod(callee, callee, argv, argc);
             }
 
-            InterpretResult findAndCallMethod(Value callee, String* method_name, Value* argv, uint8_t argc, bool ignfiber);
+            Result findAndCallMethod(Value callee, String* method_name, Value* argv, size_t argc);
+
+            Result findAndCallMethod(Value callee, std::string_view mthname, Value* argv, size_t argc)
+            {
+                return findAndCallMethod(callee, String::intern(this, mthname), argv, argc);
+            }
+
+            Module* compileModule(String* module_name, const char* code, size_t length);
+
+            Module* compileModule(String* modname, std::string_view code)
+            {
+                return compileModule(modname, code.data(), code.size());
+            }
+
+            char* readSource(std::string_view path, size_t* destlen, char** patched_file_name)
+            {
+                clock_t t;
+                char* fname;
+                char* source;
+                t = 0;
+                if(AST::measure_compilation_time)
+                {
+                    t = clock();
+                }
+                fname = Util::copyString(path);
+                source = Util::readFile(fname, destlen);
+                if(source == nullptr)
+                {
+                    this->raiseError(RUNTIME_ERROR, "failed to open file '%s' for reading", fname);
+                }
+                fname = Util::patchFilename(fname);
+                if(AST::measure_compilation_time)
+                {
+                    printf("reading source: %gms\n", AST::last_source_time = (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+                }
+                *patched_file_name = fname;
+                return source;
+            }
+
+            Result interpretFile(std::string_view path)
+            {
+                size_t srclen;
+                char* source;
+                char* patchedpath;
+                Result result;
+                source = this->readSource(path.data(), &srclen, &patchedpath);
+                if(source == nullptr)
+                {
+                    return INTERPRET_RUNTIME_FAIL;
+                }
+                result = this->interpretSource(patchedpath, source, srclen);
+                free((void*)source);
+                free(patchedpath);
+                return result;
+            }
+            
+            Result interpretSource(std::string_view modname, const char* code, size_t length)
+            {
+                return internalInterpret(String::copy(this, modname.data(), modname.size()), code, length);
+            }
+
+            Result interpretSource(std::string_view modname, std::string_view code)
+            {
+                return interpretSource(modname, code.data(), code.size());
+            }
+
+            Result internalInterpret(String* module_name, const char* code, size_t length)
+            {
+                intptr_t istack;
+                intptr_t itop;
+                intptr_t idif;
+                Module* module;
+                Fiber* fiber;
+                Result result;
+                module = this->compileModule(module_name, code, length);
+                if(module == nullptr)
+                {
+                    return Result{ LITRESULT_COMPILE_ERROR, Object::NullVal };
+                }
+                result = this->execModule(module);
+                fiber = module->main_fiber;
+                if(!m_haderror && !fiber->abort && fiber->stack_top != fiber->stack)
+                {
+                    istack = (intptr_t)(fiber->stack);
+                    itop = (intptr_t)(fiber->stack_top);
+                    idif = (intptr_t)(fiber->stack - fiber->stack_top);
+                    /* me fail english. how do i put this better? */
+                    this->raiseError(RUNTIME_ERROR, "stack should be same as stack top", idif, istack, istack, itop, itop);
+                }
+                this->last_module = module;
+                return result;
+            }
+
     };
 
-    struct VM
+    class VM
     {
-
         public:
             /* the current state */
             State* m_state;
@@ -9063,7 +9340,7 @@ namespace lit
                 size_t newsize;
                 size_t vararg_count;
                 size_t function_arg_count;
-                CallFrame* frame;
+                Fiber::CallFrame* frame;
                 Fiber* fiber;
                 Array* array;
                 fiber = this->fiber;
@@ -9079,9 +9356,9 @@ namespace lit
                 {
                     //newcapacity = fmin(LIT_CALL_FRAMES_MAX, fiber->frame_capacity * 2);
                     newcapacity = (fiber->frame_capacity * 2);
-                    newsize = (sizeof(CallFrame) * newcapacity);
-                    osize = (sizeof(CallFrame) * fiber->frame_capacity);
-                    fiber->frames = (CallFrame*)Memory::reallocate(this->m_state, fiber->frames, osize, newsize);
+                    newsize = (sizeof(Fiber::CallFrame) * newcapacity);
+                    osize = (sizeof(Fiber::CallFrame) * fiber->frame_capacity);
+                    fiber->frames = (Fiber::CallFrame*)Memory::reallocate(this->m_state, fiber->frames, osize, newsize);
                     fiber->frame_capacity = newcapacity;
                 }
 
@@ -9140,8 +9417,6 @@ namespace lit
                 return true;
             }
 
-
-
             bool callValue(Value callee, uint8_t arg_count);
 
             void markObject(Object* obj)
@@ -9190,7 +9465,7 @@ namespace lit
                 Function* function;
                 Fiber* fiber;
                 Upvalue* upvalue;
-                CallFrame* frame;
+                Fiber::CallFrame* frame;
                 Module* module;
                 Closure* closure;
                 Class* klass;
@@ -9320,7 +9595,7 @@ namespace lit
                         break;
                     case Object::Type::Map:
                         {
-                            ((Map*)obj)->values.markForGC(this);
+                            ((Map*)obj)->m_values.markForGC(this);
                         }
                         break;
                     case Object::Type::Field:
@@ -9337,7 +9612,7 @@ namespace lit
                         break;
                     default:
                         {
-                            UNREACHABLE
+                            /* UNREACHABLE */
                         }
                         break;
                 }
@@ -9420,20 +9695,249 @@ namespace lit
             }
     };
 
+    class BinaryData
+    {
+        public:
+            static void storeFunction(FILE* file, Function* function)
+            {
+                storeChunk(file, &function->chunk);
+                FileIO::write_string(file, function->name);
+                FileIO::write_uint8_t(file, function->arg_count);
+                FileIO::write_uint16_t(file, function->upvalue_count);
+                FileIO::write_uint8_t(file, (uint8_t)function->vararg);
+                FileIO::write_uint16_t(file, (uint16_t)function->max_slots);
+            }
+
+            static Function* loadFunction(State* state, FileIO::EmulatedFile* file, Module* module)
+            {
+                Function* function = Function::make(state, module);
+                loadChunk(state, file, module, &function->chunk);
+                function->name = file->read_estring(state);
+                function->arg_count = file->read_euint8_t();
+                function->upvalue_count = file->read_euint16_t();
+                function->vararg = (bool)file->read_euint8_t();
+                function->max_slots = file->read_euint16_t();
+                return function;
+            }
+
+            static void storeChunk(FILE* file, Chunk* chunk)
+            {
+                size_t i;
+                size_t c;
+                FileIO::write_uint32_t(file, chunk->m_count);
+                for(i = 0; i < chunk->m_count; i++)
+                {
+                    FileIO::write_uint8_t(file, chunk->code[i]);
+                }
+                if(chunk->has_line_info)
+                {
+                    c = chunk->line_count * 2 + 2;
+                    FileIO::write_uint32_t(file, c);
+                    for(i = 0; i < c; i++)
+                    {
+                        FileIO::write_uint16_t(file, chunk->lines[i]);
+                    }
+                }
+                else
+                {
+                    FileIO::write_uint32_t(file, 0);
+                }
+                FileIO::write_uint32_t(file, chunk->constants.m_count);
+                for(i = 0; i < chunk->constants.m_count; i++)
+                {
+                    Value constant = chunk->constants.m_values[i];
+                    if(Object::isObject(constant))
+                    {
+                        Object::Type type = Object::asObject(constant)->type;
+                        FileIO::write_uint8_t(file, (uint8_t)(type) + 1);
+                        switch(type)
+                        {
+                            case Object::Type::String:
+                                {
+                                    FileIO::write_string(file, Object::as<String>(constant));
+                                }
+                                break;
+                            case Object::Type::Function:
+                                {
+                                    storeFunction(file, Object::as<Function>(constant));
+                                }
+                                break;
+                            default:
+                                {
+                                }
+                                break;
+
+                        }
+                    }
+                    else
+                    {
+                        FileIO::write_uint8_t(file, 0);
+                        FileIO::write_double(file, Object::toNumber(constant));
+                    }
+                }
+            }
+
+            static void loadChunk(State* state, FileIO::EmulatedFile* file, Module* module, Chunk* chunk)
+            {
+                size_t i;
+                size_t count;
+                uint8_t type;
+                chunk->init(state);
+                count = file->read_euint32_t();
+                chunk->code = (uint8_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint8_t) * count);
+                chunk->m_count = count;
+                chunk->m_capacity = count;
+                for(i = 0; i < count; i++)
+                {
+                    chunk->code[i] = file->read_euint8_t();
+                }
+                count = file->read_euint32_t();
+                if(count > 0)
+                {
+                    chunk->lines = (uint16_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint16_t) * count);
+                    chunk->line_count = count;
+                    chunk->line_capacity = count;
+                    for(i = 0; i < count; i++)
+                    {
+                        chunk->lines[i] = file->read_euint16_t();
+                    }
+                }
+                else
+                {
+                    chunk->has_line_info = false;
+                }
+                count = file->read_euint32_t();
+                chunk->constants.m_values = (Value*)Memory::reallocate(state, nullptr, 0, sizeof(Value) * count);
+                chunk->constants.m_count = count;
+                chunk->constants.m_capacity = count;
+                for(i = 0; i < count; i++)
+                {
+                    type = file->read_euint8_t();
+                    if(type == 0)
+                    {
+                        chunk->constants.m_values[i] = Object::toValue(file->read_edouble());
+                    }
+                    else
+                    {
+                        switch((Object::Type)(type - 1))
+                        {
+                            case Object::Type::String:
+                                {
+                                    chunk->constants.m_values[i] = file->read_estring(state)->asValue();
+                                }
+                                break;
+                            case Object::Type::Function:
+                                {
+                                    chunk->constants.m_values[i] = loadFunction(state, file, module)->asValue();
+                                }
+                                break;
+                            default:
+                                {
+                                    /* UNREACHABLE */
+                                }
+                                break;
+
+                        }
+                    }
+                }
+            }
+
+            static void storeModule(Module* module, FILE* file)
+            {
+                size_t i;
+                bool disabled;
+                Table* privates;
+                disabled = AST::Optimizer::is_enabled(LITOPTSTATE_PRIVATE_NAMES);
+                FileIO::write_string(file, module->name);
+                FileIO::write_uint16_t(file, module->private_count);
+                FileIO::write_uint8_t(file, (uint8_t)disabled);
+                if(!disabled)
+                {
+                    privates = &module->private_names->m_values;
+                    for(i = 0; i < module->private_count; i++)
+                    {
+                        if(privates->at(i).key != nullptr)
+                        {
+                            FileIO::write_string(file, privates->at(i).key);
+                            FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i).value));
+                        }
+                    }
+                }
+                storeFunction(file, module->main_function);
+            }
+
+            static Module* loadModule(State* state, const char* input, size_t length)
+            {
+                bool enabled;
+                uint16_t i;
+                uint16_t j;
+                uint16_t module_count;
+                uint16_t privates_count;
+                uint8_t bytecode_version;
+                String* name;
+                Table* privates;
+                Module* module;
+                FileIO::EmulatedFile file;
+                file.init(input, length);
+                if(file.read_euint16_t() != LIT_BYTECODE_MAGIC_NUMBER)
+                {
+                    state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown magic number");
+                    return nullptr;
+                }
+                bytecode_version = file.read_euint8_t();
+                if(bytecode_version > LIT_BYTECODE_VERSION)
+                {
+                    state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown bytecode version '%i'", (int)bytecode_version);
+                    return nullptr;
+                }
+                module_count = file.read_euint16_t();
+                Module* first = nullptr;
+                for(j = 0; j < module_count; j++)
+                {
+                    module = Module::make(state, file.read_estring(state));
+                    privates = &module->private_names->m_values;
+                    privates_count = file.read_euint16_t();
+                    enabled = !((bool)file.read_euint8_t());
+                    module->privates = LIT_ALLOCATE(state, Value, privates_count);
+                    module->private_count = privates_count;
+                    for(i = 0; i < privates_count; i++)
+                    {
+                        module->privates[i] = Object::NullVal;
+                        if(enabled)
+                        {
+                            name = file.read_estring(state);
+                            privates->set(name, Object::toValue(file.read_euint16_t()));
+                        }
+                    }
+                    module->main_function = loadFunction(state, &file, module);
+                    state->vm->modules->m_values.set(module->name, module->asValue());
+                    if(j == 0)
+                    {
+                        first = module;
+                    }
+                }
+                if(file.read_euint16_t() != LIT_BYTECODE_END_NUMBER)
+                {
+                    state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown end number");
+                    return nullptr;
+                }
+                return first;
+            }
+    };
+
+
     void State::setVMGlobal(String* name, Value val)
     {
-        this->vm->globals->values.set(name, val);
+        this->vm->globals->m_values.set(name, val);
     }
 
     bool State::getVMGlobal(String* name, Value* dest)
     {
-        return this->vm->globals->values.get(name, dest);
+        return this->vm->globals->m_values.get(name, dest);
     }
 
 
-    /*
-    * astfuncs
-    */
+    //prototypes
 
     /**
     * utility functions
@@ -9451,26 +9955,18 @@ namespace lit
     /**
     * state functions
     */
-    char* lit_patch_file_name(char* file_name);
 
     /*
      * Please, do not provide a const string source to the compiler, because it will
      * get modified, if it has any macros in it!
      */
-    Module* lit_compile_module(State* state, String* module_name, const char* code);
-    Module* lit_get_module(State* state, const char* name);
 
-    InterpretResult lit_internal_interpret(State* state, String* module_name, const char* code, size_t length);
-    InterpretResult lit_interpret(State* state, const char* module_name, const char* code, size_t length);
-    InterpretResult lit_interpret_file(State* state, const char* file);
-    InterpretResult lit_dump_file(State* state, const char* file);
+    Result lit_dump_file(State* state, const char* file);
     bool lit_compile_and_save_files(State* state, char* files[], size_t num_files, const char* output_file);
 
     void lit_printf(State* state, const char* message, ...);
 
     void lit_trace_vm_stack(VM* vm, Writer* wr);
-
-
 
     double lit_check_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id);
     double lit_get_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id, double def);
@@ -9498,28 +9994,19 @@ namespace lit
     void lit_trace_frame(Fiber* fiber, Writer* wr);
 
 
-
-    char* lit_read_file(const char* path, size_t* destlen);
     bool lit_file_exists(const char* path);
     bool lit_dir_exists(const char* path);
 
 
-
-    void lit_save_module(Module* module, FILE* file);
-    Module* lit_load_module(State* state, const char* input, size_t length);
     bool lit_generate_source_file(const char* file, const char* output);
     void lit_build_native_runner(const char* bytecode_file);
 
     void lit_open_libraries(State* state);
     void lit_open_core_library(State* state);
-
     void lit_open_math_library(State* state);
-
     void lit_open_file_library(State* state);
-
     void lit_open_gc_library(State* state);
 
-    void lit_init_optimizer(State* state, AST::Optimizer* optimizer);
     void lit_add_definition(State* state, const char* name);
 
     bool lit_preprocess(AST::Preprocessor* preprocessor, char* source);
@@ -9592,8 +10079,6 @@ namespace lit
     namespace AST
     {
         ParseRule Parser::rules[LITTOK_EOF + 1];
-        static bool measure_compilation_time = true;
-        static double last_source_time = 0;
 
         void Expression::releaseExpression(State* state, Expression* expression)
         {
@@ -9873,14 +10358,14 @@ namespace lit
         {
             this->scope_depth = 0;
             this->function = nullptr;
-            this->enclosing = (Compiler*)parser->compiler;
-            parser->compiler = this;
+            this->enclosing = (Compiler*)parser->m_compiler;
+            parser->m_compiler = this;
         }
 
 
-        const char* Emitter::getStateScannerFilename(State* state)
+        const char* Emitter::getStateScannerFilename()
         {
-            return this->m_state->scanner->file_name;
+            return this->m_state->scanner->m_filename;
         }
 
         bool Optimizer::is_enabled(Optimization optimization)
@@ -9957,7 +10442,7 @@ namespace lit
             opt_begin_scope();
             optimize_statements(statements);
             opt_end_scope();
-            this->variables.release();
+            m_variables.release();
         }
 
         void Parser::init(State* state)
@@ -9968,19 +10453,19 @@ namespace lit
                 Parser::setup_rules();
             }
             this->m_state = state;
-            this->had_error = false;
-            this->panic_mode = false;
+            m_haderror = false;
+            m_panicmode = false;
         }
 
         void Parser::stringError(Token* token, const char* message)
         {
             (void)token;
-            if(this->panic_mode)
+            if(m_panicmode)
             {
                 return;
             }
             this->m_state->raiseError(COMPILE_ERROR, message);
-            this->had_error = true;
+            m_haderror = true;
             this->sync();
         }
 
@@ -9993,7 +10478,7 @@ namespace lit
         {
             va_list args;
             va_start(args, error);
-            this->m_state->raiseError(COMPILE_ERROR, lit_vformat_error(this->m_state, line, error, args)->chars);
+            this->m_state->raiseError(COMPILE_ERROR, lit_vformat_error(this->m_state, line, error, args)->data());
             va_end(args);
         }
 
@@ -10014,11 +10499,11 @@ namespace lit
             PCGenericArray<Private>* privates;
             Compiler compiler;
             Expression* stmt;
-            this->last_line = 1;
-            this->emit_reference = 0;
+            m_lastline = 1;
+            m_emitreference = 0;
             state = this->m_state;
             isnew = false;
-            if(this->m_state->vm->modules->values.get(module_name, &module_value))
+            if(this->m_state->vm->modules->m_values.get(module_name, &module_value))
             {
                 module = Object::as<Module>(module_value);
             }
@@ -10027,11 +10512,11 @@ namespace lit
                 module = Module::make(this->m_state, module_name);
                 isnew = true;
             }
-            this->module = module;
+            m_module = module;
             old_privates_count = module->private_count;
             if(old_privates_count > 0)
             {
-                privates = &this->privates;
+                privates = &m_privates;
                 privates->m_count = old_privates_count - 1;
                 privates->push(Private{ true, false });
                 for(i = 0; i < old_privates_count; i++)
@@ -10040,7 +10525,7 @@ namespace lit
                 }
             }
             init_compiler(&compiler, LITFUNC_SCRIPT);
-            this->chunk = &compiler.function->chunk;
+            m_chunk = &compiler.function->chunk;
             this->resolve_statements(statements);
             for(i = 0; i < statements.m_count; i++)
             {
@@ -10053,11 +10538,11 @@ namespace lit
                     }
                 }
             }
-            end_scope(this->last_line);
+            end_scope(m_lastline);
             module->main_function = end_compiler(module_name);
             if(isnew)
             {
-                total = this->privates.m_count;
+                total = m_privates.m_count;
                 module->privates = LIT_ALLOCATE(this->m_state, Value, total);
                 for(i = 0; i < total; i++)
                 {
@@ -10072,14 +10557,14 @@ namespace lit
                     module->privates[i] = Object::NullVal;
                 }
             }
-            this->privates.release();
+            m_privates.release();
             if(Optimizer::is_enabled(LITOPTSTATE_PRIVATE_NAMES))
             {
-                this->module->private_names->values.release();
+                m_module->private_names->m_values.release();
             }
-            if(isnew && !state->had_error)
+            if(isnew && !state->m_haderror)
             {
-                state->vm->modules->values.set(module_name, module->asValue());
+                state->vm->modules->m_values.set(module_name, module->asValue());
             }
             module->ran = true;
             return module;
@@ -10138,7 +10623,7 @@ namespace lit
         state->allow_gc = false;
         state->error_fn = default_error;
         state->print_fn = default_printf;
-        state->had_error = false;
+        state->m_haderror = false;
         state->roots = nullptr;
         state->root_count = 0;
         state->root_capacity = 0;
@@ -10184,11 +10669,75 @@ namespace lit
         return amount;
     }
 
+    Module* State::compileModule(String* module_name, const char* code, size_t length)
+    {
+        clock_t t;
+        clock_t total_t;
+        bool allowed_gc;
+        Module* module;
+        AST::Expression::List statements;
+        allowed_gc = this->allow_gc;
+        this->allow_gc = false;
+        m_haderror = false;
+        module = nullptr;
+        // This is a lbc format
+        if((code[1] << 8 | code[0]) == LIT_BYTECODE_MAGIC_NUMBER)
+        {
+            module = BinaryData::loadModule(this, code, length);
+        }
+        else
+        {
+            t = 0;
+            total_t = 0;
+            if(AST::measure_compilation_time)
+            {
+                total_t = t = clock();
+            }
+            /*
+            if(!lit_preprocess(this->preprocessor, code))
+            {
+                return nullptr;
+            }
+            */
+            if(AST::measure_compilation_time)
+            {
+                printf("-----------------------\nPreprocessing:  %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+                t = clock();
+            }
+            statements.init(this);
+            if(this->parser->parse(module_name->data(), code, length, statements))
+            {
+                AST::Expression::releaseStatementList(this, &statements);
+                return nullptr;
+            }
+            if(AST::measure_compilation_time)
+            {
+                printf("Parsing:        %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+                t = clock();
+            }
+            this->optimizer->optimize(&statements);
+            if(AST::measure_compilation_time)
+            {
+                printf("Optimization:   %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+                t = clock();
+            }
+            module = this->emitter->run_emitter(statements, module_name);
+            AST::Expression::releaseStatementList(this, &statements);
+            if(AST::measure_compilation_time)
+            {
+                printf("Emitting:       %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+                printf("\nTotal:          %gms\n-----------------------\n",
+                       (double)(clock() - total_t) / CLOCKS_PER_SEC * 1000 + AST::last_source_time);
+            }
+        }
+        this->allow_gc = allowed_gc;
+        return m_haderror ? nullptr : module;
+    }
+
     Fiber* State::getVMFiber()
     {
         return vm->fiber;
     }
-
 
     void State::releaseObjects(Object* objects)
     {
@@ -10233,11 +10782,11 @@ namespace lit
         return created_upvalue;
     }
 
-    InterpretResult State::execModule(Module* module)
+    Result State::execModule(Module* module)
     {
         VM* vm;
         Fiber* fiber;
-        InterpretResult result;
+        Result result;
         vm = this->vm;
         fiber = Fiber::make(this, module, module->main_function);
         vm->fiber = fiber;
@@ -10246,7 +10795,7 @@ namespace lit
         return result;
     }
 
-    CallFrame* State::setupCall(Function* callee, Value* argv, uint8_t argc, bool ignfiber)
+    Fiber::CallFrame* State::setupCall(Function* callee, Value* argv, size_t argc)
     {
         bool vararg;
         int amount;
@@ -10255,7 +10804,7 @@ namespace lit
         size_t function_arg_count;
         VM* vm;
         Fiber* fiber;
-        CallFrame* frame;
+        Fiber::CallFrame* frame;
         Array* array;
         (void)argc;
         (void)varargc;
@@ -10266,19 +10815,9 @@ namespace lit
             lit_runtime_error(vm, "attempt to call a null value");
             return nullptr;
         }
-        if(ignfiber)
+        if(Fiber::ensureFiber(vm, fiber))
         {
-            if(fiber == nullptr)
-            {
-                fiber = this->api_fiber;
-            }
-        }
-        if(!ignfiber)
-        {
-            if(Fiber::ensureFiber(vm, fiber))
-            {
-                return nullptr;
-            }        
+            return nullptr;
         }
         fiber->ensure_stack(callee->max_slots + (int)(fiber->stack_top - fiber->stack));
         frame = &fiber->frames[fiber->frame_count++];
@@ -10337,7 +10876,7 @@ namespace lit
         return frame;
     }
 
-    InterpretResult State::findAndCallMethod(Value callee, String* method_name, Value* argv, uint8_t argc, bool ignfiber)
+    Result State::findAndCallMethod(Value callee, String* method_name, Value* argv, size_t argc)
     {
         Class* klass;
         VM* vm;
@@ -10347,24 +10886,21 @@ namespace lit
         fiber = vm->fiber;
         if(fiber == nullptr)
         {
-            if(!ignfiber)
-            {
-                lit_runtime_error(vm, "no fiber to run on");
-                RETURN_RUNTIME_ERROR();
-            }
+            lit_runtime_error(vm, "no fiber to run on");
+            RETURN_RUNTIME_ERROR();
         }
         klass = Class::getClassFor(this, callee);
         if((Object::isInstance(callee) && Object::as<Instance>(callee)->fields.get(method_name, &mthval)) || klass->methods.get(method_name, &mthval))
         {
-            return this->callMethod(callee, mthval, argv, argc, ignfiber);
+            return this->callMethod(callee, mthval, argv, argc);
         }
-        return InterpretResult{ LITRESULT_INVALID, Object::NullVal };
+        return Result{ LITRESULT_INVALID, Object::NullVal };
     }
 
-    InterpretResult State::execCall(CallFrame* frame)
+    Result State::execCall(Fiber::CallFrame* frame)
     {
         Fiber* fiber;
-        InterpretResult result;
+        Result result;
         if(frame == nullptr)
         {
             RETURN_RUNTIME_ERROR();
@@ -10378,11 +10914,11 @@ namespace lit
         return result;
     }
 
-    InterpretResult State::callMethod(Value instance, Value callee, Value* argv, uint8_t argc, bool ignfiber)
+    Result State::callMethod(Value instance, Value callee, Value* argv, size_t argc)
     {
         uint8_t i;
         VM* vm;
-        InterpretResult lir;
+        Result lir;
         Object::Type type;
         Class* klass;
         Fiber* fiber;
@@ -10404,26 +10940,16 @@ namespace lit
 
             if(type == Object::Type::Function)
             {
-                return this->callFunction(Object::as<Function>(callee), argv, argc, ignfiber);
+                return this->callFunction(Object::as<Function>(callee), argv, argc);
             }
             else if(type == Object::Type::Closure)
             {
-                return this->callClosure(Object::as<Closure>(callee), argv, argc, ignfiber);
+                return this->callClosure(Object::as<Closure>(callee), argv, argc);
             }
             fiber = vm->fiber;
-            if(ignfiber)
+            if(Fiber::ensureFiber(vm, fiber))
             {
-                if(fiber == nullptr)
-                {
-                    fiber = this->api_fiber;
-                }
-            }
-            if(!ignfiber)
-            {
-                if(Fiber::ensureFiber(vm, fiber))
-                {
-                    RETURN_RUNTIME_ERROR();
-                }
+                RETURN_RUNTIME_ERROR();
             }
             fiber->ensure_stack(3 + argc + (int)(fiber->stack_top - fiber->stack));
             slot = fiber->stack_top;
@@ -10465,7 +10991,7 @@ namespace lit
                         *slot = Instance::make(vm->m_state, klass)->asValue();
                         if(klass->init_method != nullptr)
                         {
-                            lir = this->callMethod(*slot, klass->init_method->asValue(), argv, argc, ignfiber);
+                            lir = this->callMethod(*slot, klass->init_method->asValue(), argv, argc);
                         }
                         // TODO: when should this return *slot instead of lir?
                         fiber->stack_top = slot;
@@ -10494,7 +11020,7 @@ namespace lit
                         else
                         {
                             fiber->stack_top = slot;
-                            return this->callFunction(Object::as<Function>(mthval), argv, argc, ignfiber);
+                            return this->callFunction(Object::as<Function>(mthval), argv, argc);
                         }
                     }
                     break;
@@ -10575,16 +11101,8 @@ namespace lit
     #define vm_readbyte(ip) \
         (*ip++)
 
-    #if 1
     #define vm_readshort(ip) \
         (ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]))
-    #else
-    /* todo: why does this seemingly break everything? */
-    static inline uint16_t vm_readshort(uint8_t* ip)
-    {
-        return ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]);
-    }
-    #endif
 
     #define vm_readconstant(current_chunk) \
         (current_chunk->constants.m_values[vm_readbyte(ip)])
@@ -10618,14 +11136,14 @@ namespace lit
 
     #define vm_returnerror() \
         vm_popgc(this); \
-        return (InterpretResult){ LITRESULT_RUNTIME_ERROR, Object::NullVal };
+        return (Result){ LITRESULT_RUNTIME_ERROR, Object::NullVal };
 
     #define vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues) \
         vm_writeframe(frame, ip); \
         fiber = vm->fiber; \
         if(fiber == nullptr) \
         { \
-            return (InterpretResult){ LITRESULT_OK, vm_pop(fiber) }; \
+            return (Result){ LITRESULT_OK, vm_pop(fiber) }; \
         } \
         if(fiber->abort) \
         { \
@@ -10688,8 +11206,8 @@ namespace lit
         { \
             if(error) \
             { \
-                vm_rterrorvarg("Attempt to call method '%s', that is not defined in class %s", method_name->chars, \
-                                   zklass->name->chars) \
+                vm_rterrorvarg("Attempt to call method '%s', that is not defined in class %s", method_name->data(), \
+                                   zklass->name->data()) \
             } \
         } \
         if(error) \
@@ -10793,7 +11311,7 @@ namespace lit
         }
     }
 
-    InterpretResult State::execFiber(Fiber* fiber)
+    Result State::execFiber(Fiber* fiber)
     {
         bool found;
         size_t arg_count;
@@ -10804,7 +11322,7 @@ namespace lit
         uint8_t is_local;
         uint8_t instruction;
         uint8_t* ip;
-        CallFrame* frame;
+        Fiber::CallFrame* frame;
         Chunk* current_chunk;
         Class* instance_klass;
         Class* klassobj;
@@ -10921,7 +11439,7 @@ namespace lit
                         frame->return_to_c = false;
                         fiber->module->return_value = result;
                         fiber->stack_top = frame->slots;
-                        return (InterpretResult){ LITRESULT_OK, result };
+                        return (Result){ LITRESULT_OK, result };
                     }
                     if(fiber->frame_count == 0)
                     {
@@ -10930,7 +11448,7 @@ namespace lit
                         {
                             vm_drop(fiber);
                             this->allow_gc = was_allowed;
-                            return (InterpretResult){ LITRESULT_OK, result };
+                            return (Result){ LITRESULT_OK, result };
                         }
                         arg_count = fiber->arg_count;
                         parent = fiber->parent;
@@ -11013,7 +11531,7 @@ namespace lit
                         arg = vm_peek(fiber, 0);
                         // Don't even ask me why
                         // This doesn't kill our performance, since it's a error anyway
-                        if(Object::isString(arg) && strcmp(Object::asString(arg)->chars, "muffin") == 0)
+                        if(Object::isString(arg) && strcmp(Object::asString(arg)->data(), "muffin") == 0)
                         {
                             vm_rterror("Idk, can you negate a muffin?");
                         }
@@ -11176,14 +11694,14 @@ namespace lit
                 op_case(SET_GLOBAL)
                 {
                     name = vm_readstringlong(current_chunk, ip);
-                    vm->globals->values.set(name, vm_peek(fiber, 0));
+                    vm->globals->m_values.set(name, vm_peek(fiber, 0));
                     continue;
                 }
 
                 op_case(GET_GLOBAL)
                 {
                     name = vm_readstringlong(current_chunk, ip);
-                    if(!vm->globals->values.get(name, &setval))
+                    if(!vm->globals->m_values.get(name, &setval))
                     {
                         vm_push(fiber, Object::NullVal);
                     }
@@ -11368,7 +11886,7 @@ namespace lit
                     klassobj->super = this->objectvalue_class;
                     klassobj->super->methods.addAll(&klassobj->methods);
                     klassobj->super->static_fields.addAll(&klassobj->static_fields);
-                    vm->globals->values.set(name, klassobj->asValue());
+                    vm->globals->m_values.set(name, klassobj->asValue());
                     continue;
                 }
                 op_case(GET_FIELD)
@@ -11393,7 +11911,7 @@ namespace lit
                                     if(field->getter == nullptr)
                                     {
                                         vm_rterrorvarg("Class %s does not have a getter for the field %s",
-                                                           instobj->klass->name->chars, name->chars);
+                                                           instobj->klass->name->data(), name->data());
                                     }
                                     vm_drop(fiber);
                                     vm_writeframe(frame, ip);
@@ -11426,8 +11944,8 @@ namespace lit
                                 field = Object::as<Field>(getval);
                                 if(field->getter == nullptr)
                                 {
-                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->chars,
-                                                       name->chars);
+                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->data(),
+                                                       name->data());
                                 }
                                 vm_drop(fiber);
                                 vm_writeframe(frame, ip);
@@ -11455,8 +11973,8 @@ namespace lit
                                 field = Object::as<Field>(getval);
                                 if(field->getter == nullptr)
                                 {
-                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->chars,
-                                                       name->chars);
+                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->data(),
+                                                       name->data());
                                 }
                                 vm_drop(fiber);
                                 vm_writeframe(frame, ip);
@@ -11495,8 +12013,8 @@ namespace lit
                             field = Object::as<Field>(setter);
                             if(field->setter == nullptr)
                             {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->chars,
-                                                   field_name->chars);
+                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->data(),
+                                                   field_name->data());
                             }
 
                             vm_dropn(fiber, 2);
@@ -11525,8 +12043,8 @@ namespace lit
                             field = Object::as<Field>(setter);
                             if(field->setter == nullptr)
                             {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", instobj->klass->name->chars,
-                                                   field_name->chars);
+                                vm_rterrorvarg("Class %s does not have a setter for the field %s", instobj->klass->name->data(),
+                                                   field_name->data());
                             }
                             vm_dropn(fiber, 2);
                             vm_push(fiber, value);
@@ -11558,8 +12076,8 @@ namespace lit
                             field = Object::as<Field>(setter);
                             if(field->setter == nullptr)
                             {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->chars,
-                                                   field_name->chars);
+                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->data(),
+                                                   field_name->data());
                             }
                             vm_dropn(fiber, 2);
                             vm_push(fiber, value);
@@ -11570,7 +12088,7 @@ namespace lit
                         }
                         else
                         {
-                            vm_rterrorvarg("Class %s does not contain field %s", klassobj->name->chars, field_name->chars);
+                            vm_rterrorvarg("Class %s does not contain field %s", klassobj->name->data(), field_name->data());
                         }
                     }
                     continue;
@@ -11599,7 +12117,7 @@ namespace lit
                     operand = vm_peek(fiber, 2);
                     if(Object::isMap(operand))
                     {
-                        Object::as<Map>(operand)->values.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
+                        Object::as<Map>(operand)->m_values.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
                     }
                     else if(Object::isInstance(operand))
                     {
@@ -11623,7 +12141,7 @@ namespace lit
                     klassobj = Object::as<Class>(vm_peek(fiber, 1));
                     name = vm_readstringlong(current_chunk, ip);
                     if((klassobj->init_method == nullptr || (klassobj->super != nullptr && klassobj->init_method == ((Class*)klassobj->super)->init_method))
-                       && name->length() == 11 && memcmp(name->chars, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0)
+                       && name->length() == 11 && memcmp(name->data(), LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0)
                     {
                         klassobj->init_method = Object::asObject(vm_peek(fiber, 0));
                     }
@@ -11753,7 +12271,7 @@ namespace lit
                 op_case(REFERENCE_GLOBAL)
                 {
                     name = vm_readstringlong(current_chunk, ip);
-                    if(vm->globals->values.getSlot(name, &pval))
+                    if(vm->globals->m_values.getSlot(name, &pval))
                     {
                         vm_push(fiber, Reference::make(this, pval)->asValue());
                     }
@@ -11850,8 +12368,8 @@ namespace lit
         this->markObject((Object*)state->api_function);
         this->markObject((Object*)state->api_fiber);
         state->preprocessor->defined.markForGC(this);
-        this->modules->values.markForGC(this);
-        this->globals->values.markForGC(this);
+        this->modules->m_values.markForGC(this);
+        this->globals->m_values.markForGC(this);
     }
 
     bool VM::callValue(Value callee, uint8_t arg_count)
@@ -12028,7 +12546,7 @@ namespace lit
 
     void Writer::stringAppendFormat(String* ds, const char* fmt, va_list va)
     {
-        ds->chars = sdscatvprintf(ds->chars, fmt, va);
+        ds->m_chars = sdscatvprintf(ds->m_chars, fmt, va);
     }
 
     // impl::object
@@ -12065,9 +12583,9 @@ namespace lit
             case Object::Type::String:
                 {
                     string = (String*)obj;
-                    //LIT_FREE_ARRAY(state, char, string->chars, string->length + 1);
-                    sdsfree(string->chars);
-                    string->chars = nullptr;
+                    //LIT_FREE_ARRAY(state, char, string->m_chars, string->length + 1);
+                    sdsfree(string->m_chars);
+                    string->m_chars = nullptr;
                     LIT_FREE(state, String, obj);
                 }
                 break;
@@ -12102,7 +12620,7 @@ namespace lit
             case Object::Type::Fiber:
                 {
                     fiber = (Fiber*)obj;
-                    LIT_FREE_ARRAY(state, CallFrame, fiber->frames, fiber->frame_capacity);
+                    LIT_FREE_ARRAY(state, Fiber::CallFrame, fiber->frames, fiber->frame_capacity);
                     LIT_FREE_ARRAY(state, Value, fiber->stack, fiber->stack_capacity);
                     LIT_FREE(state, Fiber, obj);
                 }
@@ -12154,7 +12672,7 @@ namespace lit
                 break;
             case Object::Type::Map:
                 {
-                    ((Map*)obj)->values.release();
+                    ((Map*)obj)->m_values.release();
                     LIT_FREE(state, Map, obj);
                 }
                 break;
@@ -12193,7 +12711,7 @@ namespace lit
                 break;
             default:
                 {
-                    UNREACHABLE
+                    /* UNREACHABLE */
                 }
                 break;
         }
@@ -12263,9 +12781,9 @@ namespace lit
         }
         if(name == nullptr)
         {
-            return String::format(vm->m_state, "function #", *((double*)Object::asObject(instance)));
+            return String::format(vm->m_state, "<function #>", *((double*)Object::asObject(instance)));
         }
-        return String::format(vm->m_state, "function @", name->asValue());
+        return String::format(vm->m_state, "<function @>", name->asValue());
     }
 
     String* Object::toString(State* state, Value valobj)
@@ -12275,8 +12793,8 @@ namespace lit
         Fiber* fiber;
         Function* function;
         Chunk* chunk;
-        CallFrame* frame;
-        InterpretResult result;
+        Fiber::CallFrame* frame;
+        Result result;
         if(Object::isString(valobj))
         {
             return Object::as<String>(valobj);
@@ -12386,7 +12904,7 @@ namespace lit
         {
             for(i = 0; i < (size_t)map->size(); i++)
             {
-                entry = &map->values.m_inner.m_values[i];
+                entry = &map->m_values.m_inner.m_values[i];
                 if(entry->key != nullptr)
                 {
                     if(had_before)
@@ -12397,7 +12915,7 @@ namespace lit
                     {
                         wr->put(" ");
                     }
-                    wr->format("%s = ", entry->key->chars);
+                    wr->format("%s = ", entry->key->data());
                     if(Object::isMap(entry->value) && (map == Object::as<Map>(entry->value)))
                     {
                         wr->put("(recursion)");
@@ -12436,37 +12954,37 @@ namespace lit
             {
                 case Object::Type::String:
                     {
-                        wr->format("%s", Object::asString(value)->chars);
+                        wr->format("%s", Object::asString(value)->data());
                     }
                     break;
                 case Object::Type::Function:
                     {
-                        wr->format("function %s", Object::as<Function>(value)->name->chars);
+                        wr->format("function %s", Object::as<Function>(value)->name->data());
                     }
                     break;
                 case Object::Type::Closure:
                     {
-                        wr->format("closure %s", Object::as<Closure>(value)->function->name->chars);
+                        wr->format("closure %s", Object::as<Closure>(value)->function->name->data());
                     }
                     break;
                 case Object::Type::NativePrimitive:
                     {
-                        wr->format("function %s", Object::as<NativePrimFunction>(value)->name->chars);
+                        wr->format("function %s", Object::as<NativePrimFunction>(value)->name->data());
                     }
                     break;
                 case Object::Type::NativeFunction:
                     {
-                        wr->format("function %s", Object::as<NativeFunction>(value)->name->chars);
+                        wr->format("function %s", Object::as<NativeFunction>(value)->name->data());
                     }
                     break;
                 case Object::Type::PrimitiveMethod:
                     {
-                        wr->format("function %s", Object::as<PrimitiveMethod>(value)->name->chars);
+                        wr->format("function %s", Object::as<PrimitiveMethod>(value)->name->data());
                     }
                     break;
                 case Object::Type::NativeMethod:
                     {
-                        wr->format("function %s", Object::as<NativeMethod>(value)->name->chars);
+                        wr->format("function %s", Object::as<NativeMethod>(value)->name->data());
                     }
                     break;
                 case Object::Type::Fiber:
@@ -12476,7 +12994,7 @@ namespace lit
                     break;
                 case Object::Type::Module:
                     {
-                        wr->format("module %s", Object::as<Module>(value)->name->chars);
+                        wr->format("module %s", Object::as<Module>(value)->name->data());
                     }
                     break;
 
@@ -12495,7 +13013,7 @@ namespace lit
                     break;
                 case Object::Type::Class:
                     {
-                        wr->format("class %s", Object::as<Class>(value)->name->chars);
+                        wr->format("class %s", Object::as<Class>(value)->name->data());
                     }
                     break;
                 case Object::Type::Instance:
@@ -12505,9 +13023,9 @@ namespace lit
                         {
                             fprintf(stderr, "instance is a map\n");
                         }
-                        printf("%s instance", Object::as<Instance>(value)->klass->name->chars);
+                        printf("%s instance", Object::as<Instance>(value)->klass->name->data());
                         */
-                        wr->format("<instance '%s' ", Object::as<Instance>(value)->klass->name->chars);
+                        wr->format("<instance '%s' ", Object::as<Instance>(value)->klass->name->data());
                         map = Object::as<Map>(value);
                         size = map->size();
                         printMap(state, wr, map, size);
@@ -12600,6 +13118,16 @@ namespace lit
         }
     }
 
+    Module* Module::getModule(State* state, String* name)
+    {
+        Value value;
+        if(state->vm->modules->m_values.get(name, &value))
+        {
+            return Object::as<Module>(value);
+        }
+        return nullptr;
+    }
+
     // impl::string
     bool String::stateGetGCAllowed(State* state)
     {
@@ -12611,9 +13139,9 @@ namespace lit
         state->allow_gc = v;
     }
 
-    String* String::stateFindInterned(State* state, const char* chars, size_t length, uint32_t hash)
+    String* String::stateFindInterned(State* state, const char* str, size_t length, uint32_t hs)
     {
-        return state->vm->strings.find(chars, length, hash);
+        return state->vm->strings.find(str, length, hs);
     }
 
     void String::statePutInterned(State* state, String* string)
@@ -12748,13 +13276,13 @@ namespace lit
     }
 
     // impl::instance
-    InterpretResult Instance::callMethod(State* state, Value callee, String* mthname, Value* argv, size_t argc)
+    Result Instance::callMethod(State* state, Value callee, String* mthname, Value* argv, size_t argc)
     {
         Value mthval;
         mthval = Instance::getMethod(state, callee, mthname);
         if(!Object::isNull(mthval))
         {
-            return state->call(mthval, argv, argc, false);
+            return state->call(mthval, argv, argc);
         }
         return INTERPRET_RUNTIME_FAIL;    
     }
@@ -12765,97 +13293,7 @@ namespace lit
     */
 
 
-    const char* token_name(int t)
-    {
-        switch(t)
-        {
-            case LITTOK_NEW_LINE: return "LITTOK_NEW_LINE";
-            case LITTOK_LEFT_PAREN: return "LITTOK_LEFT_PAREN";
-            case LITTOK_RIGHT_PAREN: return "LITTOK_RIGHT_PAREN";
-            case LITTOK_LEFT_BRACE: return "LITTOK_LEFT_BRACE";
-            case LITTOK_RIGHT_BRACE: return "LITTOK_RIGHT_BRACE";
-            case LITTOK_LEFT_BRACKET: return "LITTOK_LEFT_BRACKET";
-            case LITTOK_RIGHT_BRACKET: return "LITTOK_RIGHT_BRACKET";
-            case LITTOK_COMMA: return "LITTOK_COMMA";
-            case LITTOK_SEMICOLON: return "LITTOK_SEMICOLON";
-            case LITTOK_COLON: return "LITTOK_COLON";
-            case LITTOK_BAR_EQUAL: return "LITTOK_BAR_EQUAL";
-            case LITTOK_BAR: return "LITTOK_BAR";
-            case LITTOK_BAR_BAR: return "LITTOK_BAR_BAR";
-            case LITTOK_AMPERSAND_EQUAL: return "LITTOK_AMPERSAND_EQUAL";
-            case LITTOK_AMPERSAND: return "LITTOK_AMPERSAND";
-            case LITTOK_AMPERSAND_AMPERSAND: return "LITTOK_AMPERSAND_AMPERSAND";
-            case LITTOK_BANG: return "LITTOK_BANG";
-            case LITTOK_BANG_EQUAL: return "LITTOK_BANG_EQUAL";
-            case LITTOK_EQUAL: return "LITTOK_EQUAL";
-            case LITTOK_EQUAL_EQUAL: return "LITTOK_EQUAL_EQUAL";
-            case LITTOK_GREATER: return "LITTOK_GREATER";
-            case LITTOK_GREATER_EQUAL: return "LITTOK_GREATER_EQUAL";
-            case LITTOK_GREATER_GREATER: return "LITTOK_GREATER_GREATER";
-            case LITTOK_LESS: return "LITTOK_LESS";
-            case LITTOK_LESS_EQUAL: return "LITTOK_LESS_EQUAL";
-            case LITTOK_LESS_LESS: return "LITTOK_LESS_LESS";
-            case LITTOK_PLUS: return "LITTOK_PLUS";
-            case LITTOK_PLUS_EQUAL: return "LITTOK_PLUS_EQUAL";
-            case LITTOK_PLUS_PLUS: return "LITTOK_PLUS_PLUS";
-            case LITTOK_MINUS: return "LITTOK_MINUS";
-            case LITTOK_MINUS_EQUAL: return "LITTOK_MINUS_EQUAL";
-            case LITTOK_MINUS_MINUS: return "LITTOK_MINUS_MINUS";
-            case LITTOK_STAR: return "LITTOK_STAR";
-            case LITTOK_STAR_EQUAL: return "LITTOK_STAR_EQUAL";
-            case LITTOK_STAR_STAR: return "LITTOK_STAR_STAR";
-            case LITTOK_SLASH: return "LITTOK_SLASH";
-            case LITTOK_SLASH_EQUAL: return "LITTOK_SLASH_EQUAL";
-            case LITTOK_QUESTION: return "LITTOK_QUESTION";
-            case LITTOK_QUESTION_QUESTION: return "LITTOK_QUESTION_QUESTION";
-            case LITTOK_PERCENT: return "LITTOK_PERCENT";
-            case LITTOK_PERCENT_EQUAL: return "LITTOK_PERCENT_EQUAL";
-            case LITTOK_ARROW: return "LITTOK_ARROW";
-            case LITTOK_SMALL_ARROW: return "LITTOK_SMALL_ARROW";
-            case LITTOK_TILDE: return "LITTOK_TILDE";
-            case LITTOK_CARET: return "LITTOK_CARET";
-            case LITTOK_CARET_EQUAL: return "LITTOK_CARET_EQUAL";
-            case LITTOK_DOT: return "LITTOK_DOT";
-            case LITTOK_DOT_DOT: return "LITTOK_DOT_DOT";
-            case LITTOK_DOT_DOT_DOT: return "LITTOK_DOT_DOT_DOT";
-            case LITTOK_SHARP: return "LITTOK_SHARP";
-            case LITTOK_SHARP_EQUAL: return "LITTOK_SHARP_EQUAL";
-            case LITTOK_IDENTIFIER: return "LITTOK_IDENTIFIER";
-            case LITTOK_STRING: return "LITTOK_STRING";
-            case LITTOK_INTERPOLATION: return "LITTOK_INTERPOLATION";
-            case LITTOK_NUMBER: return "LITTOK_NUMBER";
-            case LITTOK_CLASS: return "LITTOK_CLASS";
-            case LITTOK_ELSE: return "LITTOK_ELSE";
-            case LITTOK_FALSE: return "LITTOK_FALSE";
-            case LITTOK_FOR: return "LITTOK_FOR";
-            case LITTOK_FUNCTION: return "LITTOK_FUNCTION";
-            case LITTOK_IF: return "LITTOK_IF";
-            case LITTOK_NULL: return "LITTOK_NULL";
-            case LITTOK_RETURN: return "LITTOK_RETURN";
-            case LITTOK_SUPER: return "LITTOK_SUPER";
-            case LITTOK_THIS: return "LITTOK_THIS";
-            case LITTOK_TRUE: return "LITTOK_TRUE";
-            case LITTOK_VAR: return "LITTOK_VAR";
-            case LITTOK_WHILE: return "LITTOK_WHILE";
-            case LITTOK_CONTINUE: return "LITTOK_CONTINUE";
-            case LITTOK_BREAK: return "LITTOK_BREAK";
-            case LITTOK_NEW: return "LITTOK_NEW";
-            case LITTOK_EXPORT: return "LITTOK_EXPORT";
-            case LITTOK_IS: return "LITTOK_IS";
-            case LITTOK_STATIC: return "LITTOK_STATIC";
-            case LITTOK_OPERATOR: return "LITTOK_OPERATOR";
-            case LITTOK_GET: return "LITTOK_GET";
-            case LITTOK_SET: return "LITTOK_SET";
-            case LITTOK_IN: return "LITTOK_IN";
-            case LITTOK_CONST: return "LITTOK_CONST";
-            case LITTOK_REF: return "LITTOK_REF";
-            case LITTOK_ERROR: return "LITTOK_ERROR";
-            case LITTOK_EOF: return "LITTOK_EOF";
-            default:
-                break;
-        }
-        return "?unknown?";
-    }
+
 
 
 
@@ -13028,7 +13466,7 @@ namespace lit
                         {
                             preprocessor->m_state->raiseError((ErrorType)0,
                                       lit_format_error(preprocessor->m_state, 0, Error::LITERROR_UNKNOWN_MACRO, (int)(current - macro_start) - 1, macro_start)
-                                      ->chars);
+                                      ->data());
                             return false;
                         }
                     }
@@ -13053,14 +13491,14 @@ namespace lit
         } while(c != '\0');
         if(in_macro || preprocessor->open_ifs.m_count > 0 || depth > 0)
         {
-            preprocessor->m_state->raiseError((ErrorType)0, lit_format_error(preprocessor->m_state, 0, Error::LITERROR_UNCLOSED_MACRO)->chars);
+            preprocessor->m_state->raiseError((ErrorType)0, lit_format_error(preprocessor->m_state, 0, Error::LITERROR_UNCLOSED_MACRO)->data());
             return false;
         }
         preprocessor->open_ifs.release();
         return true;
     }
 
-
+    // otherfuncs
     double lit_check_number(VM* vm, Value* args, uint8_t arg_count, uint8_t id)
     {
         if(arg_count <= id || !Object::isNumber(args[id]))
@@ -13110,7 +13548,7 @@ namespace lit
                                       id >= arg_count ? "null" : Object::valueName(args[id]));
         }
 
-        return Object::as<String>(args[id])->chars;
+        return Object::as<String>(args[id])->data();
     }
 
     const char* lit_get_string(VM* vm, Value* args, uint8_t arg_count, uint8_t id, const char* def)
@@ -13121,7 +13559,7 @@ namespace lit
             return def;
         }
 
-        return Object::as<String>(args[id])->chars;
+        return Object::as<String>(args[id])->data();
     }
 
     String* lit_check_object_string(VM* vm, Value* args, uint8_t arg_count, uint8_t id)
@@ -13495,9 +13933,40 @@ namespace lit
         }
     }
 
+    void lit_disassemble_chunk(Chunk* chunk, const char* name, const char* source)
+    {
+        size_t i;
+        size_t offset;
+        Value value;
+        PCGenericArray<Value>* values;
+        Function* function;
+        values = &chunk->constants;
+
+        for(i = 0; i < values->m_count; i++)
+        {
+            value = values->m_values[i];
+            if(Object::isFunction(value))
+            {
+                function = Object::as<Function>(value);
+                lit_disassemble_chunk(&function->chunk, function->name->data(), source);
+            }
+        }
+        chunk->m_state->debugwriter.format("== %s ==\n", name);
+        for(offset = 0; offset < chunk->m_count;)
+        {
+            offset = lit_disassemble_instruction(chunk->m_state, chunk, offset, source);
+        }
+    }
+
+    void lit_disassemble_module(State* state, Module* module, const char* source)
+    {
+        (void)state;
+        lit_disassemble_chunk(&module->main_function->chunk, module->main_function->name->data(), source);
+    }
+
     void lit_trace_frame(Fiber* fiber, Writer* wr)
     {
-        CallFrame* frame;
+        Fiber::CallFrame* frame;
         (void)fiber;
         (void)frame;
         (void)wr;
@@ -13508,7 +13977,7 @@ namespace lit
         }
         frame = &fiber->frames[fiber->frame_count - 1];
         wr->format("== fiber %p f%i %s (expects %i, max %i, added %i, current %i, exits %i) ==\n", fiber,
-               fiber->frame_count - 1, frame->function->name->chars, frame->function->arg_count, frame->function->max_slots,
+               fiber->frame_count - 1, frame->function->name->data(), frame->function->arg_count, frame->function->max_slots,
                frame->function->max_slots + (int)(fiber->stack_top - fiber->stack), fiber->stack_capacity, frame->return_to_c);
     #endif
     }
@@ -13643,28 +14112,6 @@ namespace lit
     #endif
 
 
-
-    char* lit_read_file(const char* path, size_t* destlen)
-    {
-        size_t toldsz;
-        size_t actualsz;
-        char* buffer;
-        FILE* hnd;
-        hnd = fopen(path, "rb");
-        if(hnd == nullptr)
-        {
-            return nullptr;
-        }
-        fseek(hnd, 0L, SEEK_END);
-        toldsz = ftell(hnd);
-        rewind(hnd);
-        buffer = (char*)malloc(toldsz + 1);
-        actualsz = fread(buffer, sizeof(char), toldsz, hnd);
-        buffer[actualsz] = '\0';
-        fclose(hnd);
-        return buffer;
-    }
-
     bool lit_file_exists(const char* path)
     {
         struct stat buffer;
@@ -13677,250 +14124,6 @@ namespace lit
         return stat(path, &buffer) == 0 && S_ISDIR(buffer.st_mode);
     }
 
-
-
-
-
-    static void save_chunk(FILE* file, Chunk* chunk);
-    static void load_chunk(State* state, FileIO::EmulatedFile* file, Module* module, Chunk* chunk);
-
-    static void save_function(FILE* file, Function* function)
-    {
-        save_chunk(file, &function->chunk);
-        FileIO::write_string(file, function->name);
-        FileIO::write_uint8_t(file, function->arg_count);
-        FileIO::write_uint16_t(file, function->upvalue_count);
-        FileIO::write_uint8_t(file, (uint8_t)function->vararg);
-        FileIO::write_uint16_t(file, (uint16_t)function->max_slots);
-    }
-
-    static Function* load_function(State* state, FileIO::EmulatedFile* file, Module* module)
-    {
-        Function* function = Function::make(state, module);
-
-        load_chunk(state, file, module, &function->chunk);
-        function->name = file->read_estring(state);
-
-        function->arg_count = file->read_euint8_t();
-        function->upvalue_count = file->read_euint16_t();
-        function->vararg = (bool)file->read_euint8_t();
-        function->max_slots = file->read_euint16_t();
-
-        return function;
-    }
-
-    static void save_chunk(FILE* file, Chunk* chunk)
-    {
-        FileIO::write_uint32_t(file, chunk->m_count);
-        for(size_t i = 0; i < chunk->m_count; i++)
-        {
-            FileIO::write_uint8_t(file, chunk->code[i]);
-        }
-
-        if(chunk->has_line_info)
-        {
-            size_t c = chunk->line_count * 2 + 2;
-            FileIO::write_uint32_t(file, c);
-
-            for(size_t i = 0; i < c; i++)
-            {
-                FileIO::write_uint16_t(file, chunk->lines[i]);
-            }
-        }
-        else
-        {
-            FileIO::write_uint32_t(file, 0);
-        }
-
-        FileIO::write_uint32_t(file, chunk->constants.m_count);
-
-        for(size_t i = 0; i < chunk->constants.m_count; i++)
-        {
-            Value constant = chunk->constants.m_values[i];
-
-            if(Object::isObject(constant))
-            {
-                Object::Type type = Object::asObject(constant)->type;
-                FileIO::write_uint8_t(file, (uint8_t)(type) + 1);
-
-                switch(type)
-                {
-                    case Object::Type::String:
-                    {
-                        FileIO::write_string(file, Object::as<String>(constant));
-                        break;
-                    }
-
-                    case Object::Type::Function:
-                    {
-                        save_function(file, Object::as<Function>(constant));
-                        break;
-                    }
-
-                    default:
-                    {
-                        UNREACHABLE
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                FileIO::write_uint8_t(file, 0);
-                FileIO::write_double(file, Object::toNumber(constant));
-            }
-        }
-    }
-
-    static void load_chunk(State* state, FileIO::EmulatedFile* file, Module* module, Chunk* chunk)
-    {
-        size_t i;
-        size_t count;
-        uint8_t type;
-        chunk->init(state);
-        count = file->read_euint32_t();
-        chunk->code = (uint8_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint8_t) * count);
-        chunk->m_count = count;
-        chunk->m_capacity = count;
-        for(i = 0; i < count; i++)
-        {
-            chunk->code[i] = file->read_euint8_t();
-        }
-        count = file->read_euint32_t();
-        if(count > 0)
-        {
-            chunk->lines = (uint16_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint16_t) * count);
-            chunk->line_count = count;
-            chunk->line_capacity = count;
-            for(i = 0; i < count; i++)
-            {
-                chunk->lines[i] = file->read_euint16_t();
-            }
-        }
-        else
-        {
-            chunk->has_line_info = false;
-        }
-        count = file->read_euint32_t();
-        chunk->constants.m_values = (Value*)Memory::reallocate(state, nullptr, 0, sizeof(Value) * count);
-        chunk->constants.m_count = count;
-        chunk->constants.m_capacity = count;
-        for(i = 0; i < count; i++)
-        {
-            type = file->read_euint8_t();
-            if(type == 0)
-            {
-                chunk->constants.m_values[i] = Object::toValue(file->read_edouble());
-            }
-            else
-            {
-                switch((Object::Type)(type - 1))
-                {
-                    case Object::Type::String:
-                        {
-                            chunk->constants.m_values[i] = file->read_estring(state)->asValue();
-                        }
-                        break;
-                    case Object::Type::Function:
-                        {
-                            chunk->constants.m_values[i] = load_function(state, file, module)->asValue();
-                        }
-                        break;
-                    default:
-                        {
-                            UNREACHABLE
-                        }
-                        break;
-
-                }
-            }
-        }
-    }
-
-    void lit_save_module(Module* module, FILE* file)
-    {
-        size_t i;
-        bool disabled;
-        Table* privates;
-        disabled = AST::Optimizer::is_enabled(LITOPTSTATE_PRIVATE_NAMES);
-        FileIO::write_string(file, module->name);
-        FileIO::write_uint16_t(file, module->private_count);
-        FileIO::write_uint8_t(file, (uint8_t)disabled);
-        if(!disabled)
-        {
-            privates = &module->private_names->values;
-            for(i = 0; i < module->private_count; i++)
-            {
-                if(privates->at(i).key != nullptr)
-                {
-                    FileIO::write_string(file, privates->at(i).key);
-                    FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i).value));
-                }
-            }
-        }
-        save_function(file, module->main_function);
-    }
-
-    Module* lit_load_module(State* state, const char* input, size_t length)
-    {
-        bool enabled;
-        uint16_t i;
-        uint16_t j;
-        uint16_t module_count;
-        uint16_t privates_count;
-        uint8_t bytecode_version;
-        String* name;
-        Table* privates;
-        Module* module;
-        FileIO::EmulatedFile file;
-        file.init(input, length);
-        if(file.read_euint16_t() != LIT_BYTECODE_MAGIC_NUMBER)
-        {
-            state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown magic number");
-            return nullptr;
-        }
-        bytecode_version = file.read_euint8_t();
-        if(bytecode_version > LIT_BYTECODE_VERSION)
-        {
-            state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown bytecode version '%i'", (int)bytecode_version);
-            return nullptr;
-        }
-        module_count = file.read_euint16_t();
-        Module* first = nullptr;
-        for(j = 0; j < module_count; j++)
-        {
-            module = Module::make(state, file.read_estring(state));
-            privates = &module->private_names->values;
-            privates_count = file.read_euint16_t();
-            enabled = !((bool)file.read_euint8_t());
-            module->privates = LIT_ALLOCATE(state, Value, privates_count);
-            module->private_count = privates_count;
-            for(i = 0; i < privates_count; i++)
-            {
-                module->privates[i] = Object::NullVal;
-                if(enabled)
-                {
-                    name = file.read_estring(state);
-                    privates->set(name, Object::toValue(file.read_euint16_t()));
-                }
-            }
-            module->main_function = load_function(state, &file, module);
-            state->vm->modules->values.set(module->name, module->asValue());
-            if(j == 0)
-            {
-                first = module;
-            }
-        }
-        if(file.read_euint16_t() != LIT_BYTECODE_END_NUMBER)
-        {
-            state->raiseError(COMPILE_ERROR, "Failed to read compiled code, unknown end number");
-            return nullptr;
-        }
-        return first;
-    }
-
-
-
     // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2Float
     int lit_closest_power_of_two(int n)
     {
@@ -13932,153 +14135,6 @@ namespace lit
         n |= n >> 16;
         n++;
         return n;
-    }
-
-
-    InterpretResult lit_interpret(State* state, const char* module_name, const char* code, size_t length)
-    {
-        return lit_internal_interpret(state, String::copy(state, module_name, strlen(module_name)), code, length);
-    }
-
-    Module* lit_compile_module(State* state, String* module_name, const char* code, size_t length)
-    {
-        clock_t t;
-        clock_t total_t;
-        bool allowed_gc;
-        Module* module;
-        AST::Expression::List statements;
-        allowed_gc = state->allow_gc;
-        state->allow_gc = false;
-        state->had_error = false;
-        module = nullptr;
-        // This is a lbc format
-        if((code[1] << 8 | code[0]) == LIT_BYTECODE_MAGIC_NUMBER)
-        {
-            module = lit_load_module(state, code, length);
-        }
-        else
-        {
-            t = 0;
-            total_t = 0;
-            if(AST::measure_compilation_time)
-            {
-                total_t = t = clock();
-            }
-            /*
-            if(!lit_preprocess(state->preprocessor, code))
-            {
-                return nullptr;
-            }
-            */
-            if(AST::measure_compilation_time)
-            {
-                printf("-----------------------\nPreprocessing:  %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-                t = clock();
-            }
-            statements.init(state);
-            if(state->parser->parse(module_name->chars, code, length, statements))
-            {
-                AST::Expression::releaseStatementList(state, &statements);
-                return nullptr;
-            }
-            if(AST::measure_compilation_time)
-            {
-                printf("Parsing:        %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-                t = clock();
-            }
-            state->optimizer->optimize(&statements);
-            if(AST::measure_compilation_time)
-            {
-                printf("Optimization:   %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-                t = clock();
-            }
-            module = state->emitter->run_emitter(statements, module_name);
-            AST::Expression::releaseStatementList(state, &statements);
-            if(AST::measure_compilation_time)
-            {
-                printf("Emitting:       %gms\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-                printf("\nTotal:          %gms\n-----------------------\n",
-                       (double)(clock() - total_t) / CLOCKS_PER_SEC * 1000 + AST::last_source_time);
-            }
-        }
-        state->allow_gc = allowed_gc;
-        return state->had_error ? nullptr : module;
-    }
-
-    Module* lit_get_module(State* state, const char* name)
-    {
-        Value value;
-        if(state->vm->modules->values.get(String::intern(state, name), &value))
-        {
-            return Object::as<Module>(value);
-        }
-        return nullptr;
-    }
-
-    InterpretResult lit_internal_interpret(State* state, String* module_name, const char* code, size_t length)
-    {
-        intptr_t istack;
-        intptr_t itop;
-        intptr_t idif;
-        Module* module;
-        Fiber* fiber;
-        InterpretResult result;
-        module = lit_compile_module(state, module_name, code, length);
-        if(module == nullptr)
-        {
-            return InterpretResult{ LITRESULT_COMPILE_ERROR, Object::NullVal };
-        }
-        result = state->execModule(module);
-        fiber = module->main_fiber;
-        if(!state->had_error && !fiber->abort && fiber->stack_top != fiber->stack)
-        {
-            istack = (intptr_t)(fiber->stack);
-            itop = (intptr_t)(fiber->stack_top);
-            idif = (intptr_t)(fiber->stack - fiber->stack_top);
-            /* me fail english. how do i put this better? */
-            state->raiseError(RUNTIME_ERROR, "stack should be same as stack top", idif, istack, istack, itop, itop);
-        }
-        state->last_module = module;
-        return result;
-    }
-
-    char* lit_patch_file_name(char* file_name)
-    {
-        int i;
-        int name_length;
-        char c;
-        name_length = strlen(file_name);
-        // Check, if our file_name ends with .lit or lbc, and remove it
-        if(name_length > 4 && (memcmp(file_name + name_length - 4, ".lit", 4) == 0 || memcmp(file_name + name_length - 4, ".lbc", 4) == 0))
-        {
-            file_name[name_length - 4] = '\0';
-            name_length -= 4;
-        }
-        // Check, if our file_name starts with ./ and remove it (useless, and makes the module name be ..main)
-        if(name_length > 2 && memcmp(file_name, "./", 2) == 0)
-        {
-            file_name += 2;
-            name_length -= 2;
-        }
-        for(i = 0; i < name_length; i++)
-        {
-            c = file_name[i];
-            if(c == '/' || c == '\\')
-            {
-                file_name[i] = '.';
-            }
-        }
-        return file_name;
-    }
-
-    char* copy_string(const char* string)
-    {
-        size_t length;
-        char* new_string;
-        length = strlen(string) + 1;
-        new_string = (char*)malloc(length);
-        memcpy(new_string, string, length);
-        return new_string;
     }
 
     bool lit_compile_and_save_files(State* state, char* files[], size_t num_files, const char* output_file)
@@ -14095,16 +14151,16 @@ namespace lit
         AST::Optimizer::set_level(LITOPTLEVEL_EXTREME);
         for(i = 0; i < num_files; i++)
         {
-            file_name = copy_string(files[i]);
-            source = lit_read_file(file_name, &length);
+            file_name = Util::copyString(files[i]);
+            source = Util::readFile(file_name, &length);
             if(source == nullptr)
             {
                 state->raiseError(COMPILE_ERROR, "failed to open file '%s' for reading", file_name);
                 return false;
             }
-            file_name = lit_patch_file_name(file_name);
+            file_name = Util::patchFilename(file_name);
             module_name = String::copy(state, file_name, strlen(file_name));
-            module = lit_compile_module(state, module_name, source, length);
+            module = state->compileModule(module_name, source, length);
             compiled_modules[i] = module;
             free((void*)source);
             free((void*)file_name);
@@ -14124,7 +14180,7 @@ namespace lit
         FileIO::write_uint16_t(file, num_files);
         for(i = 0; i < num_files; i++)
         {
-            lit_save_module(compiled_modules[i], file);
+            BinaryData::storeModule(compiled_modules[i], file);
         }
         FileIO::write_uint16_t(file, LIT_BYTECODE_END_NUMBER);
         LIT_FREE(state, Module, compiled_modules);
@@ -14132,96 +14188,22 @@ namespace lit
         return true;
     }
 
-    static char* read_source(State* state, const char* file, size_t* destlen, char** patched_file_name)
-    {
-        size_t length;
-        clock_t t;
-        char* file_name;
-        char* source;
-        t = 0;
-        if(AST::measure_compilation_time)
-        {
-            t = clock();
-        }
-        file_name = copy_string(file);
-        source = lit_read_file(file_name, destlen);
-        if(source == nullptr)
-        {
-            state->raiseError(RUNTIME_ERROR, "failed to open file '%s' for reading", file_name);
-        }
-        file_name = lit_patch_file_name(file_name);
-        if(AST::measure_compilation_time)
-        {
-            printf("reading source: %gms\n", AST::last_source_time = (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-        }
-        *patched_file_name = file_name;
-        return source;
-    }
 
-    InterpretResult lit_interpret_file(State* state, const char* file)
-    {
-        size_t srclen;
-        char* source;
-        char* patched_file_name;
-        InterpretResult result;
-        source = read_source(state, file, &srclen, &patched_file_name);
-        if(source == nullptr)
-        {
-            return INTERPRET_RUNTIME_FAIL;
-        }
-        result = lit_interpret(state, patched_file_name, source, srclen);
-        free((void*)source);
-        free(patched_file_name);
-        return result;
-    }
-
-
-    void lit_disassemble_chunk(Chunk* chunk, const char* name, const char* source)
-    {
-        size_t i;
-        size_t offset;
-        Value value;
-        PCGenericArray<Value>* values;
-        Function* function;
-        values = &chunk->constants;
-
-        for(i = 0; i < values->m_count; i++)
-        {
-            value = values->m_values[i];
-            if(Object::isFunction(value))
-            {
-                function = Object::as<Function>(value);
-                lit_disassemble_chunk(&function->chunk, function->name->chars, source);
-            }
-        }
-        chunk->m_state->debugwriter.format("== %s ==\n", name);
-        for(offset = 0; offset < chunk->m_count;)
-        {
-            offset = lit_disassemble_instruction(chunk->m_state, chunk, offset, source);
-        }
-    }
-
-    void lit_disassemble_module(State* state, Module* module, const char* source)
-    {
-        lit_disassemble_chunk(&module->main_function->chunk, module->main_function->name->chars, source);
-    }
-
-
-    InterpretResult lit_dump_file(State* state, const char* file)
+    Result lit_dump_file(State* state, const char* file)
     {
         size_t length;
         char* patched_file_name;
         char* source;
-        InterpretResult result;
+        Result result;
         String* module_name;
         Module* module;
-        source = read_source(state, file, &length, &patched_file_name);
+        source = state->readSource(file, &length, &patched_file_name);
         if(source == nullptr)
         {
             return INTERPRET_RUNTIME_FAIL;
         }
         module_name = String::copy(state, patched_file_name, strlen(patched_file_name));
-        module = lit_compile_module(state, module_name, source, length);
+        module = state->compileModule(module_name, source, length);
         if(module == nullptr)
         {
             result = INTERPRET_RUNTIME_FAIL;
@@ -14229,7 +14211,7 @@ namespace lit
         else
         {
             lit_disassemble_module(state, module, source);
-            result = (InterpretResult){ LITRESULT_OK, Object::NullVal };
+            result = (Result){ LITRESULT_OK, Object::NullVal };
         }
         free((void*)source);
         free((void*)patched_file_name);
@@ -14292,7 +14274,7 @@ namespace lit
         char* start;
         char* buffer;
         const char* name;
-        CallFrame* frame;
+        Fiber::CallFrame* frame;
         Function* function;
         Chunk* chunk;
         Value error;
@@ -14323,13 +14305,13 @@ namespace lit
         }
         // Maan, formatting c strings is hard...
         count = (int)fiber->frame_count - 1;
-        length = snprintf(nullptr, 0, "%s%s\n", COLOR_RED, error_string->chars);
+        length = snprintf(nullptr, 0, "%s%s\n", COLOR_RED, error_string->data());
         for(i = count; i >= 0; i--)
         {
             frame = &fiber->frames[i];
             function = frame->function;
             chunk = &function->chunk;
-            name = function->name == nullptr ? "unknown" : function->name->chars;
+            name = function->name == nullptr ? "unknown" : function->name->data();
 
             if(chunk->has_line_info)
             {
@@ -14343,13 +14325,13 @@ namespace lit
         length += snprintf(nullptr, 0, "%s", COLOR_RESET);
         buffer = (char*)malloc(length + 1);
         buffer[length] = '\0';
-        start = buffer + sprintf(buffer, "%s%s\n", COLOR_RED, error_string->chars);
+        start = buffer + sprintf(buffer, "%s%s\n", COLOR_RED, error_string->data());
         for(i = count; i >= 0; i--)
         {
             frame = &fiber->frames[i];
             function = frame->function;
             chunk = &function->chunk;
-            name = function->name == nullptr ? "unknown" : function->name->chars;
+            name = function->name == nullptr ? "unknown" : function->name->data();
             if(chunk->has_line_info)
             {
                 start += sprintf(start, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->code - 1), name);
@@ -14529,7 +14511,7 @@ namespace lit
 
     bool lit_compare_values(State* state, const Value a, const Value b)
     {
-        InterpretResult inret;
+        Result inret;
         Value args[3];
         if(Object::isInstance(a))
         {
@@ -14763,15 +14745,15 @@ namespace lit
         for(i = 0; i < values->m_count; i++)
         {
             string = strings[i];
-            memcpy(chars + index, string->chars, string->length());
-            chars = sdscatlen(chars, string->chars, string->length());
+            memcpy(chars + index, string->data(), string->length());
+            chars = sdscatlen(chars, string->data(), string->length());
             index += string->length();
             if(joinee != nullptr)
             {
                 
                 //if((i+1) < values.m_count)
                 {
-                    chars = sdscatlen(chars, joinee->chars, jlen);
+                    chars = sdscatlen(chars, joinee->data(), jlen);
                 }
                 index += jlen;
             }
@@ -14867,7 +14849,7 @@ namespace lit
                 stringified = Object::toString(state, val);
             }
             part = stringified;
-            buffer = sdscatlen(buffer, part->chars, part->length());
+            buffer = sdscatlen(buffer, part->data(), part->length());
             if(has_more && i == value_amount - 2)
             {
                 buffer = sdscat(buffer, " ... ");
@@ -14939,7 +14921,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "class @", Object::as<Class>(instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "<class @>", Object::as<Class>(instance)->name->asValue())->asValue();
     }
 
     static Value objfn_class_iterator(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15114,7 +15096,7 @@ namespace lit
             Value argv[2]; \
             argv[0] = a; \
             argv[1] = b; \
-            InterpretResult r = state->call(callee, argv, 2, false); \
+            Result r = state->call(callee, argv, 2); \
             if(r.type != LITRESULT_OK) \
             { \
                 return; \
@@ -15122,12 +15104,12 @@ namespace lit
             !Object::isFalsey(r.result); \
         })
     #else
-    static InterpretResult COMPARE_inl(State* state, Value callee, Value a, Value b)
+    static Result COMPARE_inl(State* state, Value callee, Value a, Value b)
     {
         Value argv[2];
         argv[0] = a;
         argv[1] = b;
-        return state->call(callee, argv, 2, false);
+        return state->call(callee, argv, 2);
     }
 
     #define COMPARE(state, callee, a, b) \
@@ -15138,7 +15120,7 @@ namespace lit
 
     void util_custom_quick_sort(VM* vm, Value* l, int length, Value callee)
     {
-        InterpretResult rt;
+        Result rt;
         State* state;
         if(length < 2)
         {
@@ -15202,7 +15184,7 @@ namespace lit
         int vararg_count;
         int objfn_function_arg_count;
         Array* array;
-        CallFrame* frame;
+        Fiber::CallFrame* frame;
         if(util_is_fiber_done(fiber))
         {
             lit_runtime_error_exiting(vm, "Fiber already finished executing");
@@ -15250,7 +15232,7 @@ namespace lit
             return Object::toNumber(a) < Object::toNumber(b);
         }
         argv[0] = b;
-        return !Object::isFalsey(state->findAndCallMethod(a, String::intern(state, "<"), argv, 1, false).result);
+        return !Object::isFalsey(state->findAndCallMethod(a, String::intern(state, "<"), argv, 1).result);
     }
 
     void util_basic_quick_sort(State* state, Value* clist, int length)
@@ -15294,7 +15276,7 @@ namespace lit
     {
         Function* function;
         Fiber* fiber;
-        CallFrame* frame;
+        Fiber::CallFrame* frame;
         function = module->main_function;
         fiber = Fiber::make(vm->m_state, module, function);
         fiber->parent = vm->fiber;
@@ -15311,7 +15293,7 @@ namespace lit
     static bool compile_and_interpret(VM* vm, String* modname, const char* source, size_t length)
     {
         Module* module;
-        module = lit_compile_module(vm->m_state, modname, source, length);
+        module = vm->m_state->compileModule(modname, source, length);
         if(module == nullptr)
         {
             return false;
@@ -15449,7 +15431,7 @@ namespace lit
         if(!ignore_previous)
         {
             Value existing_module;
-            if(vm->modules->values.get(name, &existing_module))
+            if(vm->modules->m_values.get(name, &existing_module))
             {
                 Module* loaded_module = Object::as<Module>(existing_module);
                 if(loaded_module->ran)
@@ -15476,7 +15458,7 @@ namespace lit
                 return false;
             }
         }
-        source = lit_read_file(modname, &srclength);
+        source = Util::readFile(modname, &srclength);
         if(source == nullptr)
         {
             return false;
@@ -15488,7 +15470,6 @@ namespace lit
         free(source);
         return true;
     }
-
 
     bool util_attempt_to_require_combined(VM* vm, Value* argv, size_t argc, const char* a, const char* b, bool ignore_previous)
     {
@@ -15584,7 +15565,7 @@ namespace lit
         for(i = 0; i < argc; i++)
         {
             sv = Object::toString(vm->m_state, argv[i]);
-            written += fwrite(sv->chars, sizeof(char), sv->length(), stdout);
+            written += fwrite(sv->data(), sizeof(char), sv->length(), stdout);
         }
         return Object::toValue(written);
     }
@@ -15598,7 +15579,7 @@ namespace lit
         }
         for(i = 0; i < argc; i++)
         {
-            lit_printf(vm->m_state, "%s", Object::toString(vm->m_state, argv[i])->chars);
+            lit_printf(vm->m_state, "%s", Object::toString(vm->m_state, argv[i])->data());
         }
         lit_printf(vm->m_state, "\n");
         return Object::NullVal;
@@ -15627,22 +15608,22 @@ namespace lit
         name = lit_check_object_string(vm, argv, argc, 0);
         ignore_previous = argc > 1 && Object::isBool(argv[1]) && Object::asBool(argv[1]);
         // First check, if a file with this name exists in the local path
-        if(util_attempt_to_require(vm, argv, argc, name->chars, ignore_previous, false))
+        if(util_attempt_to_require(vm, argv, argc, name->data(), ignore_previous, false))
         {
             return should_update_locals;
         }
         // If not, we join the path of the current module to it (the path goes all the way from the root)
         modname = vm->fiber->module->name;
         // We need to get rid of the module name (test.folder.module -> test.folder)
-        index = strrchr(modname->chars, '.');
+        index = strrchr(modname->data(), '.');
         if(index != nullptr)
         {
-            length = index - modname->chars;
+            length = index - modname->data();
             buffer = (char*)malloc(length + 1);
             //char buffer[length + 1];
-            memcpy((void*)buffer, modname->chars, length);
+            memcpy((void*)buffer, modname->data(), length);
             buffer[length] = '\0';
-            if(util_attempt_to_require_combined(vm, argv, argc, (const char*)&buffer, name->chars, ignore_previous))
+            if(util_attempt_to_require_combined(vm, argv, argc, (const char*)&buffer, name->data(), ignore_previous))
             {
                 free(buffer);
                 return should_update_locals;
@@ -15652,7 +15633,7 @@ namespace lit
                 free(buffer);
             }
         }
-        lit_runtime_error_exiting(vm, "failed to require module '%s'", name->chars);
+        lit_runtime_error_exiting(vm, "failed to require module '%s'", name->data());
         return false;
     }
     #endif
@@ -15842,7 +15823,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "fiber@%p", &instance)->asValue();
+        return String::format(vm->m_state, "<fiber @>", instance)->asValue();
 
     }
 
@@ -15950,7 +15931,7 @@ namespace lit
     }
 
 
-    struct FileData
+    class FileData
     {
         public:
             char* path;
@@ -15958,12 +15939,13 @@ namespace lit
             bool isopen;
     };
 
-    struct StdioHandle
+    class StdioHandle
     {
-        FILE* handle;
-        const char* name;
-        bool canread;
-        bool canwrite;
+        public:
+            FILE* handle;
+            const char* name;
+            bool canread;
+            bool canwrite;
     };
 
     static void* LIT_INSERT_DATA(VM* vm, Value instance, size_t typsz, Userdata::CleanupFuncType cleanup)
@@ -16094,7 +16076,7 @@ namespace lit
         size_t rt;
         String* value;
         value = Object::toString(vm->m_state, argv[0]);
-        rt = fwrite(value->chars, value->length(), 1, ((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle);
+        rt = fwrite(value->data(), value->length(), 1, ((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle);
         return Object::toValue(rt);
     }
 
@@ -16155,8 +16137,16 @@ namespace lit
 
     static Value objmethod_file_tostring(VM* vm, Value instance, size_t argc, Value* argv)
     {
+        (void)argc;
+        (void)argv;
+        const char* path;
         auto data = (FileData*)LIT_EXTRACT_DATA(vm, instance);
-        return String::format(vm->m_state, "<file:@>", instance)->asValue();
+        path = data->path;
+        if(path == nullptr)
+        {
+            path = "stdio";
+        }
+        return String::format(vm->m_state, "<file @ ($)>", Object::as<Instance>(instance), data->path)->asValue();
     }
 
     static Value objmethod_file_readall(VM* vm, Value instance, size_t argc, Value* argv)
@@ -16179,7 +16169,7 @@ namespace lit
             actuallength = 0;
             while((c = fgetc(data->handle)) != EOF)
             {
-                result->chars = sdscatlen(result->chars, &c, 1);
+                result->m_chars = sdscatlen(result->m_chars, &c, 1);
                 actuallength++;
             }
         }
@@ -16188,14 +16178,14 @@ namespace lit
             length = ftell(data->handle);
             fseek(data->handle, 0, SEEK_SET);
             result = String::allocEmpty(vm->m_state, length, false);
-            actuallength = fread(result->chars, sizeof(char), length, data->handle);
+            actuallength = fread(result->m_chars, sizeof(char), length, data->handle);
             /*
             * after reading, THIS actually sets the correct length.
             * before that, it would be 0.
             */
-            sdsIncrLen(result->chars, actuallength);
+            sdsIncrLen(result->m_chars, actuallength);
         }
-        result->hash = String::makeHash(result->chars, actuallength);
+        result->m_hash = String::makeHash(result->m_chars, actuallength);
         String::statePutInterned(vm->m_state, result);
         return result->asValue();
     }
@@ -16382,7 +16372,7 @@ namespace lit
         Value args[5];
         String* varname;
         String* descname;
-        InterpretResult res;
+        Result res;
         Fiber* oldfiber;
         StdioHandle* hstd;
         oldfiber = state->vm->fiber;
@@ -16401,7 +16391,7 @@ namespace lit
             descname = String::intern(state, name);
             args[0] = userhnd->asValue();
             args[1] = descname->asValue();
-            res = state->call(fileval, args, 2, false);
+            res = state->call(fileval, args, 2);
             //fprintf(stderr, "make_handle(%s, hnd=%p): res.type=%d, res.result=%s\n", name, hnd, res.type, Object::valueName(res.result));
             state->setGlobal(varname, res.result);
         }
@@ -16428,7 +16418,7 @@ namespace lit
                 klass->setStaticMethod("exists", objmethod_file_exists);;
                 klass->setStaticMethod("getLastModified", objmethod_file_getlastmodified);;
                 klass->bindConstructor(objmethod_file_constructor);
-                //klass->bindMethod("toString", objmethod_file_tostring);
+                klass->bindMethod("toString", objmethod_file_tostring);
                 klass->bindMethod("close", objmethod_file_close);
                 klass->bindMethod("write", objmethod_file_write);
                 klass->bindMethod("writeByte", objmethod_file_writebyte);
@@ -16571,18 +16561,18 @@ namespace lit
         if(argc == 2)
         {
             val = argv[1];
-            if(map->index_fn != nullptr)
+            if(map->m_indexfn != nullptr)
             {
-                return map->index_fn(vm, map, index, &val);
+                return map->m_indexfn(vm, map, index, &val);
             }
             map->set(index, val);
             return val;
         }
-        if(map->index_fn != nullptr)
+        if(map->m_indexfn != nullptr)
         {
-            return map->index_fn(vm, map, index, nullptr);
+            return map->m_indexfn(vm, map, index, nullptr);
         }
-        if(!map->values.get(index, &value))
+        if(!map->m_values.get(index, &value))
         {
             return Object::NullVal;
         }
@@ -16606,7 +16596,7 @@ namespace lit
         (void)vm;
         (void)argv;
         (void)argc;
-        Object::as<Map>(instance)->values.m_inner .m_count = 0;
+        Object::as<Map>(instance)->m_values.m_inner .m_count = 0;
         return Object::NullVal;
     }
 
@@ -16617,7 +16607,7 @@ namespace lit
         int index;
         int value;
         index = argv[0] == Object::NullVal ? -1 : Object::toNumber(argv[0]);
-        value = Object::as<Map>(instance)->values.iterator(index);
+        value = Object::as<Map>(instance)->m_values.iterator(index);
         return value == -1 ? Object::NullVal : Object::toValue(value);
     }
 
@@ -16625,7 +16615,7 @@ namespace lit
     {
         size_t index;
         index = lit_check_number(vm, argv, argc, 0);
-        return Object::as<Map>(instance)->values.iterKey(index);
+        return Object::as<Map>(instance)->m_values.iterKey(index);
     }
 
     static Value objfn_map_clone(VM* vm, Value instance, size_t argc, Value* argv)
@@ -16636,7 +16626,7 @@ namespace lit
         Map* map;
         state = vm->m_state;
         map = Map::make(state);
-        Object::as<Map>(instance)->values.addAll(&map->values);
+        Object::as<Map>(instance)->m_values.addAll(&map->m_values);
         return map->asValue();
     }
 
@@ -16664,12 +16654,12 @@ namespace lit
         String** keys;
         state = vm->m_state;
         map = Object::as<Map>(instance);
-        values = &map->values;
+        values = &map->m_values;
         if(values->size() == 0)
         {
             return String::internValue(state, "{}");
         }
-        has_wrapper = map->index_fn != nullptr;
+        has_wrapper = map->m_indexfn != nullptr;
         has_more = values->size() > LIT_CONTAINER_OUTPUT_MAX;
         value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->size();
         values_converted = LIT_ALLOCATE(vm->m_state, String*, value_amount+1);
@@ -16687,9 +16677,9 @@ namespace lit
             if(entry->key != nullptr)
             {
                 // Special hidden key
-                field = has_wrapper ? map->index_fn(vm, map, entry->key, nullptr) : entry->value;
+                field = has_wrapper ? map->m_indexfn(vm, map, entry->key, nullptr) : entry->value;
                 // This check is required to prevent infinite loops when playing with Module.privates and such
-                strobval = (Object::isMap(field) && Object::as<Map>(field)->index_fn != nullptr) ? String::intern(state, "map") : Object::toString(state, field);
+                strobval = (Object::isMap(field) && Object::as<Map>(field)->m_indexfn != nullptr) ? String::intern(state, "map") : Object::toString(state, field);
                 state->pushRoot((Object*)strobval);
                 values_converted[i] = strobval;
                 keys[i] = entry->key;
@@ -16718,11 +16708,11 @@ namespace lit
             #ifndef SINGLE_LINE_MAPS
             buffer[buffer_index++] = '\t';
             #endif
-            memcpy(&buffer[buffer_index], key->chars, key->length());
+            memcpy(&buffer[buffer_index], key->data(), key->length());
             buffer_index += key->length();
             memcpy(&buffer[buffer_index], " = ", 3);
             buffer_index += 3;
-            memcpy(&buffer[buffer_index], value->chars, value->length());
+            memcpy(&buffer[buffer_index], value->data(), value->length());
             buffer_index += value->length();
             if(has_more && i == value_amount - 1)
             {
@@ -17091,7 +17081,7 @@ namespace lit
                     {
                         if(index == target)
                         {
-                            return map->values.m_inner.m_values[i].value;
+                            return map->m_values.m_inner.m_values[i].value;
                         }
 
                         index++;
@@ -17179,7 +17169,7 @@ namespace lit
         String* id;
         Module* module;
         id = String::intern(vm->m_state, "_module");
-        if(!map->values.get(id, &value) || !Object::isModule(value))
+        if(!map->m_values.get(id, &value) || !Object::isModule(value))
         {
             return Object::NullVal;
         }
@@ -17190,7 +17180,7 @@ namespace lit
             return module->asValue();
         }
 
-        if(module->private_names->values.get(name, &value))
+        if(module->private_names->m_values.get(name, &value))
         {
             index = (int)Object::toNumber(value);
             if(index > -1 && index < (int)module->private_count)
@@ -17215,10 +17205,10 @@ namespace lit
         (void)argv;
         module = Object::isModule(instance) ? Object::as<Module>(instance) : vm->fiber->module;
         map = module->private_names;
-        if(map->index_fn == nullptr)
+        if(map->m_indexfn == nullptr)
         {
-            map->index_fn = access_private;
-            map->values.set(String::intern(vm->m_state, "_module"), module->asValue());
+            map->m_indexfn = access_private;
+            map->m_values.set(String::intern(vm->m_state, "_module"), module->asValue());
         }
         return map->asValue();
     }
@@ -17235,7 +17225,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "Module @", Object::as<Module>(instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "<module @>", Object::as<Module>(instance)->name->asValue())->asValue();
     }
 
     static Value objfn_module_name(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17291,7 +17281,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "@ instance", Class::getClassFor(vm->m_state, instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "<instance @>", Class::getClassFor(vm->m_state, instance)->name->asValue())->asValue();
     }
 
     static void fillmap(State* state, Map* destmap, Table* fromtbl, bool includenullkeys)
@@ -17299,6 +17289,7 @@ namespace lit
         size_t i;
         String* key;
         Value val;
+        (void)state;
         (void)includenullkeys;
         for(i=0; i<fromtbl->size(); i++)
         {
@@ -17436,7 +17427,6 @@ namespace lit
         }
     }
 
-
     static Value objfn_range_iterator(VM* vm, Value instance, size_t argc, Value* argv)
     {
         LIT_ENSURE_ARGS(1);
@@ -17472,7 +17462,7 @@ namespace lit
         (void)argv;
         Range* range;
         range = Object::as<Range>(instance);
-        return String::format(vm->m_state, "Range(#, #)", range->from, range->to)->asValue();
+        return String::format(vm->m_state, "<range (#, #)>", range->from, range->to)->asValue();
     }
 
     static Value objfn_range_from(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17537,7 +17527,6 @@ namespace lit
             klass->inheritFrom(state->objectvalue_class);
         }
     }
-
 
     char* itoa(int value, char* result, int base)
     {
@@ -17668,8 +17657,8 @@ namespace lit
         {
             lit_runtime_error_exiting(vm, "String.splice argument 'from' is larger than argument 'to'");
         }
-        from = String::utfcharOffset(string->chars, from);
-        to = String::utfcharOffset(string->chars, to);
+        from = String::utfcharOffset(string->data(), from);
+        to = String::utfcharOffset(string->data(), to);
         return String::fromRange(vm->m_state, string, from, to - from + 1)->asValue();
     }
 
@@ -17698,7 +17687,7 @@ namespace lit
                 return Object::NullVal;
             }
         }
-        c = string->codePointAt(String::utfcharOffset(string->chars, index));
+        c = string->codePointAt(String::utfcharOffset(string->data(), index));
         return c == nullptr ? Object::NullVal : c->asValue();
     }
 
@@ -17714,8 +17703,8 @@ namespace lit
             other = Object::as<String>(argv[0]);
             if(self->length() == other->length())
             {
-                //fprintf(stderr, "string: same length(self=\"%s\" other=\"%s\")... strncmp=%d\n", self->chars, other->chars, strncmp(self->chars, other->chars, self->length));
-                if(memcmp(self->chars, other->chars, self->length()) == 0)
+                //fprintf(stderr, "string: same length(self=\"%s\" other=\"%s\")... strncmp=%d\n", self->data(), other->data(), strncmp(self->data(), other->data(), self->length));
+                if(memcmp(self->data(), other->data(), self->length()) == 0)
                 {
                     return Object::TrueVal;
                 }
@@ -17736,12 +17725,12 @@ namespace lit
 
     static Value objfn_string_less(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        return BOOL_VALUE(strcmp(Object::as<String>(instance)->chars, lit_check_string(vm, argv, argc, 0)) < 0);
+        return BOOL_VALUE(strcmp(Object::as<String>(instance)->data(), lit_check_string(vm, argv, argc, 0)) < 0);
     }
 
     static Value objfn_string_greater(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        return BOOL_VALUE(strcmp(Object::as<String>(instance)->chars, lit_check_string(vm, argv, argc, 0)) > 0);
+        return BOOL_VALUE(strcmp(Object::as<String>(instance)->data(), lit_check_string(vm, argv, argc, 0)) > 0);
     }
 
     static Value objfn_string_tostring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17758,7 +17747,7 @@ namespace lit
         (void)vm;
         (void)argc;
         (void)argv;
-        result = strtod(Object::as<String>(instance)->chars, nullptr);
+        result = strtod(Object::as<String>(instance)->data(), nullptr);
         if(errno == ERANGE)
         {
             errno = 0;
@@ -17771,15 +17760,17 @@ namespace lit
     {
         size_t i;
         char* buffer;
+        const char* sd;
         String* rt;
         String* string;
         string = Object::as<String>(instance);
         (void)argc;
         (void)argv;
         buffer = LIT_ALLOCATE(vm->m_state, char, string->length() + 1);
+        sd = string->data();
         for(i = 0; i < string->length(); i++)
         {
-            buffer[i] = (char)toupper(string->chars[i]);
+            buffer[i] = (char)toupper(sd[i]);
         }
         buffer[i] = 0;
         rt = String::take(vm->m_state, buffer, string->length(), false);
@@ -17790,15 +17781,17 @@ namespace lit
     {
         size_t i;
         char* buffer;
+        const char* sd;
         String* rt;
         String* string;
         string = Object::as<String>(instance);
         (void)argc;
         (void)argv;
         buffer = LIT_ALLOCATE(vm->m_state, char, string->length() + 1);
+        sd = string->data();
         for(i = 0; i < string->length(); i++)
         {
-            buffer[i] = (char)tolower(string->chars[i]);
+            buffer[i] = (char)tolower(sd[i]);
         }
         buffer[i] = 0;
         rt = String::take(vm->m_state, buffer, string->length(), false);
@@ -17813,7 +17806,7 @@ namespace lit
         (void)argc;
         (void)argv;
         selfstr = Object::as<String>(instance);
-        iv = String::utfstringDecode((const uint8_t*)selfstr->chars, selfstr->length());
+        iv = String::utfstringDecode((const uint8_t*)selfstr->data(), selfstr->length());
         return Object::toValue(iv);
     }
 
@@ -17832,7 +17825,7 @@ namespace lit
         {
             icase = lit_check_bool(vm, argv, argc, 1);
         }
-        if(selfstr->contains(sub->chars, sdslen(sub->chars), icase))
+        if(selfstr->contains(sub->data(), sdslen(sub->data()), icase))
         {
             return Object::TrueVal;
         }
@@ -17856,7 +17849,7 @@ namespace lit
         }
         for(i = 0; i < sub->length(); i++)
         {
-            if(sub->chars[i] != string->chars[i])
+            if(sub->at(i) != string->at(i))
             {
                 return Object::FalseVal;
             }
@@ -17883,7 +17876,7 @@ namespace lit
         start = string->length() - sub->length();
         for(i = 0; i < sub->length(); i++)
         {
-            if(sub->chars[i] != string->chars[i + start])
+            if(sub->at(i) != string->at(i + start))
             {
                 return Object::FalseVal;
             }
@@ -17912,7 +17905,7 @@ namespace lit
         buffer_length = 0;
         for(i = 0; i < string->length(); i++)
         {
-            if(strncmp(string->chars + i, what->chars, what->length()) == 0)
+            if(strncmp(string->data() + i, what->data(), what->length()) == 0)
             {
                 i += what->length() - 1;
                 buffer_length += with->length();
@@ -17926,15 +17919,15 @@ namespace lit
         buffer = LIT_ALLOCATE(vm->m_state, char, buffer_length+1);
         for(i = 0; i < string->length(); i++)
         {
-            if(strncmp(string->chars + i, what->chars, what->length()) == 0)
+            if(strncmp(string->data() + i, what->data(), what->length()) == 0)
             {
-                memcpy(buffer + buffer_index, with->chars, with->length());
+                memcpy(buffer + buffer_index, with->data(), with->length());
                 buffer_index += with->length();
                 i += what->length() - 1;
             }
             else
             {
-                buffer[buffer_index] = string->chars[i];
+                buffer[buffer_index] = string->at(i);
                 buffer_index++;
             }
         }
@@ -17985,7 +17978,7 @@ namespace lit
             {
                 return Object::NullVal;
             }
-        } while((string->chars[index] & 0xc0) == 0x80);
+        } while((string->at(index) & 0xc0) == 0x80);
         return Object::toValue(index);
     }
 
@@ -18041,10 +18034,10 @@ namespace lit
         for(i=0; i<selflen; i++)
         {
             pch = ch;
-            ch = selfstr->chars[i];
+            ch = selfstr->at(i);
             if(i <= selflen)
             {
-                nch = selfstr->chars[i + 1];
+                nch = selfstr->at(i + 1);
             }
             if(ch == '%')
             {
@@ -18064,7 +18057,7 @@ namespace lit
                                 {
                                     return Object::NullVal;
                                 }
-                                buf = sdscatlen(buf, Object::as<String>(argv[ai])->chars, Object::as<String>(argv[ai])->length());
+                                buf = sdscatlen(buf, Object::as<String>(argv[ai])->data(), Object::as<String>(argv[ai])->length());
                             }
                             break;
                         case 'd':
@@ -18245,10 +18238,10 @@ static int run_repl(lit::State* state)
             return 0;
         }
         add_history(line);
-        lit::InterpretResult result = lit_interpret(state, "repl", line, strlen(line));
+        lit::Result result = state->interpretSource("repl", line, strlen(line));
         if(result.type == lit::LITRESULT_OK && result.result != lit::Object::NullVal)
         {
-            printf("%s%s%s\n", COLOR_GREEN, lit::Object::toString(state, result.result)->chars, COLOR_RESET);
+            printf("%s%s%s\n", COLOR_GREEN, lit::Object::toString(state, result.result)->data(), COLOR_RESET);
         }
     }
     #endif
@@ -18322,7 +18315,7 @@ static void run_tests(lit::State* state)
                     file_path[total_length + name_length] = '\0';
 
                     printf("Testing %s...\n", file_path);
-                    lit_interpret_file(state, file_path);
+                    state->interpretFile(file_path);
                 }
             }
 
@@ -18541,7 +18534,7 @@ int main(int argc, const char* argv[])
             module_name = num_files_to_run == 0 ? "repl" : files_to_run[0];
             if(dump)
             {
-                module = lit_compile_module(state, lit::String::intern(state, module_name), source, length);
+                module = state->compileModule(lit::String::intern(state, module_name), source, length);
                 if(module == nullptr)
                 {
                     break;
@@ -18551,7 +18544,7 @@ int main(int argc, const char* argv[])
             }
             else
             {
-                result = lit_interpret(state, module_name, source, length).type;
+                result = state->interpretSource(module_name, source, length).type;
                 free(source);
                 if(result != lit::LITRESULT_OK)
                 {
@@ -18628,7 +18621,7 @@ int main(int argc, const char* argv[])
             for(i = 0; i < num_files_to_run; i++)
             {
                 file = files_to_run[i];
-                result = (dump ? lit_dump_file(state, file) : lit_interpret_file(state, file)).type;
+                result = (dump ? lit_dump_file(state, file) : state->interpretFile(file)).type;
                 if(result != lit::LITRESULT_OK)
                 {
                     return exitstate(state, result);
