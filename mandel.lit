@@ -5,7 +5,7 @@ top_edge    =  300
 bottom_edge = -300
 x_step      =    7
 y_step      =   15
-max_iter    =  500
+max_iter    =  50
 y0 = top_edge
 while(y0 > bottom_edge)
 {

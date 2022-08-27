@@ -1,4 +1,5 @@
 
+#include <string>
 #include <string_view>
 #include <stddef.h>
 #include <stdint.h>
@@ -30,7 +31,6 @@
     #endif
 #endif
 
-#include "sds.h"
 
 
 #define LIT_REPOSITORY "https://github.com/egordorichev/lit"
@@ -117,8 +117,6 @@
 #define LIT_EXIT_CODE_MEM_LEAK 2
 #define LIT_EXIT_CODE_RUNTIME_ERROR 70
 #define LIT_EXIT_CODE_COMPILE_ERROR 65
-
-#define LIT_TESTS_DIRECTORY "tests"
 
 
 #if !defined(LIT_DISABLE_COLOR) && !defined(LIT_ENABLE_COLOR) && !(defined(LIT_OS_WINDOWS) || defined(EMSCRIPTEN))
@@ -1301,46 +1299,46 @@ namespace lit
                 return hs;
             }
 
-            static String* allocEmpty(State* state, size_t length, bool reuse)
+            static uint32_t makeHash(std::string_view sv)
+            {
+                return makeHash(sv.data(), sv.size());
+            }
+
+            static String* allocEmpty(State* state, size_t length)
             {
                 String* string;
                 string = Object::make<String>(state, Object::Type::String);
-                if(!reuse)
+                //if(!reuse)
                 {
-                    string->m_chars = sdsempty();
+                    string->m_chars = new std::string();
                     /* reserving the required space may reduce number of allocations */
-                    string->m_chars = sdsMakeRoomFor(string->m_chars, length);
+                    string->m_chars->reserve(length);
                 }
                 //string->m_chars = nullptr;
                 string->m_hash = 0;
                 return string;
             }
 
-            /*
-            * if given $m_chars was alloc'd via sds, then only a String instance is created, without initializing
-            * string->m_chars.
-            * if it was not, and not scheduled for reuse, then first an empty sds string is created,
-            * and $m_chars is appended, and finally, $m_chars is freed.
-            * NB. do *not* actually allocate any sds instance here - this is already done in allocEmpty().
-            */
-            static String* allocate(State* state, char* chars, size_t length, uint32_t hs, bool wassds, bool reuse)
+            static String* allocate(State* state, const char* chars, size_t length, uint32_t hs, bool mustfree)
             {
                 String* string;
-                string = String::allocEmpty(state, length, reuse);
-                if(wassds && reuse)
+                string = String::allocEmpty(state, length);
+                /*
+                if(reuse)
                 {
                     string->m_chars = chars;
                 }
                 else
+                */
                 {
                     /*
                     * string->m_chars is initialized in String::allocEmpty(),
                     * as an empty string!
                     */
-                    string->m_chars = sdscatlen(string->m_chars, chars, length);
+                    string->m_chars->append(chars, length);
                 }
                 string->m_hash = hs;
-                if(!wassds)
+                if(mustfree)
                 {
                     LIT_FREE(state, char, chars);
                 }
@@ -1361,31 +1359,24 @@ namespace lit
             * if $wassds is true, then the sds instance is reused as-is.
             */
             /* todo: track if $chars is a sds instance - additional argument $fromsds? */
-            static String* take(State* state, char* chars, size_t length, bool wassds)
+            static String* take(State* state, char* chars, size_t length)
             {
-                bool reuse;
                 uint32_t hs;
                 hs = String::makeHash(chars, length);
                 String* interned;
                 interned = stateFindInterned(state, chars, length, hs);
                 if(interned != nullptr)
                 {
-                    if(!wassds)
-                    {
-                        LIT_FREE(state, char, chars);
-                        //sdsfree(chars);
-                    }
+                    LIT_FREE(state, char, chars);
                     return interned;
                 }
-                reuse = wassds;
-                return String::allocate(state, (char*)chars, length, hs, wassds, reuse);
+                return String::allocate(state, (char*)chars, length, hs, true);
             }
 
             /* copy a string, creating a full newly allocated String. */
             static String* copy(State* state, const char* chars, size_t length)
             {
                 uint32_t hs;
-                char* heap_chars;
                 String* interned;
                 hs = String::makeHash(chars, length);
                 interned = stateFindInterned(state, chars, length, hs);
@@ -1393,16 +1384,7 @@ namespace lit
                 {
                     return interned;
                 }
-                /*
-                heap_chars = LIT_ALLOCATE(state, char, length + 1);
-                memcpy(heap_chars, chars, length);
-                heap_chars[length] = '\0';
-                */
-                heap_chars = sdsnewlen(chars, length);
-            #ifdef LIT_LOG_ALLOCATION
-                printf("Allocated new string '%s'\n", chars);
-            #endif
-                return String::allocate(state, heap_chars, length, hs, true, true);
+                return String::allocate(state, chars, length, hs, false);
             }
 
             static String* copy(State* state, std::string_view sv)
@@ -1525,7 +1507,7 @@ namespace lit
                 uint8_t* to;
                 uint8_t* from;
                 char* bytes;
-                from = (uint8_t*)source->m_chars;
+                from = (uint8_t*)source->data();
                 length = 0;
                 for(i = 0; i < count; i++)
                 {
@@ -1542,7 +1524,7 @@ namespace lit
                         to += String::utfstringEncode(code_point, to);
                     }
                 }
-                return String::take(state, bytes, length, false);
+                return String::take(state, bytes, length);
             }
 
             static int utfstringEncode(int value, uint8_t* bytes)
@@ -1672,7 +1654,7 @@ namespace lit
                 va_start(arg_list, format);
                 total_length = strlen(format);
                 va_end(arg_list);
-                result = String::allocEmpty(state, total_length + 1, false);
+                result = String::allocEmpty(state, total_length + 1);
                 va_start(arg_list, format);
                 for(c = format; *c != '\0'; c++)
                 {
@@ -1684,7 +1666,7 @@ namespace lit
                                 if(strval != nullptr)
                                 {
                                     length = strlen(strval);
-                                    result->m_chars = sdscatlen(result->m_chars, strval, length);
+                                    result->m_chars->append(strval, length);
                                 }
                                 else
                                 {
@@ -1707,10 +1689,10 @@ namespace lit
                                 }
                                 if(string != nullptr)
                                 {
-                                    length = sdslen(string->m_chars);
+                                    length = string->m_chars->size();
                                     if(length > 0)
                                     {
-                                        result->m_chars = sdscatlen(result->m_chars, string->m_chars, length);
+                                        result->m_chars->append(*(string->m_chars), length);
                                     }
                                 }
                                 else
@@ -1722,10 +1704,10 @@ namespace lit
                         case '#':
                             {
                                 string = Object::as<String>(String::stringNumberToString(state, va_arg(arg_list, double)));
-                                length = sdslen(string->m_chars);
+                                length = string->m_chars->size();
                                 if(length > 0)
                                 {
-                                    result->m_chars = sdscatlen(result->m_chars, string->m_chars, length);
+                                    result->m_chars->append(*(string->m_chars), length);
                                 }
                             }
                             break;
@@ -1733,13 +1715,13 @@ namespace lit
                             {
                                 default_ending_copying:
                                 ch = *c;
-                                result->m_chars = sdscatlen(result->m_chars, &ch, 1);
+                                result->m_chars->append(&ch, 1);
                             }
                             break;
                     }
                 }
                 va_end(arg_list);
-                result->m_hash = String::makeHash(result->m_chars, result->length());
+                result->m_hash = String::makeHash(*(result->m_chars));
                 String::statePutInterned(state, result);
                 stateSetGCAllowed(state, was_allowed);
                 return result;
@@ -1752,7 +1734,7 @@ namespace lit
                 {
                     return false;
                 }
-                return (sdscmp(a->m_chars, b->m_chars) == 0);
+                return (*(a->m_chars) == *(b->m_chars));
             }
 
 
@@ -1761,26 +1743,27 @@ namespace lit
             uint32_t m_hash;
 
             /* this is handled by sds - use lit_string_length to get the length! */
-            char* m_chars;
+            std::string* m_chars;
 
         public:
             inline const char* data() const
             {
-                return m_chars;
+                return m_chars->data();
+            }
+
+            inline size_t size() const
+            {
+                return m_chars->size();
             }
 
             inline size_t length() const
             {
-                if(m_chars == nullptr)
-                {
-                    return 0;
-                }
-                return sdslen(m_chars);
+                return m_chars->size();
             }
 
-            inline constexpr int at(size_t i)
+            inline int at(size_t i)
             {
-                return m_chars[i];
+                return (*m_chars)[i];
             }
 
             void append(std::nullptr_t)
@@ -1791,14 +1774,7 @@ namespace lit
             {
                 if(len > 0)
                 {
-                    if(m_chars == nullptr)
-                    {
-                        m_chars = sdsnewlen(s, len);
-                    }
-                    else
-                    {
-                        m_chars = sdscatlen(m_chars, s, len);
-                    }
+                    m_chars->append(s, len);
                 }
             }
 
@@ -1809,12 +1785,22 @@ namespace lit
 
             void append(String* other)
             {
-                append(other->m_chars, other->length());
+                append(*(other->m_chars));
             }
 
             void append(char ch)
             {
-                m_chars = sdscatlen(m_chars, (const char*)&ch, 1);
+                m_chars->append((const char*)&ch, 1);
+            }
+
+            bool contains(String* other, bool icase) const
+            {
+                return contains(other->data(), other->size(), icase);
+            }
+
+            bool contains(std::string_view sv, bool icase) const
+            {
+                return contains(sv.data(), sv.size(), icase);
             }
 
             bool contains(const char* findme, size_t fmlen, bool icase) const
@@ -1825,7 +1811,7 @@ namespace lit
                 size_t j;
                 size_t slen;
                 size_t found;
-                slen = sdslen(m_chars);
+                slen = m_chars->size();
                 found = 0;
                 if(slen >= fmlen)
                 {
@@ -1833,7 +1819,7 @@ namespace lit
                     {
                         do
                         {
-                            selfch = m_chars[i];
+                            selfch = (*m_chars)[i];
                             findch = findme[j];
                             if(icase)
                             {
@@ -1869,7 +1855,7 @@ namespace lit
                 length = 0;
                 for(i = 0; i < this->length();)
                 {
-                    i += String::decodeNumBytes(m_chars[i]);
+                    i += String::decodeNumBytes((*m_chars)[i]);
                     length++;
                 }
                 return length;
@@ -1883,10 +1869,10 @@ namespace lit
                 {
                     return nullptr;
                 }
-                code_point = String::utfstringDecode((uint8_t*)m_chars + index, this->length() - index);
+                code_point = String::utfstringDecode((uint8_t*)m_chars->data() + index, this->length() - index);
                 if(code_point == -1)
                 {
-                    bytes[0] = m_chars[index];
+                    bytes[0] = (*m_chars)[index];
                     bytes[1] = '\0';
                     return String::copy(m_state, bytes, 1);
                 }
@@ -2591,7 +2577,7 @@ namespace lit
                         {
                             line[i] = (char)read_euint8_t() ^ LIT_STRING_KEY;
                         }
-                        return String::take(state, line, length, false);
+                        return String::take(state, line, length);
                     }
             };
 
@@ -2684,7 +2670,7 @@ namespace lit
                 {
                     line[i] = (char)read_uint8_t(file) ^ LIT_STRING_KEY;
                 }
-                return String::take(state, line, length, false);
+                return String::take(state, line, length);
             }
     };
 
@@ -12531,7 +12517,7 @@ namespace lit
     {
         initDefault(state, this);
         this->stringmode = true;
-        this->uptr = String::allocEmpty(state, 0, false);
+        this->uptr = String::allocEmpty(state, 0);
     }
 
     void Writer::stringAppend(String* ds, int byte)
@@ -12544,11 +12530,19 @@ namespace lit
         ds->append(str, len);
     }
 
+    // todo: this would have been done via sds - so needs to be reimplemented
     void Writer::stringAppendFormat(String* ds, const char* fmt, va_list va)
     {
-        ds->m_chars = sdscatvprintf(ds->m_chars, fmt, va);
+        size_t actual;
+        size_t needed;
+        char* buffer;
+        needed = vsnprintf(nullptr, 0, fmt, va);
+        buffer = LIT_ALLOCATE(ds->m_state, char, needed+1);
+        actual = vsnprintf(buffer, needed, fmt, va);
+        ds->append(buffer, actual);
+        LIT_FREE(ds->m_state, char, buffer);
     }
-
+    
     // impl::object
     Object* Object::make(State* state, size_t size, Object::Type type)
     {
@@ -12584,8 +12578,7 @@ namespace lit
                 {
                     string = (String*)obj;
                     //LIT_FREE_ARRAY(state, char, string->m_chars, string->length + 1);
-                    sdsfree(string->m_chars);
-                    string->m_chars = nullptr;
+                    delete string->m_chars;
                     LIT_FREE(state, String, obj);
                 }
                 break;
@@ -14358,7 +14351,7 @@ namespace lit
         va_end(args_copy);
         buffer = (char*)malloc(buffer_size+1);
         vsnprintf(buffer, buffer_size, format, args);
-        return lit_handle_runtime_error(vm, String::take(vm->m_state, buffer, buffer_size, false));
+        return lit_handle_runtime_error(vm, String::take(vm->m_state, buffer, buffer_size));
     }
 
     bool lit_runtime_error(VM* vm, const char* format, ...)
@@ -14708,7 +14701,8 @@ namespace lit
         size_t jlen;
         size_t index;
         size_t length;
-        char* chars;
+
+        String* chars;
         PCGenericArray<Value>* values;
         String* string;
         String* joinee;
@@ -14736,8 +14730,9 @@ namespace lit
         }
         jlen = 0;
         index = 0;
-        chars = sdsempty();
-        chars = sdsMakeRoomFor(chars, length + 1);
+        //chars = sdsempty();
+        chars = String::make(vm->m_state);
+        //chars = sdsMakeRoomFor(chars, length + 1);
         if(joinee != nullptr)
         {
             jlen = joinee->length();
@@ -14745,21 +14740,24 @@ namespace lit
         for(i = 0; i < values->m_count; i++)
         {
             string = strings[i];
-            memcpy(chars + index, string->data(), string->length());
-            chars = sdscatlen(chars, string->data(), string->length());
+            //memcpy(chars + index, string->data(), string->length());
+            //chars = sdscatlen(chars, string->data(), string->length());
+            chars->append(string);
             index += string->length();
             if(joinee != nullptr)
             {
                 
                 //if((i+1) < values.m_count)
                 {
-                    chars = sdscatlen(chars, joinee->data(), jlen);
+                    //chars = sdscatlen(chars, joinee->data(), jlen);
+                    chars->append(joinee);
                 }
                 index += jlen;
             }
         }
         LIT_FREE(vm->m_state, String*, strings);
-        return String::take(vm->m_state, chars, length, true)->asValue();
+        //return String::take(vm->m_state, chars, length)->asValue();
+        return chars->asValue();
     }
 
     static Value objfn_array_sort(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14808,7 +14806,8 @@ namespace lit
         size_t i;
         size_t value_amount;
         size_t olength;
-        char* buffer;
+        //char* buffer;
+        String* buffer;
         Array* self;
         PCGenericArray<Value>* values;
         Value val;
@@ -14834,9 +14833,11 @@ namespace lit
         {
             olength += 3;
         }
-        buffer = sdsempty();
-        buffer = sdsMakeRoomFor(buffer, olength+1);
-        buffer = sdscat(buffer, "[");
+        //buffer = sdsempty();
+        buffer = String::make(vm->m_state);
+        //buffer = sdsMakeRoomFor(buffer, olength+1);
+        //buffer = sdscat(buffer, "[");
+        buffer->append("[");
         for(i = 0; i < value_amount; i++)
         {
             val = values->m_values[(has_more && i == value_amount - 1) ? values->m_count - 1 : i];
@@ -14849,28 +14850,32 @@ namespace lit
                 stringified = Object::toString(state, val);
             }
             part = stringified;
-            buffer = sdscatlen(buffer, part->data(), part->length());
+            //buffer = sdscatlen(buffer, part->data(), part->length());
+            buffer->append(part);
             if(has_more && i == value_amount - 2)
             {
-                buffer = sdscat(buffer, " ... ");
+                //buffer = sdscat(buffer, " ... ");
+                buffer->append(" ... ");
             }
             else
             {
                 if(i == (value_amount - 1))
                 {
-                    buffer = sdscat(buffer, " ]");
+                    //buffer = sdscat(buffer, " ]");
+                    buffer->append(" ]");
                 }
                 else
                 {
-                    buffer = sdscat(buffer, ", ");
+                    //buffer = sdscat(buffer, ", ");
+                    buffer->append(", ");
                 }
             }
         }
         LIT_FREE(vm->m_state, String*, values_converted);
         // should be String::take, but it doesn't get picked up by the GC for some reason
         //rt = String::take(vm->m_state, buffer, olength);
-        rt = String::take(vm->m_state, buffer, olength, true);
-        return rt->asValue();
+        //rt = String::take(vm->m_state, buffer, olength);
+        return buffer->asValue();
     }
 
     static Value objfn_array_length(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14883,7 +14888,7 @@ namespace lit
 
     void lit_open_array_library(State* state)
     {
-        Class* klass = Class::make(state, "Array");;
+        Class* klass = Class::make(state, "Array");
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(objfn_array_constructor);
@@ -14905,7 +14910,7 @@ namespace lit
             klass->bindMethod("sort", objfn_array_sort);
             klass->bindMethod("clone", objfn_array_clone);
             klass->bindMethod("toString", objfn_array_tostring);
-            klass->setGetter("length", objfn_array_length);;
+            klass->setGetter("length", objfn_array_length);
             state->arrayvalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
@@ -15060,7 +15065,7 @@ namespace lit
             klass->bindMethod("[]", objfn_class_subscript);
             klass->bindMethod("==", objfn_class_compare);
             klass->bindMethod("toString", objfn_class_tostring);
-            klass->setGetter("super", objfn_class_super);;
+            klass->setGetter("super", objfn_class_super);
             #if 0
             klass->setGetter("methods", objfn_class_getmethods);
             klass->setGetter("fields", objfn_class_getfields);
@@ -15667,13 +15672,13 @@ namespace lit
             lit_open_function_library(state);
         }
         {
-            Class* klass = Class::make(state, "Number");;
+            Class* klass = Class::make(state, "Number");
             {
                 klass->inheritFrom(state->objectvalue_class);
                 klass->bindConstructor(util_invalid_constructor);
                 klass->bindMethod("toString", objfn_number_tostring);
                 klass->bindMethod("toChar", objfn_number_tochar);
-                klass->setGetter("chr", objfn_number_tochar);;
+                klass->setGetter("chr", objfn_number_tochar);
                 state->numbervalue_class = klass;
             }
             state->setGlobal(klass->name, klass->asValue());
@@ -15683,7 +15688,7 @@ namespace lit
             }
         }
         {
-            Class* klass = Class::make(state, "Bool");;
+            Class* klass = Class::make(state, "Bool");
             {
                 klass->inheritFrom(state->objectvalue_class);
                 klass->bindConstructor(util_invalid_constructor);
@@ -15829,18 +15834,18 @@ namespace lit
 
     void lit_open_fiber_library(State* state)
     {
-        Class* klass = Class::make(state, "Fiber");;
+        Class* klass = Class::make(state, "Fiber");
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(objfn_fiber_constructor);
             klass->bindMethod("toString", objfn_fiber_tostring);
             klass->bindPrimitive("run", objfn_fiber_run);
             klass->bindPrimitive("try", objfn_fiber_try);
-            klass->setGetter("done", objfn_fiber_done);;
-            klass->setGetter("error", objfn_fiber_error);;
-            klass->setStaticPrimitive("yield", objfn_fiber_yield);;
-            klass->setStaticPrimitive("yeet", objfn_fiber_yeet);;
-            klass->setStaticPrimitive("abort", objfn_fiber_abort);;
+            klass->setGetter("done", objfn_fiber_done);
+            klass->setGetter("error", objfn_fiber_error);
+            klass->setStaticPrimitive("yield", objfn_fiber_yield);
+            klass->setStaticPrimitive("yeet", objfn_fiber_yeet);
+            klass->setStaticPrimitive("abort", objfn_fiber_abort);
             klass->setStaticGetter("current", objfn_fiber_current);
             state->fibervalue_class = klass;
         }
@@ -16157,6 +16162,7 @@ namespace lit
         char c;
         long length;
         long actuallength;
+        char* buffer;
         FileData* data;
         String* result;
         data = (FileData*)LIT_EXTRACT_DATA(vm, instance);
@@ -16165,27 +16171,32 @@ namespace lit
             /*
             * cannot seek, must read each byte.
             */
-            result = String::allocEmpty(vm->m_state, 0, false);
+            result = String::allocEmpty(vm->m_state, 0);
             actuallength = 0;
             while((c = fgetc(data->handle)) != EOF)
             {
-                result->m_chars = sdscatlen(result->m_chars, &c, 1);
+                //result->m_chars = sdscatlen(result->m_chars, &c, 1);
+                result->append(c);
                 actuallength++;
             }
         }
         else
         {
+            result = String::make(vm->m_state);
             length = ftell(data->handle);
             fseek(data->handle, 0, SEEK_SET);
-            result = String::allocEmpty(vm->m_state, length, false);
-            actuallength = fread(result->m_chars, sizeof(char), length, data->handle);
+            buffer = LIT_ALLOCATE(vm->m_state, char, length+1);
+            actuallength = fread(buffer, sizeof(char), length, data->handle);
+            result->append(buffer, actuallength);
+            LIT_FREE(vm->m_state, char, buffer);
             /*
             * after reading, THIS actually sets the correct length.
             * before that, it would be 0.
             */
-            sdsIncrLen(result->m_chars, actuallength);
+            //sdsIncrLen(result->m_chars, actuallength);
         }
-        result->m_hash = String::makeHash(result->m_chars, actuallength);
+        
+        result->m_hash = String::makeHash(*(result->m_chars));
         String::statePutInterned(vm->m_state, result);
         return result->asValue();
     }
@@ -16207,7 +16218,7 @@ namespace lit
             LIT_FREE(vm->m_state, char, line);
             return Object::NullVal;
         }
-        return String::take(vm->m_state, line, strlen(line) - 1, false)->asValue();
+        return String::take(vm->m_state, line, strlen(line) - 1)->asValue();
     }
 
     static Value objmethod_file_readbyte(VM* vm, Value instance, size_t argc, Value* argv)
@@ -16415,8 +16426,8 @@ namespace lit
         {
             Class* klass = Class::make(state, "File");
             {
-                klass->setStaticMethod("exists", objmethod_file_exists);;
-                klass->setStaticMethod("getLastModified", objmethod_file_getlastmodified);;
+                klass->setStaticMethod("exists", objmethod_file_exists);
+                klass->setStaticMethod("getLastModified", objmethod_file_getlastmodified);
                 klass->bindConstructor(objmethod_file_constructor);
                 klass->bindMethod("toString", objmethod_file_tostring);
                 klass->bindMethod("close", objmethod_file_close);
@@ -16434,7 +16445,7 @@ namespace lit
                 klass->bindMethod("readBool", objmethod_file_readbool);
                 klass->bindMethod("readString", objmethod_file_readstring);
                 klass->bindMethod("getLastModified", objmethod_file_getlastmodified);
-                klass->setGetter("exists", objmethod_file_exists);;
+                klass->setGetter("exists", objmethod_file_exists);
             }
             state->setGlobal(klass->name, klass->asValue());
             if(klass->super == nullptr)
@@ -16443,11 +16454,11 @@ namespace lit
             }
         }
         {
-            Class* klass = Class::make(state, "Directory");;
+            Class* klass = Class::make(state, "Directory");
             {
-                klass->setStaticMethod("exists", objfunction_directory_exists);;
-                klass->setStaticMethod("listFiles", objfunction_directory_listfiles);;
-                klass->setStaticMethod("listDirectories", objfunction_directory_listdirs);;
+                klass->setStaticMethod("exists", objfunction_directory_exists);
+                klass->setStaticMethod("listFiles", objfunction_directory_listfiles);
+                klass->setStaticMethod("listDirectories", objfunction_directory_listdirs);
             }
             state->setGlobal(klass->name, klass->asValue());
             if(klass->super == nullptr)
@@ -16478,12 +16489,12 @@ namespace lit
 
     void lit_open_function_library(State* state)
     {
-         Class* klass = Class::make(state, "Function");;
+         Class* klass = Class::make(state, "Function");
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(util_invalid_constructor);
             klass->bindMethod("toString", objfn_function_tostring);
-            klass->setGetter("name", objfn_function_name);;
+            klass->setGetter("name", objfn_function_name);
             state->functionvalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
@@ -16525,11 +16536,11 @@ namespace lit
 
     void lit_open_gc_library(State* state)
     {
-        Class* klass = Class::make(state, "GC");;
+        Class* klass = Class::make(state, "GC");
         {
             klass->setStaticGetter("memoryUsed", objfn_gc_memory_used);
             klass->setStaticGetter("nextRound", objfn_gc_next_round);
-            klass->setStaticMethod("trigger", objfn_gc_trigger);;
+            klass->setStaticMethod("trigger", objfn_gc_trigger);
         }
         state->setGlobal(klass->name, klass->asValue());
         if(klass->super == nullptr)
@@ -16737,7 +16748,7 @@ namespace lit
         buffer[olength] = '\0';
         LIT_FREE(vm->m_state, String*, keys);
         LIT_FREE(vm->m_state, String*, values_converted);
-        return String::take(vm->m_state, buffer, olength, false)->asValue();
+        return String::take(vm->m_state, buffer, olength)->asValue();
     }
 
     static Value objfn_map_length(VM* vm, Value instance, size_t argc, Value* argv)
@@ -16750,7 +16761,7 @@ namespace lit
 
     void lit_open_map_library(State* state)
     {
-        Class* klass = Class::make(state, "Map");;
+        Class* klass = Class::make(state, "Map");
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(objfn_map_constructor);
@@ -16761,7 +16772,7 @@ namespace lit
             klass->bindMethod("iteratorValue", objfn_map_iteratorvalue);
             klass->bindMethod("clone", objfn_map_clone);
             klass->bindMethod("toString", objfn_map_tostring);
-            klass->setGetter("length", objfn_map_length);;
+            klass->setGetter("length", objfn_map_length);
             state->mapvalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
@@ -17104,29 +17115,29 @@ namespace lit
     void lit_open_math_library(State* state)
     {
         {
-            Class* klass = Class::make(state, "Math");;
+            Class* klass = Class::make(state, "Math");
             {
-                klass->static_fields.setField("Pi", Object::toValue(M_PI));;
-                klass->static_fields.setField("Tau", Object::toValue(M_PI * 2));;
-                klass->setStaticMethod("abs", math_abs);;
-                klass->setStaticMethod("sin", math_sin);;
-                klass->setStaticMethod("cos", math_cos);;
-                klass->setStaticMethod("tan", math_tan);;
-                klass->setStaticMethod("asin", math_asin);;
-                klass->setStaticMethod("acos", math_acos);;
-                klass->setStaticMethod("atan", math_atan);;
-                klass->setStaticMethod("atan2", math_atan2);;
-                klass->setStaticMethod("floor", math_floor);;
-                klass->setStaticMethod("ceil", math_ceil);;
-                klass->setStaticMethod("round", math_round);;
-                klass->setStaticMethod("min", math_min);;
-                klass->setStaticMethod("max", math_max);;
-                klass->setStaticMethod("mid", math_mid);;
-                klass->setStaticMethod("toRadians", math_toRadians);;
-                klass->setStaticMethod("toDegrees", math_toDegrees);;
-                klass->setStaticMethod("sqrt", math_sqrt);;
-                klass->setStaticMethod("log", math_log);;
-                klass->setStaticMethod("exp", math_exp);;
+                klass->static_fields.setField("Pi", Object::toValue(M_PI));
+                klass->static_fields.setField("Tau", Object::toValue(M_PI * 2));
+                klass->setStaticMethod("abs", math_abs);
+                klass->setStaticMethod("sin", math_sin);
+                klass->setStaticMethod("cos", math_cos);
+                klass->setStaticMethod("tan", math_tan);
+                klass->setStaticMethod("asin", math_asin);
+                klass->setStaticMethod("acos", math_acos);
+                klass->setStaticMethod("atan", math_atan);
+                klass->setStaticMethod("atan2", math_atan2);
+                klass->setStaticMethod("floor", math_floor);
+                klass->setStaticMethod("ceil", math_ceil);
+                klass->setStaticMethod("round", math_round);
+                klass->setStaticMethod("min", math_min);
+                klass->setStaticMethod("max", math_max);
+                klass->setStaticMethod("mid", math_mid);
+                klass->setStaticMethod("toRadians", math_toRadians);
+                klass->setStaticMethod("toDegrees", math_toDegrees);
+                klass->setStaticMethod("sqrt", math_sqrt);
+                klass->setStaticMethod("log", math_log);
+                klass->setStaticMethod("exp", math_exp);
             }
             state->setGlobal(klass->name, klass->asValue());
             if(klass->super == nullptr)
@@ -17137,7 +17148,7 @@ namespace lit
         srand(time(nullptr));
         static_random_data = time(nullptr);
         {
-            Class* klass = Class::make(state, "Random");;
+            Class* klass = Class::make(state, "Random");
             {
                 klass->bindConstructor(random_constructor);
                 klass->bindMethod("setSeed", random_setSeed);
@@ -17145,12 +17156,12 @@ namespace lit
                 klass->bindMethod("float", random_float);
                 klass->bindMethod("chance", random_chance);
                 klass->bindMethod("pick", random_pick);
-                klass->setStaticMethod("setSeed", random_setSeed);;
-                klass->setStaticMethod("int", random_int);;
-                klass->setStaticMethod("float", random_float);;
-                klass->setStaticMethod("bool", random_bool);;
-                klass->setStaticMethod("chance", random_chance);;
-                klass->setStaticMethod("pick", random_pick);;
+                klass->setStaticMethod("setSeed", random_setSeed);
+                klass->setStaticMethod("int", random_int);
+                klass->setStaticMethod("float", random_float);
+                klass->setStaticMethod("bool", random_bool);
+                klass->setStaticMethod("chance", random_chance);
+                klass->setStaticMethod("pick", random_pick);
             }
             state->setGlobal(klass->name, klass->asValue());
             if(klass->super == nullptr)
@@ -17238,16 +17249,16 @@ namespace lit
 
     void lit_open_module_library(State* state)
     {
-        Class* klass = Class::make(state, "Module");;
+        Class* klass = Class::make(state, "Module");
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(util_invalid_constructor);
-            klass->static_fields.setField("loaded", state->vm->modules->asValue());;
+            klass->static_fields.setField("loaded", state->vm->modules->asValue());
             klass->setStaticGetter("privates", objfn_module_privates);
             klass->setStaticGetter("current", objfn_module_current);
             klass->bindMethod("toString", objfn_module_tostring);
-            klass->setGetter("name", objfn_module_name);;
-            klass->setGetter("privates", objfn_module_privates);;
+            klass->setGetter("name", objfn_module_name);
+            klass->setGetter("privates", objfn_module_privates);
             state->modulevalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
@@ -17407,11 +17418,11 @@ namespace lit
 
     void lit_open_object_library(State* state)
     {
-        Class* klass = Class::make(state, "Object");;
+        Class* klass = Class::make(state, "Object");
         {
             klass->inheritFrom(state->classvalue_class);
-            klass->setGetter("class", objfn_object_class);;
-            klass->setGetter("super", objfn_object_super);;
+            klass->setGetter("class", objfn_object_class);
+            klass->setGetter("super", objfn_object_super);
             klass->bindMethod("[]", objfn_object_subscript);
             klass->bindMethod("toString", objfn_object_tostring);
             klass->bindMethod("toMap", objfn_object_tomap);
@@ -17509,7 +17520,7 @@ namespace lit
 
     void lit_open_range_library(State* state)
     {
-        Class* klass = Class::make(state, "Range");;
+        Class* klass = Class::make(state, "Range");
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(util_invalid_constructor);
@@ -17518,7 +17529,7 @@ namespace lit
             klass->bindMethod("toString", objfn_range_tostring);
             klass->bindField("from", objfn_range_from, objfn_range_set_from);
             klass->bindField("to", objfn_range_to, objfn_range_set_to);
-            klass->setGetter("length", objfn_range_length);;
+            klass->setGetter("length", objfn_range_length);
             state->rangevalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
@@ -17632,7 +17643,7 @@ namespace lit
         {
             strval = Object::toString(vm->m_state, value);
         }
-        result = String::allocEmpty(vm->m_state, selfstr->length() + strval->length(), false);
+        result = String::allocEmpty(vm->m_state, selfstr->length() + strval->length());
         result->append(selfstr);
         result->append(strval);
         String::statePutInterned(vm->m_state, result);
@@ -17773,7 +17784,7 @@ namespace lit
             buffer[i] = (char)toupper(sd[i]);
         }
         buffer[i] = 0;
-        rt = String::take(vm->m_state, buffer, string->length(), false);
+        rt = String::take(vm->m_state, buffer, string->length());
         return rt->asValue();
     }
 
@@ -17794,7 +17805,7 @@ namespace lit
             buffer[i] = (char)tolower(sd[i]);
         }
         buffer[i] = 0;
-        rt = String::take(vm->m_state, buffer, string->length(), false);
+        rt = String::take(vm->m_state, buffer, string->length());
         return rt->asValue();
     }
 
@@ -17825,7 +17836,7 @@ namespace lit
         {
             icase = lit_check_bool(vm, argv, argc, 1);
         }
-        if(selfstr->contains(sub->data(), sdslen(sub->data()), icase))
+        if(selfstr->contains(sub, icase))
         {
             return Object::TrueVal;
         }
@@ -17932,7 +17943,7 @@ namespace lit
             }
         }
         buffer[buffer_length] = '\0';
-        return String::take(vm->m_state, buffer, buffer_length, false)->asValue();
+        return String::take(vm->m_state, buffer, buffer_length)->asValue();
     }
 
     static Value objfn_string_substring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17997,14 +18008,14 @@ namespace lit
     }
 
 
-    bool check_fmt_arg(VM* vm, char* buf, size_t ai, size_t argc, Value* argv, const char* fmttext)
+    bool check_fmt_arg(VM* vm, String* buf, size_t ai, size_t argc, Value* argv, const char* fmttext)
     {
         (void)argv;
         if(ai <= argc)
         {
             return true;
         }
-        sdsfree(buf);
+        //sdsfree(buf);
         lit_runtime_error_exiting(vm, "too few arguments for format flag '%s' at position %d (argc=%d)", fmttext, ai, argc);
         return false;
     }
@@ -18021,12 +18032,14 @@ namespace lit
         size_t selflen;
         String* selfstr;
         Value rtv;
-        char* buf;
+        //char* buf;
+        String* buf;
         (void)pch;
         selfstr = Object::as<String>(instance);
         selflen = selfstr->length();
-        buf = sdsempty();
-        buf = sdsMakeRoomFor(buf, selflen + 10);
+        //buf = sdsempty();
+        //buf = sdsMakeRoomFor(buf, selflen + 10);
+        buf = String::make(vm->m_state);
         ai = 0;
         ch = -1;
         pch = -1;
@@ -18043,7 +18056,8 @@ namespace lit
             {
                 if(nch == '%')
                 {
-                    buf = sdscatlen(buf, &ch, 1);
+                    //buf = sdscatlen(buf, &ch, 1);
+                    buf->append(ch);
                     i += 1;
                 }
                 else
@@ -18057,7 +18071,8 @@ namespace lit
                                 {
                                     return Object::NullVal;
                                 }
-                                buf = sdscatlen(buf, Object::as<String>(argv[ai])->data(), Object::as<String>(argv[ai])->length());
+                                //buf = sdscatlen(buf, Object::as<String>(argv[ai])->data(), Object::as<String>(argv[ai])->length());
+                                buf->append(Object::as<String>(argv[ai]));
                             }
                             break;
                         case 'd':
@@ -18070,7 +18085,8 @@ namespace lit
                                 if(Object::isNumber(argv[ai]))
                                 {
                                     iv = lit_check_number(vm, argv, argc, ai);
-                                    buf = sdscatfmt(buf, "%i", iv);
+                                    //buf = sdscatfmt(buf, "%i", iv);
+                                    buf->append(std::to_string(iv));
                                 }
                                 break;
                             }
@@ -18083,7 +18099,7 @@ namespace lit
                                 }
                                 if(!Object::isNumber(argv[ai]))
                                 {
-                                    sdsfree(buf);
+                                    //sdsfree(buf);
                                     lit_runtime_error_exiting(vm, "flag 'c' expects a number");
                                 }
                                 iv = lit_check_number(vm, argv, argc, ai);
@@ -18092,13 +18108,14 @@ namespace lit
                                     buf = sdscatfmt(buf, "%c", iv);
                                 #else
                                     tmpch = iv;
-                                    buf = sdscatlen(buf, &tmpch, 1);
+                                    //buf = sdscatlen(buf, &tmpch, 1);
+                                    buf->append(tmpch);
                                 #endif
                             }
                             break;
                         default:
                             {
-                                sdsfree(buf);
+                                //sdsfree(buf);
                                 lit_runtime_error_exiting(vm, "unrecognized formatting flag '%c'", nch);
                                 return Object::NullVal;
                             }
@@ -18109,18 +18126,20 @@ namespace lit
             }
             else
             {
-                buf = sdscatlen(buf, &ch, 1);
+                //buf = sdscatlen(buf, &ch, 1);
+                buf->append(ch);
             }
         }
-        rtv = String::copy(vm->m_state, buf, sdslen(buf))->asValue();
-        sdsfree(buf);
-        return rtv;
+        //rtv = String::copy(vm->m_state, buf, sdslen(buf))->asValue();
+        //sdsfree(buf);
+        //return rtv;
+        return buf->asValue();
     }
 
     void lit_open_string_library(State* state)
     {
         {
-            Class* klass = Class::make(state, "String");;
+            Class* klass = Class::make(state, "String");
             
                 klass->inheritFrom(state->objectvalue_class);
                 klass->bindConstructor(util_invalid_constructor);
@@ -18132,7 +18151,7 @@ namespace lit
                 klass->bindMethod("toString", objfn_string_tostring);
                 {
                     klass->bindMethod("toNumber", objfn_string_tonumber);
-                    klass->setGetter("to_i", objfn_string_tonumber);;
+                    klass->setGetter("to_i", objfn_string_tonumber);
                 }
                 /*
                 * String.toUpper()
@@ -18141,7 +18160,7 @@ namespace lit
                 {
                     klass->bindMethod("toUpperCase", objfn_string_touppercase);
                     klass->bindMethod("toUpper", objfn_string_touppercase);
-                    klass->setGetter("upper", objfn_string_touppercase);;
+                    klass->setGetter("upper", objfn_string_touppercase);
                 }
                 /*
                 * String.toLower()
@@ -18150,7 +18169,7 @@ namespace lit
                 {
                     klass->bindMethod("toLowerCase", objfn_string_tolowercase);
                     klass->bindMethod("toLower", objfn_string_tolowercase);
-                    klass->setGetter("lower", objfn_string_tolowercase);;
+                    klass->setGetter("lower", objfn_string_tolowercase);
                 }
                 /*
                 * String.toByte
@@ -18159,7 +18178,7 @@ namespace lit
                 * i.e., "foo".toByte == 102 (equiv: "foo"[0].toByte)
                 */
                 {
-                    klass->setGetter("toByte", objfn_string_tobyte);;
+                    klass->setGetter("toByte", objfn_string_tobyte);
                 }
                 //TODO: byteAt
                 //LIT_BIND_METHOD(state, klass, "byteAt", objfn_string_byteat);
@@ -18192,7 +18211,7 @@ namespace lit
                 }
                 klass->bindMethod("iterator", objfn_string_iterator);
                 klass->bindMethod("iteratorValue", objfn_string_iteratorvalue);
-                klass->setGetter("length", objfn_string_length);;
+                klass->setGetter("length", objfn_string_length);
                 klass->bindMethod("format", objfn_string_format);
                 state->stringvalue_class = klass;
             
@@ -18248,84 +18267,7 @@ static int run_repl(lit::State* state)
     return 0;
 }
 
-static void run_tests(lit::State* state)
-{
-    #if defined(__unix__) || defined(__linux__)
-    DIR* dir = opendir(LIT_TESTS_DIRECTORY);
 
-    if(dir == nullptr)
-    {
-        fprintf(stderr, "Could not find '%s' directory\n", LIT_TESTS_DIRECTORY);
-        return;
-    }
-
-    struct dirent* ep;
-    struct dirent* node;
-
-    size_t tests_dir_length = strlen(LIT_TESTS_DIRECTORY);
-
-    while((ep = readdir(dir)))
-    {
-        if(ep->d_type == DT_DIR)
-        {
-            const char* dir_name = ep->d_name;
-
-            if(strcmp(dir_name, "..") == 0 || strcmp(dir_name, ".") == 0)
-            {
-                continue;
-            }
-
-            size_t dir_name_length = strlen(dir_name);
-            size_t total_length = dir_name_length + tests_dir_length + 2;
-
-            char subdir_name[total_length];
-
-            memcpy(subdir_name, LIT_TESTS_DIRECTORY, tests_dir_length);
-            memcpy(subdir_name + tests_dir_length + 1, dir_name, dir_name_length);
-
-            subdir_name[tests_dir_length] = '/';
-            subdir_name[total_length - 1] = '\0';
-
-            DIR* subdir = opendir(subdir_name);
-
-            if(subdir == nullptr)
-            {
-                fprintf(stderr, "Failed to open tests subdirectory '%s'\n", subdir_name);
-                continue;
-            }
-
-            while((node = readdir(subdir)))
-            {
-                if(node->d_type == DT_REG)
-                {
-                    const char* file_name = node->d_name;
-                    size_t name_length = strlen(file_name);
-
-                    if(name_length < 4 || memcmp(".lit", file_name + name_length - 4, 4) != 0)
-                    {
-                        continue;
-                    }
-
-                    char file_path[total_length + name_length + 1];
-
-                    memcpy(file_path, subdir_name, total_length - 1);
-                    memcpy(file_path + total_length, file_name, name_length);
-
-                    file_path[total_length - 1] = '/';
-                    file_path[total_length + name_length] = '\0';
-
-                    printf("Testing %s...\n", file_path);
-                    state->interpretFile(file_path);
-                }
-            }
-
-            closedir(subdir);
-        }
-    }
-
-    closedir(dir);
-    #endif
-}
 
 static void show_help()
 {
@@ -18338,7 +18280,6 @@ static void show_help()
     printf(" -i --interactive Starts an interactive shell.\n");
     printf(" -d --dump  Dumps all the bytecode chunks from the given file.\n");
     printf(" -t --time  Measures and prints the compilation timings.\n");
-    printf(" -c --test  Runs all tests (useful for code coverage testing).\n");
     printf(" -h --help  I wonder, what this option does.\n");
     printf(" If no code to run is provided, lit will try to run either main.lbc or main.lit and, if fails, default to an interactive shell will start.\n");
 }
@@ -18402,7 +18343,6 @@ int main(int argc, const char* argv[])
     bool show_repl;
     bool evaled;
     bool showed_help;
-    bool perform_tests;
     bool enable_optimization;
     size_t j;
     size_t length;
@@ -18452,7 +18392,6 @@ int main(int argc, const char* argv[])
     show_repl = false;
     evaled = false;
     showed_help = false;
-    perform_tests = false;
     bytecode_file = nullptr;
     for(i = 1; i < argc; i++)
     {
@@ -18561,10 +18500,6 @@ int main(int argc, const char* argv[])
         {
             show_repl = true;
         }
-        else if(match_arg(arg, "-c", "--test"))
-        {
-            perform_tests = true;
-        }
         else if(match_arg(arg, "-d", "--dump"))
         {
             dump = true;
@@ -18628,11 +18563,6 @@ int main(int argc, const char* argv[])
                 }
             }
         }
-    }
-    if(perform_tests)
-    {
-        run_tests(state);
-        return exitstate(state, result);
     }
     if(show_repl)
     {
