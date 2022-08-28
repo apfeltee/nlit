@@ -547,6 +547,7 @@ namespace lit
     class /**/Fiber;
     class /**/Function;
     class /**/NativeMethod;
+    class /**/Chunk;
 
     namespace AST
     {
@@ -569,6 +570,11 @@ namespace lit
     bool lit_vruntime_error(VM* vm, const char* format, va_list args);
     bool lit_runtime_error(VM* vm, const char* format, ...);
     bool lit_runtime_error_exiting(VM* vm, const char* format, ...);
+
+    void lit_disassemble_module(State* state, Module* module, const char* source);
+    void lit_disassemble_chunk(Chunk* chunk, const char* name, const char* source);
+    size_t lit_disassemble_instruction(State* state, Chunk* chunk, size_t offset, const char* source);
+
 
     namespace Util
     {
@@ -1284,37 +1290,120 @@ namespace lit
             Object* setter;
     };
 
+    class Array: public Object
+    {
+        public:
+            static Array* make(State* state)
+            {
+                Array* array;
+                array = Object::make<Array>(state, Object::Type::Array);
+                array->m_actualarray.init(state);
+                return array;
+            }
+
+        public:
+            PCGenericArray<Value> m_actualarray;
+
+        public:
+            void push(Value val)
+            {
+                this->m_actualarray.push(val);
+            }
+
+            inline constexpr size_t size()
+            {
+                return m_actualarray.m_count;
+            }
+
+            inline constexpr Value at(size_t idx)
+            {
+                return m_actualarray.at(idx);
+            }
+
+            int indexOf(Value value)
+            {
+                size_t i;
+                for(i = 0; i < this->m_actualarray.m_count; i++)
+                {
+                    if(this->m_actualarray.m_values[i] == value)
+                    {
+                        return (int)i;
+                    }
+                }
+                return -1;
+            }
+
+            Value removeAt(size_t index)
+            {
+                size_t i;
+                size_t count;
+                Value value;
+                PCGenericArray<Value>* values;
+                values = &this->m_actualarray;
+                count = values->m_count;
+                if(index >= count)
+                {
+                    return Object::NullVal;
+                }
+                value = values->m_values[index];
+                if(index == count - 1)
+                {
+                    values->m_values[index] = Object::NullVal;
+                }
+                else
+                {
+                    for(i = index; i < values->m_count - 1; i++)
+                    {
+                        values->m_values[i] = values->m_values[i + 1];
+                    }
+                    values->m_values[count - 1] = Object::NullVal;
+                }
+                values->m_count--;
+                return value;
+            }
+    };
+
     class String: public Object
     {
         public:
-            static uint32_t makeHash(const char* key, size_t length)
+            class Regex
             {
+                
+            };
+
+        public:
+            static uint32_t makeHash(std::string_view sv)
+            {
+                return std::hash<std::string_view>{}(sv);
+            }
+
+            static uint32_t makeHash(const char* str, size_t length)
+            {
+                /*
                 size_t i;
                 uint32_t hs = 2166136261u;
                 for(i = 0; i < length; i++)
                 {
-                    hs ^= key[i];
+                    hs ^= str[i];
                     hs *= 16777619;
                 }
                 return hs;
-            }
-
-            static uint32_t makeHash(std::string_view sv)
-            {
-                return makeHash(sv.data(), sv.size());
+                */
+                return makeHash(std::string_view(str, length));
             }
 
             static String* allocEmpty(State* state, size_t length)
             {
                 String* string;
                 string = Object::make<String>(state, Object::Type::String);
-                //if(!reuse)
                 {
+                    // important: since String is not created via new(), non-primitives and
+                    // non-pointers (like std::string) are *not* allocated until they're
+                    // explicitly initialized.
                     string->m_chars = new std::string();
                     /* reserving the required space may reduce number of allocations */
                     string->m_chars->reserve(length);
                 }
-                //string->m_chars = nullptr;
                 string->m_hash = 0;
                 return string;
             }
@@ -1323,13 +1412,6 @@ namespace lit
             {
                 String* string;
                 string = String::allocEmpty(state, length);
-                /*
-                if(reuse)
-                {
-                    string->m_chars = chars;
-                }
-                else
-                */
                 {
                     /*
                     * string->m_chars is initialized in String::allocEmpty(),
@@ -1435,10 +1517,8 @@ namespace lit
                         return String::internValue(state, "-infinity");
                     }
                 }
-
                 char buffer[24];
                 int length = sprintf(buffer, "%.14g", value);
-
                 return String::copy(state, buffer, length)->asValue();
             }
 
@@ -1703,12 +1783,16 @@ namespace lit
                             break;
                         case '#':
                             {
+                                /*
                                 string = Object::as<String>(String::stringNumberToString(state, va_arg(arg_list, double)));
                                 length = string->m_chars->size();
                                 if(length > 0)
                                 {
                                     result->m_chars->append(*(string->m_chars), length);
                                 }
+                                */
+                                auto d = std::to_string((int64_t)va_arg(arg_list, double));
+                                result->append(d);
                             }
                             break;
                         default:
@@ -1740,10 +1824,10 @@ namespace lit
 
         public:
             /* the hash of this string - note that it is only unique to the context! */
-            uint32_t m_hash;
+            uint32_t m_hash = 0;
 
             /* this is handled by sds - use lit_string_length to get the length! */
-            std::string* m_chars;
+            std::string* m_chars = nullptr;
 
         public:
             inline const char* data() const
@@ -1785,7 +1869,10 @@ namespace lit
 
             void append(String* other)
             {
-                append(*(other->m_chars));
+                if(other != nullptr)
+                {
+                    append(*(other->m_chars));
+                }
             }
 
             void append(char ch)
@@ -1878,6 +1965,50 @@ namespace lit
                 }
                 return String::fromCodePoint(m_state, code_point);
             }
+
+            Array* split(std::string_view sep, bool keepblanc)
+            {
+                char ch;
+                size_t i;
+                size_t last;
+                size_t next;
+                Array* rt;
+                std::string sub;
+                last = 0;
+                next = 0;
+                rt = Array::make(m_state);
+                if(sep.size() == 0)
+                {
+                    for(i=0; i<size(); i++)
+                    {
+                        ch = at(i);
+                        rt->push(String::copy(m_state, std::string_view(&ch, 1))->asValue());
+                    }
+                }
+                else
+                {
+                    while((next = m_chars->find(sep, last)) != std::string::npos)
+                    {
+                        sub = m_chars->substr(last, next-last);
+                        last = next + 1;
+                        if(!sub.empty() || keepblanc)
+                        {
+                            rt->push(String::copy(m_state, sub)->asValue());
+                        }
+                    }
+                    sub = m_chars->substr(last);
+                    if(!sub.empty() || keepblanc)
+                    {
+                        rt->push(String::copy(m_state, sub)->asValue());
+                    }
+                }
+                return rt;
+            }
+
+            Array* split(String* sep, bool keepblanc)
+            {
+                return split(*(sep->m_chars), keepblanc);
+            }
     };
 
     class Chunk
@@ -1887,7 +2018,7 @@ namespace lit
             /* how many items this chunk holds */
             size_t m_count;
             size_t m_capacity;
-            uint8_t* code;
+            uint8_t* m_code;
             bool has_line_info;
             size_t line_count;
             size_t line_capacity;
@@ -1895,27 +2026,23 @@ namespace lit
             PCGenericArray<Value> constants;
 
         public:
-
             void init(State* state)
             {
                 this->m_state = state;
                 this->m_count = 0;
                 this->m_capacity = 0;
-                this->code = nullptr;
-
+                m_code = nullptr;
                 this->has_line_info = true;
                 this->line_count = 0;
                 this->line_capacity = 0;
                 this->lines = nullptr;
-
                 this->constants.init(this->m_state);
             }
 
             void release()
             {
-                LIT_FREE_ARRAY(m_state, uint8_t, this->code, this->m_capacity);
+                LIT_FREE_ARRAY(m_state, uint8_t, m_code, this->m_capacity);
                 LIT_FREE_ARRAY(m_state, uint16_t, this->lines, this->line_capacity);
-
                 this->constants.release();
                 init(this->m_state);
             }
@@ -1925,14 +2052,11 @@ namespace lit
                 if(this->m_capacity < this->m_count + 1)
                 {
                     size_t old_capacity = this->m_capacity;
-
                     this->m_capacity = LIT_GROW_CAPACITY(old_capacity + 2);
-                    this->code = LIT_GROW_ARRAY(this->m_state, this->code, uint8_t, old_capacity, this->m_capacity + 2);
+                    m_code = LIT_GROW_ARRAY(this->m_state, m_code, uint8_t, old_capacity, this->m_capacity + 2);
                 }
-
-                this->code[this->m_count] = byte;
+                m_code[this->m_count] = byte;
                 this->m_count++;
-
                 if(!this->has_line_info)
                 {
                     return;
@@ -1941,20 +2065,16 @@ namespace lit
                 if(this->line_capacity < this->line_count + 2)
                 {
                     size_t old_capacity = this->line_capacity;
-
                     this->line_capacity = LIT_GROW_CAPACITY(this->line_capacity + 2);
                     this->lines = LIT_GROW_ARRAY(this->m_state, this->lines, uint16_t, old_capacity, this->line_capacity + 2);
-
                     if(old_capacity == 0)
                     {
                         this->lines[0] = 0;
                         this->lines[1] = 0;
                     }
                 }
-
                 size_t line_index = this->line_count;
                 size_t value = this->lines[line_index];
-
                 if(value != 0 && value != line)
                 {
                     this->line_count += 2;
@@ -1962,7 +2082,6 @@ namespace lit
 
                     this->lines[line_index + 1] = 0;
                 }
-
                 this->lines[line_index] = line;
                 this->lines[line_index + 1]++;
             }
@@ -1975,11 +2094,9 @@ namespace lit
                 {
                     return 0;
                 }
-
                 size_t rle = 0;
                 size_t line = 0;
                 size_t index = 0;
-
                 for(size_t i = 0; i < offset + 1; i++)
                 {
                     if(rle > 0)
@@ -1987,18 +2104,14 @@ namespace lit
                         rle--;
                         continue;
                     }
-
                     line = this->lines[index];
                     rle = this->lines[index + 1];
-
                     if(rle > 0)
                     {
                         rle--;
                     }
-
                     index += 2;
                 }
-
                 return line;
             }
 
@@ -2007,11 +2120,9 @@ namespace lit
                 if(this->m_capacity > this->m_count)
                 {
                     size_t old_capacity = this->m_capacity;
-
                     this->m_capacity = this->m_count;
-                    this->code = LIT_GROW_ARRAY(this->m_state, this->code, uint8_t, old_capacity, this->m_capacity);
+                    m_code = LIT_GROW_ARRAY(this->m_state, m_code, uint8_t, old_capacity, this->m_capacity);
                 }
-
                 if(this->line_capacity > this->line_count)
                 {
                     size_t old_capacity = this->line_capacity;
@@ -2844,7 +2955,7 @@ namespace lit
                 frame->return_to_c = false;
                 if(function != nullptr)
                 {
-                    frame->ip = function->chunk.code;
+                    frame->ip = function->chunk.m_code;
                 }
                 return fiber;
             }
@@ -3181,79 +3292,6 @@ namespace lit
         public:
             Value receiver;
             Value method;
-    };
-
-    class Array: public Object
-    {
-        public:
-            static Array* make(State* state)
-            {
-                Array* array;
-                array = Object::make<Array>(state, Object::Type::Array);
-                array->m_actualarray.init(state);
-                return array;
-            }
-
-        public:
-            PCGenericArray<Value> m_actualarray;
-
-        public:
-            void push(Value val)
-            {
-                this->m_actualarray.push(val);
-            }
-
-            inline constexpr size_t size()
-            {
-                return m_actualarray.m_count;
-            }
-
-            inline constexpr Value at(size_t idx)
-            {
-                return m_actualarray.at(idx);
-            }
-
-            int indexOf(Value value)
-            {
-                size_t i;
-                for(i = 0; i < this->m_actualarray.m_count; i++)
-                {
-                    if(this->m_actualarray.m_values[i] == value)
-                    {
-                        return (int)i;
-                    }
-                }
-                return -1;
-            }
-
-            Value removeAt(size_t index)
-            {
-                size_t i;
-                size_t count;
-                Value value;
-                PCGenericArray<Value>* values;
-                values = &this->m_actualarray;
-                count = values->m_count;
-                if(index >= count)
-                {
-                    return Object::NullVal;
-                }
-                value = values->m_values[index];
-                if(index == count - 1)
-                {
-                    values->m_values[index] = Object::NullVal;
-                }
-                else
-                {
-                    for(i = index; i < values->m_count - 1; i++)
-                    {
-                        values->m_values[i] = values->m_values[i + 1];
-                    }
-                    values->m_values[count - 1] = Object::NullVal;
-                }
-                values->m_count--;
-                return value;
-            }
     };
 
     class Userdata: public Object
@@ -4918,7 +4956,15 @@ namespace lit
                         }
                         parser->ignore_new_lines();
                         statement->statements.push(parse_statement(parser));
+                        
                         parser->ignore_new_lines();
+                        if(parser->match(LITTOK_SEMICOLON))
+                        {
+                            parser->advance();
+
+                        }
+                            parser->ignore_new_lines();
+                        
                     }
                     parser->ignore_new_lines();
                     parser->consume(LITTOK_RIGHT_BRACE, "'}'");
@@ -4938,13 +4984,17 @@ namespace lit
                     ParseRule::InfixFuncType infix_rule;
                     Token previous;
                     (void)new_line;
+                    parser->ignore_new_lines();
+
                     prev_newline = false;
                     previous = parser->m_prevtoken;
                     parser->advance();
+
                     prefix_rule = parser->get_rule(parser->m_prevtoken.type)->prefix;
                     if(prefix_rule == nullptr)
                     {
-                        //fprintf(stderr, "parser->m_prevtoken.type=%s, parser->m_currtoken.type=%s\n", token_name(parser->m_prevtoken.type), token_name(parser->m_currtoken.type));
+                        
+                        fprintf(stderr, "parser->m_prevtoken.type=%s, parser->m_currtoken.type=%s\n", Token::token_name(parser->m_prevtoken.type), Token::token_name(parser->m_currtoken.type));
                         if(parser->m_prevtoken.type == LITTOK_SEMICOLON)
                         {
                             if(parser->m_currtoken.type == LITTOK_NEW_LINE)
@@ -4954,15 +5004,31 @@ namespace lit
                             }
                             return nullptr;
                         }
+                        
+                        
+
                         // todo: file start
+                        size_t toklen;
+                        size_t prevtoklen;
+                        const char* tokname;
+                        const char* prevtokname;
+                        tokname = "new line";
+                        toklen = strlen(tokname);
+                        prevtokname = "new line";
+                        prevtoklen = strlen(prevtokname);
                         new_line = previous.start != nullptr && *previous.start == '\n';
                         parser_prev_newline = parser->m_prevtoken.start != nullptr && *parser->m_prevtoken.start == '\n';
-                        parser->raiseError(Error::LITERROR_EXPECTED_EXPRESSION,
-                            (prev_newline ? 8 : previous.length),
-                            (prev_newline ? "new line" : previous.start),
-                            (parser_prev_newline ? 8 : parser->m_prevtoken.length),
-                            (parser_prev_newline ? "new line" : parser->m_prevtoken.start)
-                        );
+                        if(!prev_newline)
+                        {
+                            tokname = previous.start;
+                            toklen = previous.length;
+                        }
+                        if(!parser_prev_newline)
+                        {
+                            prevtokname = parser->m_prevtoken.start;
+                            prevtoklen = parser->m_prevtoken.length;
+                        }
+                        parser->raiseError(Error::LITERROR_EXPECTED_EXPRESSION, toklen, tokname, prevtoklen, prevtokname);
                         return nullptr;
                         
                     }
@@ -5168,6 +5234,7 @@ namespace lit
                 static Expression* parse_unary(Parser* parser, bool can_assign)
                 {
                     (void)can_assign;
+                    parser->ignore_new_lines();
                     auto op = parser->m_prevtoken.type;
                     auto line = parser->m_prevtoken.line;
                     auto expression = parse_precedence(parser, LITPREC_UNARY, true);
@@ -5187,6 +5254,7 @@ namespace lit
                     {
                         parser->consume(LITTOK_IS, "'is' after '!'");
                     }
+                    parser->ignore_new_lines();
                     op = parser->m_prevtoken.type;
                     line = parser->m_prevtoken.line;
                     rule = parser->get_rule(op);
@@ -5204,6 +5272,7 @@ namespace lit
                     (void)can_assign;
                     size_t line;
                     TokenType op;
+                    parser->ignore_new_lines();
                     op = parser->m_prevtoken.type;
                     line = parser->m_prevtoken.line;
                     return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_AND, true), op);
@@ -5214,6 +5283,7 @@ namespace lit
                     (void)can_assign;
                     size_t line;
                     TokenType op;
+                    parser->ignore_new_lines();
                     op = parser->m_prevtoken.type;
                     line = parser->m_prevtoken.line;
                     return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_OR, true), op);
@@ -5224,6 +5294,7 @@ namespace lit
                     (void)can_assign;
                     size_t line;
                     TokenType op;
+                    parser->ignore_new_lines();
                     op = parser->m_prevtoken.type;
                     line = parser->m_prevtoken.line;
                     return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_NULL, true), op);
@@ -5304,9 +5375,11 @@ namespace lit
                     Expression* expression;
                     ParseRule* rule;
                     TokenType op;
+                    parser->ignore_new_lines();
                     op = parser->m_prevtoken.type;
                     line = parser->m_prevtoken.line;
                     rule = parser->get_rule(op);
+                    
                     if(op == LITTOK_PLUS_PLUS || op == LITTOK_MINUS_MINUS)
                     {
                         expression = (Expression*)ExprLiteral::make(parser->m_state, line, Object::toValue(1));
@@ -6056,6 +6129,10 @@ namespace lit
                     {
                         return parse_function(parser);
                     }
+                    else if(parser->match(LITTOK_CLASS))
+                    {
+                        parse_class(parser);
+                    }
                     else if(parser->match(LITTOK_RETURN))
                     {
                         return parse_return(parser);
@@ -6064,8 +6141,18 @@ namespace lit
                     {
                         return parse_block(parser);
                     }
+                    
+                    else if(parser->match(LITTOK_SEMICOLON))
+                    {
+                        //return parser->parse();
+                        return parse_declaration(parser);
+                    }
                     expression = parse_expression(parser);
-                    return expression == nullptr ? nullptr : (Expression*)ExprStatement::make(parser->m_state, parser->m_prevtoken.line, expression);
+                    if(expression == nullptr)
+                    {
+                        return nullptr;
+                    }
+                    return (Expression*)ExprStatement::make(parser->m_state, parser->m_prevtoken.line, expression);
                 }
 
                 static Expression* parse_declaration(Parser* parser)
@@ -7643,8 +7730,8 @@ namespace lit
                     {
                         error(line, Error::LITERROR_JUMP_TOO_BIG);
                     }
-                    m_chunk->code[offset] = (jump >> 8) & 0xff;
-                    m_chunk->code[offset + 1] = jump & 0xff;
+                    m_chunk->m_code[offset] = (jump >> 8) & 0xff;
+                    m_chunk->m_code[offset + 1] = jump & 0xff;
                 }
 
                 void emit_loop(size_t start, size_t line)
@@ -9003,6 +9090,16 @@ namespace lit
                 return setjmp(jump_buffer);
             }
 
+            /*
+            void lit_disassemble_module(State* state, Module* module, const char* source);
+            void lit_disassemble_chunk(Chunk* chunk, const char* name, const char* source);
+            size_t lit_disassemble_instruction(State* state, Chunk* chunk, size_t offset, const char* source);
+            */
+            void showDecompiled()
+            {
+                
+            }
+
             void raiseError(ErrorType type, const char* message, ...)
             {
                 size_t buffer_size;
@@ -9018,6 +9115,7 @@ namespace lit
                 vsnprintf(buffer, buffer_size, message, args);
                 va_end(args);
                 this->error_fn(this, buffer);
+                showDecompiled();
                 m_haderror = true;
                 /* TODO: is this safe? */
                 free(buffer);
@@ -9353,7 +9451,7 @@ namespace lit
                 frame = &fiber->frames[fiber->frame_count++];
                 frame->function = function;
                 frame->closure = closure;
-                frame->ip = function->chunk.code;
+                frame->ip = function->chunk.m_code;
                 frame->slots = fiber->stack_top - arg_count - 1;
                 frame->result_ignored = false;
                 frame->return_to_c = false;
@@ -9403,7 +9501,7 @@ namespace lit
                 return true;
             }
 
-            bool callValue(Value callee, uint8_t arg_count);
+            bool callValue(std::string_view name, Value callee, uint8_t arg_count);
 
             void markObject(Object* obj)
             {
@@ -9713,7 +9811,7 @@ namespace lit
                 FileIO::write_uint32_t(file, chunk->m_count);
                 for(i = 0; i < chunk->m_count; i++)
                 {
-                    FileIO::write_uint8_t(file, chunk->code[i]);
+                    FileIO::write_uint8_t(file, chunk->m_code[i]);
                 }
                 if(chunk->has_line_info)
                 {
@@ -9770,12 +9868,12 @@ namespace lit
                 uint8_t type;
                 chunk->init(state);
                 count = file->read_euint32_t();
-                chunk->code = (uint8_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint8_t) * count);
+                chunk->m_code = (uint8_t*)Memory::reallocate(state, nullptr, 0, sizeof(uint8_t) * count);
                 chunk->m_count = count;
                 chunk->m_capacity = count;
                 for(i = 0; i < count; i++)
                 {
-                    chunk->code[i] = file->read_euint8_t();
+                    chunk->m_code[i] = file->read_euint8_t();
                 }
                 count = file->read_euint32_t();
                 if(count > 0)
@@ -9972,10 +10070,6 @@ namespace lit
     void lit_ensure_number(VM* vm, Value value, const char* error);
     void lit_ensure_object_type(VM* vm, Value value, Object::Type type, const char* error);
 
-
-    void lit_disassemble_module(State* state, Module* module, const char* source);
-    void lit_disassemble_chunk(Chunk* chunk, const char* name, const char* source);
-    size_t lit_disassemble_instruction(State* state, Chunk* chunk, size_t offset, const char* source);
 
     void lit_trace_frame(Fiber* fiber, Writer* wr);
 
@@ -10798,7 +10892,7 @@ namespace lit
         fiber = vm->fiber;
         if(callee == nullptr)
         {
-            lit_runtime_error(vm, "attempt to call a null value");
+            lit_runtime_error(vm, "attempt to call a null function object");
             return nullptr;
         }
         if(Fiber::ensureFiber(vm, fiber))
@@ -10854,7 +10948,7 @@ namespace lit
             array->push(*(fiber->stack_top - 1));
             *(fiber->stack_top - 1) = array->asValue();
         }
-        frame->ip = callee->chunk.code;
+        frame->ip = callee->chunk.m_code;
         frame->closure = nullptr;
         frame->function = callee;
         frame->result_ignored = false;
@@ -11025,7 +11119,7 @@ namespace lit
         }
         if(Object::isNull(callee))
         {
-            lit_runtime_error(vm, "attempt to call a null value");
+            lit_runtime_error(vm, "attempt to call a null value of a '%s'", Object::toString(this, instance)->data());
         }
         else
         {
@@ -11138,8 +11232,8 @@ namespace lit
         vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
         vm_traceframe(fiber);
 
-    #define vm_callvalue(callee, arg_count) \
-        if(vm->callValue(callee, arg_count)) \
+    #define vm_callvalue(name, callee, arg_count) \
+        if(vm->callValue(name, callee, arg_count)) \
         { \
             vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
         }
@@ -11173,7 +11267,7 @@ namespace lit
         { \
             if(ignoring) \
             { \
-                if(vm->callValue(mthval, arg_count)) \
+                if(vm->callValue(method_name->data(), mthval, arg_count)) \
                 { \
                     vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
                     frame->result_ignored = true; \
@@ -11185,7 +11279,7 @@ namespace lit
             } \
             else \
             { \
-                vm_callvalue(mthval, arg_count); \
+                vm_callvalue(method_name->data(), mthval, arg_count); \
             } \
         } \
         else \
@@ -11258,7 +11352,7 @@ namespace lit
         Value receiver = vm_peek(fiber, arg_count); \
         if(Object::isNull(receiver)) \
         { \
-            vm_rterror("Attempt to index a null value"); \
+            vm_rterrorvarg("Attempt to index a null value with '%s'", method_name->data()); \
         } \
         vm_writeframe(frame, ip); \
         if(Object::isClass(receiver)) \
@@ -11273,7 +11367,7 @@ namespace lit
             if(instance->fields.get(method_name, &value)) \
             { \
                 fiber->stack_top[-arg_count - 1] = value; \
-                vm_callvalue(value, arg_count); \
+                vm_callvalue(method_name->data(), value, arg_count); \
                 vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
                 continue; \
             } \
@@ -11387,7 +11481,7 @@ namespace lit
             #ifdef LIT_USE_COMPUTEDGOTO
                 #ifdef LIT_TRACE_EXECUTION
                     instruction = *ip++;
-                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->code - 1), nullptr);
+                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->m_code - 1), nullptr);
                     goto* dispatch_table[instruction];
                 #else
                     goto* dispatch_table[*ip++];
@@ -11395,7 +11489,7 @@ namespace lit
             #else
                 instruction = *ip++;
                 #ifdef LIT_TRACE_EXECUTION
-                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->code - 1), nullptr);
+                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->m_code - 1), nullptr);
                 #endif
                 switch(instruction)
             #endif
@@ -11833,9 +11927,13 @@ namespace lit
                 }
                 op_case(CALL)
                 {
+                    const char* name = "unknown";
                     arg_count = vm_readbyte(ip);
                     vm_writeframe(frame, ip);
-                    vm_callvalue(vm_peek(fiber, arg_count), arg_count);
+                    //auto nameval = vm_peek(fiber, arg_count-1);
+                    //fprintf(stderr, "arg_count-1=%s\n", Object::toString(this, nameval)->data());
+                    // todo: figure out callee name!
+                    vm_callvalue(name, vm_peek(fiber, arg_count), arg_count);
                     continue;
                 }
                 op_case(CLOSURE)
@@ -11901,7 +11999,7 @@ namespace lit
                                     }
                                     vm_drop(fiber);
                                     vm_writeframe(frame, ip);
-                                    vm_callvalue(Object::as<Field>(getval)->getter->asValue(), 0);
+                                    vm_callvalue(name->data(), Object::as<Field>(getval)->getter->asValue(), 0);
                                     vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                                     continue;
                                 }
@@ -11935,7 +12033,7 @@ namespace lit
                                 }
                                 vm_drop(fiber);
                                 vm_writeframe(frame, ip);
-                                vm_callvalue(field->getter->asValue(), 0);
+                                vm_callvalue(name->data(), field->getter->asValue(), 0);
                                 vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                                 continue;
                             }
@@ -11964,7 +12062,7 @@ namespace lit
                                 }
                                 vm_drop(fiber);
                                 vm_writeframe(frame, ip);
-                                vm_callvalue(Object::as<Field>(getval)->getter->asValue(), 0);
+                                vm_callvalue(name->data(), Object::as<Field>(getval)->getter->asValue(), 0);
                                 vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                                 continue;
                             }
@@ -12006,7 +12104,7 @@ namespace lit
                             vm_dropn(fiber, 2);
                             vm_push(fiber, value);
                             vm_writeframe(frame, ip);
-                            vm_callvalue(field->setter->asValue(), 1);
+                            vm_callvalue(field_name->data(), field->setter->asValue(), 1);
                             vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                             continue;
                         }
@@ -12035,7 +12133,7 @@ namespace lit
                             vm_dropn(fiber, 2);
                             vm_push(fiber, value);
                             vm_writeframe(frame, ip);
-                            vm_callvalue(field->setter->asValue(), 1);
+                            vm_callvalue(field_name->data(), field->setter->asValue(), 1);
                             vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                             continue;
                         }
@@ -12068,7 +12166,7 @@ namespace lit
                             vm_dropn(fiber, 2);
                             vm_push(fiber, value);
                             vm_writeframe(frame, ip);
-                            vm_callvalue(field->setter->asValue(), 1);
+                            vm_callvalue(field_name->data(), field->setter->asValue(), 1);
                             vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                             continue;
                         }
@@ -12358,7 +12456,7 @@ namespace lit
         this->globals->m_values.markForGC(this);
     }
 
-    bool VM::callValue(Value callee, uint8_t arg_count)
+    bool VM::callValue(std::string_view name, Value callee, uint8_t arg_count)
     {
         size_t i;
         bool bres;
@@ -12451,7 +12549,7 @@ namespace lit
                         this->fiber->stack_top[-arg_count - 1] = instance->asValue();
                         if(klass->init_method != nullptr)
                         {
-                            return this->callValue(klass->init_method->asValue(), arg_count);
+                            return this->callValue(LIT_NAME_CONSTRUCTOR, klass->init_method->asValue(), arg_count);
                         }
                         // Remove the arguments, so that they don't mess up the stack
                         // (default constructor has no arguments)
@@ -12503,7 +12601,7 @@ namespace lit
         }
         if(Object::isNull(callee))
         {
-            lit_runtime_error(this, "Attempt to call a null value");
+            lit_runtime_error(this, "Attempt to call a null value '%s'", name.data());
         }
         else
         {
@@ -12840,7 +12938,7 @@ namespace lit
         }
         fiber->ensure_stack(function->max_slots + (int)(fiber->stack_top - fiber->stack));
         frame = &fiber->frames[fiber->frame_count++];
-        frame->ip = function->chunk.code;
+        frame->ip = function->chunk.m_code;
         frame->closure = nullptr;
         frame->function = function;
         frame->slots = fiber->stack_top;
@@ -13633,12 +13731,12 @@ namespace lit
         uint8_t constant;
         if(big)
         {
-            constant = (uint16_t)(chunk->code[offset + 1] << 8);
-            constant |= chunk->code[offset + 2];
+            constant = (uint16_t)(chunk->m_code[offset + 1] << 8);
+            constant |= chunk->m_code[offset + 2];
         }
         else
         {
-            constant = chunk->code[offset + 1];
+            constant = chunk->m_code[offset + 1];
         }
         wr->format("%s%-16s%s %4d '", COLOR_YELLOW, name, COLOR_RESET, constant);
         Object::print(state, wr, chunk->constants.m_values[constant]);
@@ -13650,7 +13748,7 @@ namespace lit
     {
         uint8_t slot;
         (void)state;
-        slot = chunk->code[offset + 1];
+        slot = chunk->m_code[offset + 1];
         wr->format("%s%-16s%s %4d\n", COLOR_YELLOW, name, COLOR_RESET, slot);
         return offset + 2;
     }
@@ -13659,8 +13757,8 @@ namespace lit
     {
         uint16_t slot;
         (void)state;
-        slot = (uint16_t)(chunk->code[offset + 1] << 8);
-        slot |= chunk->code[offset + 2];
+        slot = (uint16_t)(chunk->m_code[offset + 1] << 8);
+        slot |= chunk->m_code[offset + 2];
         wr->format("%s%-16s%s %4d\n", COLOR_YELLOW, name, COLOR_RESET, slot);
         return offset + 2;
     }
@@ -13669,8 +13767,8 @@ namespace lit
     {
         uint16_t jump;
         (void)state;
-        jump = (uint16_t)(chunk->code[offset + 1] << 8);
-        jump |= chunk->code[offset + 2];
+        jump = (uint16_t)(chunk->m_code[offset + 1] << 8);
+        jump |= chunk->m_code[offset + 2];
         wr->format("%s%-16s%s %4d -> %d\n", COLOR_YELLOW, name, COLOR_RESET, (int)offset, (int)(offset + 3 + sign * jump));
         return offset + 3;
     }
@@ -13680,9 +13778,9 @@ namespace lit
         uint8_t arg_count;
         uint8_t constant;
         (void)state;
-        arg_count = chunk->code[offset + 1];
-        constant = chunk->code[offset + 2];
-        constant |= chunk->code[offset + 3];
+        arg_count = chunk->m_code[offset + 1];
+        constant = chunk->m_code[offset + 2];
+        constant |= chunk->m_code[offset + 3];
         wr->format("%s%-16s%s (%d args) %4d '", COLOR_YELLOW, name, COLOR_RESET, arg_count, constant);
         Object::print(state, wr, chunk->constants.m_values[constant]);
         wr->format("'\n");
@@ -13739,7 +13837,7 @@ namespace lit
         {
             wr->format("%s%4d%s ", COLOR_BLUE, (int)line, COLOR_RESET);
         }
-        instruction = chunk->code[offset];
+        instruction = chunk->m_code[offset];
         switch(instruction)
         {
             case OP_POP:
@@ -13843,17 +13941,17 @@ namespace lit
             case OP_CLOSURE:
                 {
                     offset++;
-                    constant = (uint16_t)(chunk->code[offset] << 8);
+                    constant = (uint16_t)(chunk->m_code[offset] << 8);
                     offset++;
-                    constant |= chunk->code[offset];
+                    constant |= chunk->m_code[offset];
                     wr->format("%-16s %4d ", "OP_CLOSURE", constant);
                     Object::print(state, wr, chunk->constants.m_values[constant]);
                     wr->format("\n");
                     function = Object::as<Function>(chunk->constants.m_values[constant]);
                     for(j = 0; j < function->upvalue_count; j++)
                     {
-                        is_local = chunk->code[offset++];
-                        index = chunk->code[offset++];
+                        is_local = chunk->m_code[offset++];
+                        index = chunk->m_code[offset++];
                         wr->format("%04d      |                     %s %d\n", (int)(offset - 2), is_local ? "local" : "upvalue", (int)index);
                     }
                     return offset;
@@ -14308,7 +14406,7 @@ namespace lit
 
             if(chunk->has_line_info)
             {
-                length += snprintf(nullptr, 0, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->code - 1), name);
+                length += snprintf(nullptr, 0, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->m_code - 1), name);
             }
             else
             {
@@ -14327,7 +14425,7 @@ namespace lit
             name = function->name == nullptr ? "unknown" : function->name->data();
             if(chunk->has_line_info)
             {
-                start += sprintf(start, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->code - 1), name);
+                start += sprintf(start, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->m_code - 1), name);
             }
             else
             {
@@ -14415,10 +14513,35 @@ namespace lit
 
     static Value objfn_array_constructor(VM* vm, Value instance, size_t argc, Value* argv)
     {
+        size_t i;
+        size_t count;
+        Array* made;
+        Value cntval;
+        Value fillval;
         (void)instance;
         (void)argc;
         (void)argv;
-        return Array::make(vm->m_state)->asValue();
+        made = Array::make(vm->m_state);
+        if(argc > 0)
+        {
+            fillval = Object::NullVal;
+            cntval = argv[0];
+            if(!Object::isNumber(cntval))
+            {
+                lit_runtime_error_exiting(vm, "Array() expects either no arguments or (<number>[, <value>])");
+                return Object::NullVal;
+            }
+            if(argc > 1)
+            {
+                fillval = argv[1];
+            }
+            count = Object::toNumber(cntval);
+            for(i=0; i<count; i++)
+            {
+                made->push(fillval);
+            }
+        }
+        return made->asValue();
     }
 
     static Value objfn_array_splice(VM* vm, Array* array, int from, int to)
@@ -14746,8 +14869,7 @@ namespace lit
             index += string->length();
             if(joinee != nullptr)
             {
-                
-                //if((i+1) < values.m_count)
+                if((i+1) != values->m_count)
                 {
                     //chars = sdscatlen(chars, joinee->data(), jlen);
                     chars->append(joinee);
@@ -14798,6 +14920,9 @@ namespace lit
         return array->asValue();
     }
 
+    // todo:
+    // CONTAINER_OUTPUT_MAX is a terrible solution.
+    // rather, implement lazy range, and then dynamically print (0 ... N)
     static Value objfn_array_tostring(VM* vm, Value instance, size_t argc, Value* argv)
     {
         (void)argc;
@@ -14825,7 +14950,8 @@ namespace lit
             return String::internValue(state, "[]");
         }
         has_more = values->m_count > LIT_CONTAINER_OUTPUT_MAX;
-        value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->m_count;
+        //value_amount = has_more ? LIT_CONTAINER_OUTPUT_MAX : values->m_count;
+        value_amount = values->m_count;
         values_converted = LIT_ALLOCATE(vm->m_state, String*, value_amount+1);
         // "[ ]"
         olength = 3;
@@ -14852,12 +14978,13 @@ namespace lit
             part = stringified;
             //buffer = sdscatlen(buffer, part->data(), part->length());
             buffer->append(part);
-            if(has_more && i == value_amount - 2)
+            /*if(has_more && i == value_amount - 2)
             {
                 //buffer = sdscat(buffer, " ... ");
                 buffer->append(" ... ");
             }
             else
+            */
             {
                 if(i == (value_amount - 1))
                 {
@@ -15198,7 +15325,7 @@ namespace lit
         fiber->catcher = catcher;
         vm->fiber = fiber;
         frame = &fiber->frames[fiber->frame_count - 1];
-        if(frame->ip == frame->function->chunk.code)
+        if(frame->ip == frame->function->chunk.m_code)
         {
             fiber->arg_count = argc;
             fiber->ensure_stack(frame->function->max_slots + 1 + (int)(fiber->stack_top - fiber->stack));
@@ -15287,7 +15414,7 @@ namespace lit
         fiber->parent = vm->fiber;
         vm->fiber = fiber;
         frame = &fiber->frames[fiber->frame_count - 1];
-        if(frame->ip == frame->function->chunk.code)
+        if(frame->ip == frame->function->chunk.m_code)
         {
             frame->slots = fiber->stack_top;
             vm->push(frame->function->asValue());
@@ -15521,6 +15648,21 @@ namespace lit
         return String::copy(vm->m_state, &ch, 1)->asValue();
     }
 
+
+    static Value objfn_number_formatas(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        double nv;
+        size_t flen;
+        const char* fmtstr;
+        char buf[50 + 1];
+        (void)argc;
+        (void)argv;
+        nv = Object::toNumber(instance);
+        fmtstr = lit_check_string(vm, argv, argc, 0);
+        flen = snprintf(buf, 50, fmtstr, (int64_t)nv);        
+        return String::copy(vm->m_state, buf, flen)->asValue();
+    }
+
     static Value objfn_bool_compare(VM* vm, Value instance, size_t argc, Value* argv)
     {
         bool bv;
@@ -15588,6 +15730,21 @@ namespace lit
         }
         lit_printf(vm->m_state, "\n");
         return Object::NullVal;
+    }
+
+    static Value objfn_string_format(VM* vm, Value instance, size_t argc, Value* argv);
+
+    static Value cfn_printf(VM* vm, size_t argc, Value* argv)
+    {
+        Value vres;
+        Value firstarg;
+        Value fwdargs[3]={Object::NullVal};
+        String* res;
+        firstarg = argv[0];
+        vres = objfn_string_format(vm, firstarg, argc-1, argv+1);
+        res = Object::as<String>(vres);
+        fwdargs[0] = res->asValue();
+        return cfn_print(vm, 1, fwdargs);
     }
 
     static bool cfn_eval(VM* vm, size_t argc, Value* argv)
@@ -15677,6 +15834,7 @@ namespace lit
                 klass->inheritFrom(state->objectvalue_class);
                 klass->bindConstructor(util_invalid_constructor);
                 klass->bindMethod("toString", objfn_number_tostring);
+                klass->bindMethod("formatString", objfn_number_formatas);
                 klass->bindMethod("toChar", objfn_number_tochar);
                 klass->setGetter("chr", objfn_number_tochar);
                 state->numbervalue_class = klass;
@@ -15707,6 +15865,7 @@ namespace lit
             state->defineNative("systemTime", cfn_systemTime);
             state->defineNative("print", cfn_print);
             state->defineNative("println", cfn_println);
+            state->defineNative("printf", cfn_printf);
             //state->defineNativePrimitive("require", cfn_require);
             state->defineNativePrimitive("eval", cfn_eval);
             state->setGlobal(String::intern(state, "globals"), state->vm->globals->asValue());
@@ -15967,6 +16126,7 @@ namespace lit
         if(!Object::as<Instance>(instance)->fields.get(String::intern(vm->m_state, "_data"), &_d))
         {
             lit_runtime_error_exiting(vm, "failed to extract userdata");
+            return nullptr;
         }
         return Object::as<Userdata>(_d)->data;
     }
@@ -16479,7 +16639,6 @@ namespace lit
         return Object::functionName(vm, instance)->asValue();
     }
 
-
     static Value objfn_function_name(VM* vm, Value instance, size_t argc, Value* argv)
     {
         (void)argc;
@@ -16503,7 +16662,6 @@ namespace lit
             klass->inheritFrom(state->objectvalue_class);
         }
     }
-
 
     static Value objfn_gc_memory_used(VM* vm, Value instance, size_t arg_count, Value* args)
     {
@@ -17650,9 +17808,11 @@ namespace lit
         return result->asValue();
     }
 
-    static Value objfn_string_splice(VM* vm, String* string, int from, int to)
+    static Value objfn_string_splice(VM* vm, String* string, int64_t from, int64_t to)
     {
-        int length;
+        size_t length;
+        size_t actualto;
+        size_t actualfrom;
         length = string->utfLength();
         if(from < 0)
         {
@@ -17666,7 +17826,14 @@ namespace lit
         to = fmin(to, length - 1);
         if(from > to)
         {
-            lit_runtime_error_exiting(vm, "String.splice argument 'from' is larger than argument 'to'");
+            if(to == -1)
+            {
+                
+            }
+            //else
+            {
+                lit_runtime_error_exiting(vm, "String.splice argument 'from' (%d) is larger than argument 'to' (%d)", from, to);
+            }
         }
         from = String::utfcharOffset(string->data(), from);
         to = String::utfcharOffset(string->data(), to);
@@ -17692,14 +17859,17 @@ namespace lit
         if(index < 0)
         {
             index = string->utfLength() + index;
-
             if(index < 0)
             {
                 return Object::NullVal;
             }
         }
         c = string->codePointAt(String::utfcharOffset(string->data(), index));
-        return c == nullptr ? Object::NullVal : c->asValue();
+        if(c == nullptr)
+        {
+            return String::intern(vm->m_state, "")->asValue();
+        }
+        return c->asValue();
     }
 
 
@@ -17732,6 +17902,42 @@ namespace lit
         }
         lit_runtime_error_exiting(vm, "can only compare string to another string or null");
         return Object::FalseVal;
+    }
+
+    static Value objfn_string_append(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        size_t i;
+        String* self;
+        String* other;
+        (void)argc;
+        self = Object::as<String>(instance);
+        for(i=0; i<argc; i++)
+        {
+            other = Object::toString(vm->m_state, argv[i]);
+            self->append(other);
+        }
+        return self->asValue();
+    }
+
+    static Value objfn_string_appendbyte(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        int byte;
+        size_t i;
+        String* self;
+        String* other;
+        (void)argc;
+        self = Object::as<String>(instance);
+        for(i=0; i<argc; i++)
+        {
+            if(!Object::isNumber(argv[i]))
+            {
+                lit_runtime_error_exiting(vm, "appendByte() expects numbers");
+                return Object::NullVal;
+            }
+            byte = Object::toNumber(argv[i]);
+            self->append(byte);
+        }
+        return self->asValue();
     }
 
     static Value objfn_string_less(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17819,6 +18025,63 @@ namespace lit
         selfstr = Object::as<String>(instance);
         iv = String::utfstringDecode((const uint8_t*)selfstr->data(), selfstr->length());
         return Object::toValue(iv);
+    }
+
+    static Value objfn_string_bytes(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        int iv;
+        size_t i;
+        Array* arr;
+        String* selfstr;
+        (void)vm;
+        (void)argc;
+        (void)argv;
+        selfstr = Object::as<String>(instance);
+        arr = Array::make(vm->m_state);
+        for(i=0; i<selfstr->size(); i++)
+        {
+            arr->push(Object::toValue(selfstr->at(i)));
+        }
+        return arr->asValue();
+    }
+
+    static Value objfn_string_byteat(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        char ch;
+        size_t pos;
+        size_t maxlen;
+        String* self;
+        self = Object::as<String>(instance);
+        pos = lit_check_number(vm, argv, argc, 0);
+        maxlen = self->size();
+        if(pos >= maxlen)
+        {
+            return Object::NullVal;
+        }
+        return Object::toValue(self->at(pos));
+    }
+
+    static Value objfn_string_split(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        double result;
+        (void)vm;
+        (void)argc;
+        (void)argv;
+        String* self;
+        String* sep;
+        Array* rt;
+        sep = String::intern(vm->m_state, "");
+        self = Object::as<String>(instance);
+        if(argc > 0)
+        {
+            if(!Object::isString(argv[0]))
+            {
+                lit_runtime_error_exiting(vm, "split() expects a string argument");
+            }
+            sep = Object::as<String>(argv[0]);
+        }
+        rt = self->split(sep, true);
+        return rt->asValue();
     }
 
     static Value objfn_string_contains(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17948,11 +18211,17 @@ namespace lit
 
     static Value objfn_string_substring(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        int to;
-        int from;
+        size_t to;
+        size_t from;
+        String* self;
+        self = Object::as<String>(instance);
+        to = self->size();
         from = lit_check_number(vm, argv, argc, 0);
-        to = lit_check_number(vm, argv, argc, 1);
-        return objfn_string_splice(vm, Object::as<String>(instance), from, to);
+        if(argc > 1)
+        {
+            to = lit_check_number(vm, argv, argc, 1);
+        }
+        return objfn_string_splice(vm, self, from, to);
     }
 
 
@@ -18030,11 +18299,14 @@ namespace lit
         size_t i;
         size_t ai;
         size_t selflen;
+        bool was_allowed;
         String* selfstr;
         Value rtv;
         //char* buf;
         String* buf;
         (void)pch;
+        was_allowed = String::stateGetGCAllowed(vm->m_state);
+        String::stateSetGCAllowed(vm->m_state, false);
         selfstr = Object::as<String>(instance);
         selflen = selfstr->length();
         //buf = sdsempty();
@@ -18072,7 +18344,15 @@ namespace lit
                                     return Object::NullVal;
                                 }
                                 //buf = sdscatlen(buf, Object::as<String>(argv[ai])->data(), Object::as<String>(argv[ai])->length());
-                                buf->append(Object::as<String>(argv[ai]));
+                                if(Object::isString(argv[ai]))
+                                {
+                                    buf->append(Object::as<String>(argv[ai]));
+                                }
+                                else
+                                {
+                                    buf->append(Object::toString(vm->m_state, argv[ai]));
+                                    //lit_runtime_error_exiting(vm, "format 's' at position %d expected a string", ai);
+                                }
                             }
                             break;
                         case 'd':
@@ -18093,24 +18373,36 @@ namespace lit
                             break;
                         case 'c':
                             {
-                                if(!check_fmt_arg(vm, buf, ai, argc, argv, "%d"))
+                                if(!check_fmt_arg(vm, buf, ai, argc, argv, "%c"))
                                 {
                                     return Object::NullVal;
                                 }
                                 if(!Object::isNumber(argv[ai]))
                                 {
-                                    //sdsfree(buf);
                                     lit_runtime_error_exiting(vm, "flag 'c' expects a number");
                                 }
                                 iv = lit_check_number(vm, argv, argc, ai);
                                 /* TODO: both of these use the same amount of memory. but which is faster? */
-                                #if 0
-                                    buf = sdscatfmt(buf, "%c", iv);
-                                #else
-                                    tmpch = iv;
-                                    //buf = sdscatlen(buf, &tmpch, 1);
-                                    buf->append(tmpch);
-                                #endif
+                                tmpch = iv;
+                                buf->append(tmpch);
+                            }
+                            break;
+                        case 'x':
+                            {
+                                size_t rlen;
+                                char tmpbuf[25];
+                                if(!check_fmt_arg(vm, buf, ai, argc, argv, "%c"))
+                                {
+                                    return Object::NullVal;
+                                }
+                                if(!Object::isNumber(argv[ai]))
+                                {
+                                    lit_runtime_error_exiting(vm, "flag 'x' expects a number");
+                                }
+                                iv = lit_check_number(vm, argv, argc, ai);
+                                memset(tmpbuf, 0, 25);
+                                rlen = sprintf(tmpbuf, "%02x", iv);
+                                buf->append(tmpbuf, rlen);
                             }
                             break;
                         default:
@@ -18133,6 +18425,8 @@ namespace lit
         //rtv = String::copy(vm->m_state, buf, sdslen(buf))->asValue();
         //sdsfree(buf);
         //return rtv;
+        String::stateSetGCAllowed(vm->m_state, was_allowed);
+
         return buf->asValue();
     }
 
@@ -18148,10 +18442,25 @@ namespace lit
                 klass->bindMethod("<", objfn_string_less);
                 klass->bindMethod(">", objfn_string_greater);
                 klass->bindMethod("==", objfn_string_compare);
+                klass->bindMethod("append", objfn_string_append);
+                // this is technically redundant due to Number.chr, but lets add it anyway.
+                klass->bindMethod("appendByte", objfn_string_appendbyte);
                 klass->bindMethod("toString", objfn_string_tostring);
                 {
                     klass->bindMethod("toNumber", objfn_string_tonumber);
                     klass->setGetter("to_i", objfn_string_tonumber);
+                }
+                /*
+                *
+                */
+                {
+                    klass->bindMethod("split", objfn_string_split);
+                }
+                /*
+                * javascript shit (does what [] does)
+                */
+                {
+                    klass->bindMethod("charCodeAt", objfn_string_byteat);
                 }
                 /*
                 * String.toUpper()
@@ -18179,9 +18488,17 @@ namespace lit
                 */
                 {
                     klass->setGetter("toByte", objfn_string_tobyte);
+                    klass->bindMethod("byteAt", objfn_string_byteat);
                 }
                 //TODO: byteAt
                 //LIT_BIND_METHOD(state, klass, "byteAt", objfn_string_byteat);
+                /*
+                * String.bytes
+                * returns the string as an array of bytes
+                */
+                {
+                    klass->setGetter("bytes", objfn_string_bytes);
+                }
                 /*
                 * String.contains(String str[, bool icase])
                 * returns true if $self contains $str.

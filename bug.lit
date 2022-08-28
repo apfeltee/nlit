@@ -1,19 +1,13 @@
 
-class Foo
+if(1)
 {
-    function constructor()
+    class printf
     {
-        this.name = "joe"
-    }
-
-    function getName()
-    {
-        return this.name
+        function constructor(fmt, ...)
+        {
+            println(fmt.format(...))
+        }
     }
 }
-
-println(Foo)
-let f = Foo()
-println(f.name)
-
+printf("hello, %s!", "world")
 

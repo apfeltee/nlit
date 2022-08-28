@@ -1,0 +1,43 @@
+
+## NB: this is starting to read a lot like javascript.
+## i'm not trying to reimplement javascript, except for the bare necessities.
+
+- variadic function syntax is too ambigious: instead of '...' use splat technique a la python/ruby:
+
+    function foo(thing, *stuff)
+    {
+        // 'stuff' is now an array
+        somefunction.apply(stuff)
+        // alternatively, but tricky to implement:
+        // use splat operator to spread arguments out
+        // this could be done with an opcode that instructs to treat the
+        // next value like an array of arguments
+        somefunction(*stuff)
+    }
+
+- parsing is too irregular:
+
+    + functions:
+        + why only 'function foo(...){...}' but not 'foo=function(...){...}'?
+        + latter is obvs handled by lambda syntax
+        + still feels incomplete, irregular, and just ehh
+
+    + maps/objects:
+        + json syntax would be nicer instead of the ambigious '{"must-be-quoted" = somestuff}'
+        + seriously, the language looks and feels already lots like js
+
+- error messages are in dire need of TLC
+
+    + "array index must be a number" ah but what is the name of the variable
+        - call context, maybe traceback?
+        - source snip a la python/v8?
+    + "attempt to call unknown" (need to track func name, if any)
+
+- need some kind of debugger:
+
+    + print the AST as it was parsed? (should be easy)
+    + operand stepping? (tricky!)
+    + just dump a bunch of printfs everywhere, whatever
+
+- far, far into the future:
+    + JIT? jit would be real neat. use something already eisting (asmjit? not llvm, though. too big, too unwieldy)
