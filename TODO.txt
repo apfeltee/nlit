@@ -2,6 +2,8 @@
 ## NB: this is starting to read a lot like javascript.
 ## i'm not trying to reimplement javascript, except for the bare necessities.
 
+- by default, variables are declared as globals. this is extremely terrible. 
+
 - variadic function syntax is too ambigious: instead of '...' use splat technique a la python/ruby:
 
     function foo(thing, *stuff)

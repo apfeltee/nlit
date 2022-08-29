@@ -143,9 +143,6 @@
     #define COLOR_WHITE ""
 #endif
 
-#define BOOL_VALUE(boolean) \
-    ((boolean) ? lit::Object::TrueVal : lit::Object::FalseVal)
-
 
 /**
 * maybe use __init__ for constructor, and __fini__ for destructor?
@@ -749,11 +746,19 @@ namespace lit
 
             inline void push(const ElementT& value)
             {
+                size_t attempts;
                 size_t oldcap;
+                attempts = 0;
                 if(m_capacity < (m_count + 1))
                 {
                     oldcap = m_capacity;
+                    //fprintf(stderr, "<%p> push(): m_capacity=%d, m_count=%d: now growing ...\n", this, m_capacity, m_count);
                     m_capacity = LIT_GROW_CAPACITY(oldcap);
+                    if((m_count + 1) > m_capacity)
+                    {
+                        m_capacity = LIT_GROW_CAPACITY(m_capacity + 1) * m_capacity;
+                    }
+                    //fprintf(stderr, "<%p> push(): new capacity=%d (m_count=%d)\n", this, m_capacity, m_count);
                     m_values = LIT_GROW_ARRAY(m_state, m_values, ElementT, oldcap, m_capacity);
                     if(m_values == nullptr)
                     {
@@ -1036,9 +1041,12 @@ namespace lit
             /* is this value falsey? */
             static inline bool isFalsey(Value value)
             {
+                if(Object::isNull(value))
+                {
+                    return true;
+                }
                 return (
                     (Object::isBool(value) && value == Object::FalseVal) ||
-                    Object::isNull(value) ||
                     (Object::isNumber(value) && (Object::toNumber(value) == 0))
                 );
             }
@@ -1164,7 +1172,7 @@ namespace lit
                 return Object::isObjectType(value, Object::Type::Reference);
             }
 
-            static bool isCallableFunction(Value value)
+            static inline bool isCallableFunction(Value value)
             {
                 if(Object::isObject(value))
                 {
@@ -1181,6 +1189,17 @@ namespace lit
                 }
                 return false;
             }
+
+            static inline Value fromBool(bool v)
+            {
+                if(v)
+                {
+                    return lit::Object::TrueVal;
+                }
+                return lit::Object::FalseVal;
+            };
+
+            static bool compare(State* state, const Value a, const Value b);
 
             static String* functionName(VM* vm, Value instance);
 
@@ -1210,13 +1229,13 @@ namespace lit
                     "field",
                     "reference"
                 };
-                if(Object::isBool(value))
-                {
-                    return "bool";
-                }
-                else if(Object::isNull(value))
+                if((value == Object::NullVal) || (Object::isNull(value)))
                 {
                     return "null";
+                }
+                else if(Object::isBool(value))
+                {
+                    return "bool";
                 }
                 else if(Object::isNumber(value))
                 {
@@ -2300,6 +2319,222 @@ namespace lit
             String* name;
     };
 
+    /*
+    class Table
+    {
+        public:
+            struct Entry
+            {
+                // the key of this entry. can be nullptr!
+                String* key = nullptr;
+
+                // the associated value
+                Value value;
+            };
+
+        public:
+            template<typename FuncT>
+            static void setFunctionValue(Table& dest, String* nm, typename FuncT::FuncType fn)
+            {
+                dest.set(nm, FuncT::make(dest.m_state, fn, nm)->asValue());
+            }
+
+            template<typename FuncT>
+            static void setFunctionValue(Table& dest, std::string_view sv, typename FuncT::FuncType fn)
+            {
+                auto nm = String::copy(dest.m_state, sv.data(), sv.size());
+                setFunctionValue<FuncT>(dest, nm, fn);
+            }
+
+            static void setNativeMethod(Table& dest, String* nm, NativeMethod::FuncType fn)
+            {
+                setFunctionValue<NativeMethod>(dest, nm, fn);
+            }
+
+            static void setNativeMethod(Table& dest, std::string_view sv, NativeMethod::FuncType fn)
+            {
+                setFunctionValue<NativeMethod>(dest, sv, fn);
+            }
+
+        public:
+            State* m_state = nullptr;
+            PCGenericArray<Entry> m_inner;
+
+        public:
+            void init(State* state)
+            {
+                m_state = state;
+                m_inner.init(state);
+            }
+
+            void release()
+            {
+                m_inner.release();
+            }
+
+            void markForGC(VM* vm);
+
+            inline size_t capacity() const
+            {
+                return m_inner.m_capacity;
+            }
+
+            inline size_t size() const
+            {
+                return m_inner.size();
+            }
+
+            inline constexpr Entry& at(size_t i)
+            {
+                return m_inner.at(i);
+            }
+
+            void setField(const char* name, Value value)
+            {
+                this->set(String::intern(m_state, name), value);
+            }
+
+            Value getField(const char* name)
+            {
+                Value value;
+                if(!this->get(String::intern(m_state, name), &value))
+                {
+                    value = Object::NullVal;
+                }
+                return value;
+            }
+
+            bool set(String* key, Value value)
+            {
+                size_t i;
+                if(m_inner.size() > 0)
+                {
+                    for(i=0; i<m_inner.size(); i++)
+                    {
+                        if(m_inner.at(i).key->m_chars == key->m_chars)
+                        {
+                            m_inner.at(i).value = value;
+                            return false;
+                        }
+                    }
+                }
+                m_inner.push({key, value});
+            }
+
+            inline bool set(std::string_view sv, Value value)
+            {
+                return set(String::copy(m_state, sv.data(), sv.size()), value);
+            }
+
+            bool get(String* key, Value* value)
+            {
+                size_t i;
+                for(i=0; i<m_inner.size(); i++)
+                {
+                    if(m_inner.at(i).key->m_chars == key->m_chars)
+                    {
+                        *value = m_inner.at(i).value;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+
+            bool remove(String* key)
+            {
+                size_t i;
+                for(i=0; i<m_inner.size(); i++)
+                {
+                    if(m_inner.at(i).key && (m_inner.at(i).key->m_chars == key->m_chars))
+                    {
+                        m_inner.at(i).key = nullptr;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            String* find(const char* str, size_t length, uint32_t hs)
+            {
+                size_t i;
+                if(m_inner.size() > 0)
+                {
+                    for(i=0; i<m_inner.size(); i++)
+                    {
+                        if(m_inner.at(i).key && (*(m_inner.at(i).key->m_chars) == std::string_view(str, length)))
+                        {
+                            return m_inner.at(i).key;
+                        }
+                    }
+                }
+                return nullptr;
+            }
+
+            void addAll(Table* from)
+            {
+                size_t i;
+                Entry* entry;
+                for(i = 0; i <= from->size(); i++)
+                {
+                    entry = &from->at(i);
+                    if(entry != nullptr)
+                    {
+                        if(entry->key != nullptr)
+                        {
+                            fprintf(stderr, "Table::addAll: %s\n", entry->key->data());
+                            set(entry->key, entry->value);
+                        }
+                    }
+                }
+            }
+
+            void removeWhite()
+            {
+                size_t i;
+                Entry* entry;
+                for(i = 0; i <= this->m_inner.m_capacity; i++)
+                {
+                    entry = &this->m_inner.m_values[i];
+                    if(entry->key != nullptr && !entry->key->marked)
+                    {
+                        this->remove(entry->key);
+                    }
+                }
+            }
+
+            int64_t iterator(int64_t number)
+            {
+                if(this->m_inner.m_count == 0)
+                {
+                    return -1;
+                }
+                if(number >= int64_t(this->m_inner.m_capacity))
+                {
+                    return -1;
+                }
+                number++;
+                for(; number < int64_t(this->m_inner.m_capacity); number++)
+                {
+                    if(this->m_inner.m_values[number].key != nullptr)
+                    {
+                        return number;
+                    }
+                }
+
+                return -1;
+            }
+
+            Value iterKey(int64_t index)
+            {
+                if(int64_t(this->m_inner.m_capacity) <= index)
+                {
+                    return Object::NullVal;
+                }
+                return this->m_inner.m_values[index].key->asValue();
+            }
+    };
+    */
     class Table
     {
         public:
@@ -2518,7 +2753,7 @@ namespace lit
                     return false;
                 }
                 entry->key = nullptr;
-                entry->value = BOOL_VALUE(true);
+                entry->value = Object::fromBool(true);
                 return true;
             }
 
@@ -3038,22 +3273,40 @@ namespace lit
 
     class Class: public Object
     {
+        private:
+            static Class* fromInstance(Value instance);
+
         public:
             static Value defaultfn_tostring(VM* vm, Value instance, size_t argc, Value* argv)
             {
+                Class* selfklass;
+                String* name;
+                String* rt;
                 const char* fmtpat;
                 (void)argc;
                 (void)argv;
-                fmtpat = "<class @>";
+                fmtpat = "<class ";
+                name = String::intern(Object::asState(vm), "?unknown?");
                 // this assumes toString() wasn't overriden
                 if(!Object::isNull(instance))
                 {
-                    if(!Object::isClass(instance))
+                    if(Object::isClass(instance))
                     {
-                        fmtpat = "<instance @>";
+                        selfklass = fromInstance(instance);
                     }
+                    else
+                    {
+                        selfklass = Object::as<Class>(instance);
+                        fmtpat = "<instance ";
+                    }
+                    name = selfklass->name;
                 }
-                return String::format(Object::asState(vm), fmtpat, Object::as<Class>(instance)->name->asValue())->asValue();
+                //return String::format(Object::asState(vm), fmtpat, name->asValue())->asValue();
+                rt = String::make(Object::asState(vm));
+                rt->append(fmtpat);
+                rt->append(name);
+                rt->append(">");
+                return rt->asValue();
             }
 
             static Class* getClassFor(State* state, Value value);
@@ -3067,10 +3320,8 @@ namespace lit
                 klass->super = nullptr;
                 klass->methods.init(state);
                 klass->static_fields.init(state);
-
                 klass->bindMethod("toString", defaultfn_tostring);
                 klass->setStaticMethod("toString", defaultfn_tostring);
-
                 return klass;
             }
 
@@ -3105,8 +3356,8 @@ namespace lit
                 {
                     this->init_method = superclass->init_method;
                 }
-                superclass->methods.addAll(&this->methods); \
-                superclass->static_fields.addAll(&this->static_fields);
+                this->methods.addAll(&superclass->methods); \
+                this->static_fields.addAll(&superclass->static_fields);
             }
 
             void bindConstructor(NativeMethod::FuncType method)
@@ -4547,7 +4798,7 @@ namespace lit
                     }
                     else if(is_binary)
                     {
-                        value = Object::toValue((int)strtoll(m_startsrc + 2, nullptr, 2));
+                        value = Object::toValue(strtoll(m_startsrc + 2, nullptr, 2));
                     }
                     else
                     {
@@ -4943,1232 +5194,10 @@ namespace lit
         class Parser
         {
             public:
-                static Expression* parse_block(Parser* parser)
-                {
-                    parser->begin_scope();
-                    auto statement = StmtBlock::make(parser->m_state, parser->m_prevtoken.line);
-                    while(true)
-                    {
-                        parser->ignore_new_lines();
-                        if(parser->check(LITTOK_RIGHT_BRACE) || parser->check(LITTOK_EOF))
-                        {
-                            break;
-                        }
-                        parser->ignore_new_lines();
-                        statement->statements.push(parse_statement(parser));
-                        
-                        parser->ignore_new_lines();
-                        if(parser->match(LITTOK_SEMICOLON))
-                        {
-                            parser->advance();
 
-                        }
-                            parser->ignore_new_lines();
-                        
-                    }
-                    parser->ignore_new_lines();
-                    parser->consume(LITTOK_RIGHT_BRACE, "'}'");
-                    parser->ignore_new_lines();
-                    parser->end_scope();
-                    return (Expression*)statement;
-                }
+            #include "parse.h"
 
-                static Expression* parse_precedence(Parser* parser, Precedence precedence, bool err)
-                {
-                    bool new_line;
-                    bool prev_newline;
-                    bool parser_prev_newline;
-                    bool can_assign;
-                    Expression* expr;
-                    ParseRule::PrefixFuncType prefix_rule;
-                    ParseRule::InfixFuncType infix_rule;
-                    Token previous;
-                    (void)new_line;
-                    parser->ignore_new_lines();
 
-                    prev_newline = false;
-                    previous = parser->m_prevtoken;
-                    parser->advance();
-
-                    prefix_rule = parser->get_rule(parser->m_prevtoken.type)->prefix;
-                    if(prefix_rule == nullptr)
-                    {
-                        
-                        fprintf(stderr, "parser->m_prevtoken.type=%s, parser->m_currtoken.type=%s\n", Token::token_name(parser->m_prevtoken.type), Token::token_name(parser->m_currtoken.type));
-                        if(parser->m_prevtoken.type == LITTOK_SEMICOLON)
-                        {
-                            if(parser->m_currtoken.type == LITTOK_NEW_LINE)
-                            {
-                                parser->advance();
-                                return parse_precedence(parser, precedence, err);
-                            }
-                            return nullptr;
-                        }
-                        
-                        
-
-                        // todo: file start
-                        size_t toklen;
-                        size_t prevtoklen;
-                        const char* tokname;
-                        const char* prevtokname;
-                        tokname = "new line";
-                        toklen = strlen(tokname);
-                        prevtokname = "new line";
-                        prevtoklen = strlen(prevtokname);
-                        new_line = previous.start != nullptr && *previous.start == '\n';
-                        parser_prev_newline = parser->m_prevtoken.start != nullptr && *parser->m_prevtoken.start == '\n';
-                        if(!prev_newline)
-                        {
-                            tokname = previous.start;
-                            toklen = previous.length;
-                        }
-                        if(!parser_prev_newline)
-                        {
-                            prevtokname = parser->m_prevtoken.start;
-                            prevtoklen = parser->m_prevtoken.length;
-                        }
-                        parser->raiseError(Error::LITERROR_EXPECTED_EXPRESSION, toklen, tokname, prevtoklen, prevtokname);
-                        return nullptr;
-                        
-                    }
-                    can_assign = precedence <= LITPREC_ASSIGNMENT;
-                    expr = prefix_rule(parser, can_assign);
-                    parser->ignore_new_lines();
-                    while(precedence <= parser->get_rule(parser->m_currtoken.type)->precedence)
-                    {
-                        parser->advance();
-                        infix_rule = parser->get_rule(parser->m_prevtoken.type)->infix;
-                        expr = infix_rule(parser, expr, can_assign);
-                    }
-                    if(err && can_assign && parser->match(LITTOK_EQUAL))
-                    {
-                        parser->raiseError(Error::LITERROR_INVALID_ASSIGMENT_TARGET);
-                    }
-                    return expr;
-                }
-
-                static Expression* parse_number(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    return (Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value);
-                }
-
-                static Expression* parse_lambda(Parser* parser, ExprLambda* lambda)
-                {
-                    lambda->body = parse_statement(parser);
-                    return (Expression*)lambda;
-                }
-
-                static void parse_parameters(Parser* parser, PCGenericArray<ExprFuncParam>* parameters)
-                {
-                    bool had_default;
-                    size_t arg_length;
-                    const char* arg_name;
-                    Expression* default_value;
-                    had_default = false;
-                    while(!parser->check(LITTOK_RIGHT_PAREN))
-                    {
-                        // Vararg ...
-                        if(parser->match(LITTOK_DOT_DOT_DOT))
-                        {
-                            parameters->push(ExprFuncParam{ "...", 3, nullptr });
-                            return;
-                        }
-                        parser->consume(LITTOK_IDENTIFIER, "argument name");
-                        arg_name = parser->m_prevtoken.start;
-                        arg_length = parser->m_prevtoken.length;
-                        default_value = nullptr;
-                        if(parser->match(LITTOK_EQUAL))
-                        {
-                            had_default = true;
-                            default_value = parse_expression(parser);
-                        }
-                        else if(had_default)
-                        {
-                            parser->raiseError(Error::LITERROR_DEFAULT_ARG_CENTRED);
-                        }
-                        parameters->push(ExprFuncParam{ arg_name, arg_length, default_value });
-                        if(!parser->match(LITTOK_COMMA))
-                        {
-                            break;
-                        }
-                    }
-                }
-
-                static Expression* parse_grouping_or_lambda(Parser* parser, bool can_assign)
-                {
-                    bool stop;
-                    bool had_default;
-                    bool had_vararg;
-                    bool had_array;
-                    bool had_arrow;
-                    size_t line;
-                    size_t first_arg_length;
-                    size_t arg_length;
-                    const char* start;
-                    const char* arg_name;
-                    const char* first_arg_start;
-                    Expression* expression;
-                    Expression* default_value;
-                    Scanner* scanner;
-                    (void)can_assign;
-                    (void)had_arrow;
-                    (void)had_array;
-                    had_arrow = false;
-                    if(parser->match(LITTOK_RIGHT_PAREN))
-                    {
-                        parser->consume(LITTOK_ARROW, "=> after lambda arguments");
-                        return parse_lambda(parser, ExprLambda::make(parser->m_state, parser->m_prevtoken.line));
-                    }
-                    start = parser->m_prevtoken.start;
-                    line = parser->m_prevtoken.line;
-                    if(parser->match(LITTOK_IDENTIFIER) || parser->match(LITTOK_DOT_DOT_DOT))
-                    {
-                        auto state = parser->m_state;
-                        first_arg_start = parser->m_prevtoken.start;
-                        first_arg_length = parser->m_prevtoken.length;
-                        if(parser->match(LITTOK_COMMA) || (parser->match(LITTOK_RIGHT_PAREN) && parser->match(LITTOK_ARROW)))
-                        {
-                            had_array = parser->m_prevtoken.type == LITTOK_ARROW;
-                            had_vararg= parser->m_prevtoken.type == LITTOK_DOT_DOT_DOT;
-                            // This is a lambda
-                            auto lambda = ExprLambda::make(state, line);
-                            Expression* def_value = nullptr;
-                            had_default = parser->match(LITTOK_EQUAL);
-                            if(had_default)
-                            {
-                                def_value = parse_expression(parser);
-                            }
-                            lambda->parameters.push(ExprFuncParam{ first_arg_start, first_arg_length, def_value });
-                            if(!had_vararg && parser->m_prevtoken.type == LITTOK_COMMA)
-                            {
-                                do
-                                {
-                                    stop = false;
-                                    if(parser->match(LITTOK_DOT_DOT_DOT))
-                                    {
-                                        stop = true;
-                                    }
-                                    else
-                                    {
-                                        parser->consume(LITTOK_IDENTIFIER, "argument name");
-                                    }
-
-                                    arg_name = parser->m_prevtoken.start;
-                                    arg_length = parser->m_prevtoken.length;
-                                    default_value = nullptr;
-                                    if(parser->match(LITTOK_EQUAL))
-                                    {
-                                        default_value = parse_expression(parser);
-                                        had_default = true;
-                                    }
-                                    else if(had_default)
-                                    {
-                                        parser->raiseError(Error::LITERROR_DEFAULT_ARG_CENTRED);
-                                    }
-                                    lambda->parameters.push(ExprFuncParam{ arg_name, arg_length, default_value });
-                                    if(stop)
-                                    {
-                                        break;
-                                    }
-                                } while(parser->match(LITTOK_COMMA));
-                            }
-                            #if 0
-                            if(!had_arrow)
-                            {
-                                parser->consume(LITTOK_RIGHT_PAREN, "')' after lambda parameters");
-                                parser->consume(LITTOK_ARROW, "=> after lambda parameters");
-                            }
-                            #endif
-                            return parse_lambda(parser, lambda);
-                        }
-                        else
-                        {
-                            // Ouch, this was a grouping with a single identifier
-                            scanner = parser->getStateScanner(state);
-                            scanner->m_currsrc = start;
-                            scanner->m_line = line;
-                            parser->m_currtoken = scanner->scan_token();
-                            parser->advance();
-                        }
-                    }
-                    expression = parse_expression(parser);
-                    parser->consume(LITTOK_RIGHT_PAREN, "')' after grouping expression");
-                    return expression;
-                }
-
-                static Expression* parse_call(Parser* parser, Expression* prev, bool can_assign)
-                {
-                    (void)can_assign;
-                    Expression* e;
-                    ExprVar* ee;
-                    ExprCall* expression;
-                    expression = ExprCall::make(parser->m_state, parser->m_prevtoken.line, prev);
-                    while(!parser->check(LITTOK_RIGHT_PAREN))
-                    {
-                        e = parse_expression(parser);
-                        expression->args.push(e);
-                        if(!parser->match(LITTOK_COMMA))
-                        {
-                            break;
-                        }
-                        if(e->type == Expression::Type::Variable)
-                        {
-                            ee = (ExprVar*)e;
-                            // Vararg ...
-                            if(ee->length == 3 && memcmp(ee->name, "...", 3) == 0)
-                            {
-                                break;
-                            }
-                        }
-                    }
-                    if(expression->args.m_count > 255)
-                    {
-                        parser->raiseError(Error::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)expression->args.m_count);
-                    }
-                    parser->consume(LITTOK_RIGHT_PAREN, "')' after arguments");
-                    return (Expression*)expression;
-                }
-
-                static Expression* parse_unary(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    parser->ignore_new_lines();
-                    auto op = parser->m_prevtoken.type;
-                    auto line = parser->m_prevtoken.line;
-                    auto expression = parse_precedence(parser, LITPREC_UNARY, true);
-                    return (Expression*)ExprUnary::make(parser->m_state, line, expression, op);
-                }
-
-                static Expression* parse_binary(Parser* parser, Expression* prev, bool can_assign)
-                {
-                    (void)can_assign;
-                    bool invert;
-                    size_t line;
-                    ParseRule* rule;
-                    Expression* expression;
-                    TokenType op;
-                    invert = parser->m_prevtoken.type == LITTOK_BANG;
-                    if(invert)
-                    {
-                        parser->consume(LITTOK_IS, "'is' after '!'");
-                    }
-                    parser->ignore_new_lines();
-                    op = parser->m_prevtoken.type;
-                    line = parser->m_prevtoken.line;
-                    rule = parser->get_rule(op);
-                    expression = parse_precedence(parser, (Precedence)(rule->precedence + 1), true);
-                    expression = (Expression*)ExprBinary::make(parser->m_state, line, prev, expression, op);
-                    if(invert)
-                    {
-                        expression = (Expression*)ExprUnary::make(parser->m_state, line, expression, LITTOK_BANG);
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_and(Parser* parser, Expression* prev, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    TokenType op;
-                    parser->ignore_new_lines();
-                    op = parser->m_prevtoken.type;
-                    line = parser->m_prevtoken.line;
-                    return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_AND, true), op);
-                }
-
-                static Expression* parse_or(Parser* parser, Expression* prev, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    TokenType op;
-                    parser->ignore_new_lines();
-                    op = parser->m_prevtoken.type;
-                    line = parser->m_prevtoken.line;
-                    return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_OR, true), op);
-                }
-
-                static Expression* parse_null_filter(Parser* parser, Expression* prev, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    TokenType op;
-                    parser->ignore_new_lines();
-                    op = parser->m_prevtoken.type;
-                    line = parser->m_prevtoken.line;
-                    return (Expression*)ExprBinary::make(parser->m_state, line, prev, parse_precedence(parser, LITPREC_NULL, true), op);
-                }
-
-                static TokenType convert_compound_operator(TokenType op)
-                {
-                    switch(op)
-                    {
-                        case LITTOK_PLUS_EQUAL:
-                            {
-                                return LITTOK_PLUS;
-                            }
-                            break;
-                        case LITTOK_MINUS_EQUAL:
-                            {
-                                return LITTOK_MINUS;
-                            }
-                            break;
-                        case LITTOK_STAR_EQUAL:
-                            {
-                                return LITTOK_STAR;
-                            }
-                            break;
-                        case LITTOK_SLASH_EQUAL:
-                            {
-                                return LITTOK_SLASH;
-                            }
-                            break;
-                        case LITTOK_SHARP_EQUAL:
-                            {
-                                return LITTOK_SHARP;
-                            }
-                            break;
-                        case LITTOK_PERCENT_EQUAL:
-                            {
-                                return LITTOK_PERCENT;
-                            }
-                            break;
-                        case LITTOK_CARET_EQUAL:
-                            {
-                                return LITTOK_CARET;
-                            }
-                            break;
-                        case LITTOK_BAR_EQUAL:
-                            {
-                                return LITTOK_BAR;
-                            }
-                            break;
-                        case LITTOK_AMPERSAND_EQUAL:
-                            {
-                                return LITTOK_AMPERSAND;
-                            }
-                            break;
-                        case LITTOK_PLUS_PLUS:
-                            {
-                                return LITTOK_PLUS;
-                            }
-                            break;
-                        case LITTOK_MINUS_MINUS:
-                            {
-                                return LITTOK_MINUS;
-                            }
-                            break;
-                        default:
-                            {
-                            }
-                            break;
-                    }
-                    return (TokenType)-1;
-                }
-
-                static Expression* parse_compound(Parser* parser, Expression* prev, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    ExprBinary* binary;
-                    Expression* expression;
-                    ParseRule* rule;
-                    TokenType op;
-                    parser->ignore_new_lines();
-                    op = parser->m_prevtoken.type;
-                    line = parser->m_prevtoken.line;
-                    rule = parser->get_rule(op);
-                    
-                    if(op == LITTOK_PLUS_PLUS || op == LITTOK_MINUS_MINUS)
-                    {
-                        expression = (Expression*)ExprLiteral::make(parser->m_state, line, Object::toValue(1));
-                    }
-                    else
-                    {
-                        expression = parse_precedence(parser, (Precedence)(rule->precedence + 1), true);
-                    }
-                    binary = ExprBinary::make(parser->m_state, line, prev, expression, convert_compound_operator(op));
-                    binary->ignore_left = true;// To make sure we don't free it twice
-                    return (Expression*)ExprAssign::make(parser->m_state, line, prev, (Expression*)binary);
-                }
-
-                static Expression* parse_literal(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    line = parser->m_prevtoken.line;
-                    switch(parser->m_prevtoken.type)
-                    {
-                        case LITTOK_TRUE:
-                            {
-                                return (Expression*)ExprLiteral::make(parser->m_state, line, Object::TrueVal);
-                            }
-                            break;
-                        case LITTOK_FALSE:
-                            {
-                                return (Expression*)ExprLiteral::make(parser->m_state, line, Object::FalseVal);
-                            }
-                            break;
-                        case LITTOK_NULL:
-                            {
-                                return (Expression*)ExprLiteral::make(parser->m_state, line, Object::NullVal);
-                            }
-                            break;
-                        default:
-                            {
-                            }
-                            break;
-                    }
-                    return nullptr;
-                }
-
-                static Expression* parse_string(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    auto expression = (Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value);
-                    if(parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, expression, can_assign);
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_interpolation(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    auto expression = ExprInterpolation::make(parser->m_state, parser->m_prevtoken.line);
-                    do
-                    {
-                        if(Object::as<String>(parser->m_prevtoken.value)->length() > 0)
-                        {
-                            expression->expressions.push((Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value));
-                        }
-                        expression->expressions.push(parse_expression(parser));
-                    } while(parser->match(LITTOK_INTERPOLATION));
-                    parser->consume(LITTOK_STRING, "end of interpolation");
-                    if(Object::as<String>(parser->m_prevtoken.value)->length() > 0)
-                    {
-                        expression->expressions.push((Expression*)ExprLiteral::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.value));
-                    }
-                    if(parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, (Expression*)expression, can_assign);
-                    }
-                    return (Expression*)expression;
-                }
-
-                static Expression* parse_object(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    auto objexpr = ExprObject::make(parser->m_state, parser->m_prevtoken.line);
-                    parser->ignore_new_lines();
-                    while(!parser->check(LITTOK_RIGHT_BRACE))
-                    {
-                        parser->ignore_new_lines();
-                        parser->consume(LITTOK_IDENTIFIER, "key string after '{'");
-                        objexpr->keys.push(String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length)->asValue());
-                        parser->ignore_new_lines();
-                        parser->consume(LITTOK_EQUAL, "'=' after key string");
-                        parser->ignore_new_lines();
-                        objexpr->values.push(parse_expression(parser));
-                        if(!parser->match(LITTOK_COMMA))
-                        {
-                            break;
-                        }
-                    }
-                    parser->ignore_new_lines();
-                    parser->consume(LITTOK_RIGHT_BRACE, "'}' after object");
-                    return (Expression*)objexpr;
-                }
-
-                static Expression* parse_variable_expression_base(Parser* parser, bool can_assign, bool isnew)
-                {
-                    (void)can_assign;
-                    bool had_args;
-                    ExprCall* call;
-                    auto expression = (Expression*)ExprVar::make(parser->m_state, parser->m_prevtoken.line, parser->m_prevtoken.start, parser->m_prevtoken.length);
-                    if(isnew)
-                    {
-                        had_args = parser->check(LITTOK_LEFT_PAREN);
-                        call = nullptr;
-                        if(had_args)
-                        {
-                            parser->advance();
-                            call = (ExprCall*)parse_call(parser, expression, false);
-                        }
-                        if(parser->match(LITTOK_LEFT_BRACE))
-                        {
-                            if(call == nullptr)
-                            {
-                                call = ExprCall::make(parser->m_state, expression->line, expression);
-                            }
-                            call->objexpr = parse_object(parser, false);
-                        }
-                        else if(!had_args)
-                        {
-                            parser->errorAtCurrent(Error::LITERROR_EXPECTATION_UNMET, "argument list for instance creation",
-                                             parser->m_prevtoken.length, parser->m_prevtoken.start);
-                        }
-                        return (Expression*)call;
-                    }
-                    if(parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, expression, can_assign);
-                    }
-                    if(can_assign && parser->match(LITTOK_EQUAL))
-                    {
-                        return (Expression*)ExprAssign::make(parser->m_state, parser->m_prevtoken.line, expression,
-                                                                            parse_expression(parser));
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_variable_expression(Parser* parser, bool can_assign)
-                {
-                    return parse_variable_expression_base(parser, can_assign, false);
-                }
-
-                static Expression* parse_new_expression(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    parser->consume(LITTOK_IDENTIFIER, "class name after 'new'");
-                    return parse_variable_expression_base(parser, false, true);
-                }
-
-                static Expression* parse_dot(Parser* parser, Expression* previous, bool can_assign)
-                {
-                    (void)can_assign;
-                    bool ignored;
-                    size_t line;
-                    size_t length;
-                    const char* name;
-                    line = parser->m_prevtoken.line;
-                    ignored = parser->m_prevtoken.type == LITTOK_SMALL_ARROW;
-                    if(!(parser->match(LITTOK_CLASS) || parser->match(LITTOK_SUPER)))
-                    {// class and super are allowed field names
-                        parser->consume(LITTOK_IDENTIFIER, ignored ? "propety name after '->'" : "property name after '.'");
-                    }
-                    name = parser->m_prevtoken.start;
-                    length = parser->m_prevtoken.length;
-                    if(!ignored && can_assign && parser->match(LITTOK_EQUAL))
-                    {
-                        return (Expression*)ExprIndexSet::make(parser->m_state, line, previous, name, length, parse_expression(parser));
-                    }
-                    auto expression = (Expression*)ExprIndexGet::make(parser->m_state, line, previous, name, length, false, ignored);
-                    if(!ignored && parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, expression, can_assign);
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_range(Parser* parser, Expression* previous, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    line = parser->m_prevtoken.line;
-                    return (Expression*)ExprRange::make(parser->m_state, line, previous, parse_expression(parser));
-                }
-
-                static Expression* parse_ternary_or_question(Parser* parser, Expression* previous, bool can_assign)
-                {
-                    (void)can_assign;
-                    bool ignored;
-                    size_t line;
-                    line = parser->m_prevtoken.line;
-                    if(parser->match(LITTOK_DOT) || parser->match(LITTOK_SMALL_ARROW))
-                    {
-                        ignored = parser->m_prevtoken.type == LITTOK_SMALL_ARROW;
-                        parser->consume(LITTOK_IDENTIFIER, ignored ? "property name after '->'" : "property name after '.'");
-                        return (Expression*)ExprIndexGet::make(parser->m_state, line, previous, parser->m_prevtoken.start,
-                                                                         parser->m_prevtoken.length, true, ignored);
-                    }
-                    auto if_branch = parse_expression(parser);
-                    parser->consume(LITTOK_COLON, "':' after expression");
-                    auto else_branch = parse_expression(parser);
-                    return (Expression*)ExprIfClause::make(parser->m_state, line, previous, if_branch, else_branch);
-                }
-
-                static Expression* parse_array(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    auto array = ExprArray::make(parser->m_state, parser->m_prevtoken.line);
-                    parser->ignore_new_lines();
-                    while(!parser->check(LITTOK_RIGHT_BRACKET))
-                    {
-                        parser->ignore_new_lines();
-                        array->values.push(parse_expression(parser));
-                        if(!parser->match(LITTOK_COMMA))
-                        {
-                            break;
-                        }
-                    }
-                    parser->ignore_new_lines();
-                    parser->consume(LITTOK_RIGHT_BRACKET, "']' after array");
-                    if(parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, (Expression*)array, can_assign);
-                    }
-                    return (Expression*)array;
-                }
-
-                static Expression* parse_subscript(Parser* parser, Expression* previous, bool can_assign)
-                {
-                    size_t line;
-                    line = parser->m_prevtoken.line;
-                    auto index = parse_expression(parser);
-                    parser->consume(LITTOK_RIGHT_BRACKET, "']' after subscript");
-                    auto expression = (Expression*)ExprSubscript::make(parser->m_state, line, previous, index);
-                    if(parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, expression, can_assign);
-                    }
-                    else if(can_assign && parser->match(LITTOK_EQUAL))
-                    {
-                        return (Expression*)ExprAssign::make(parser->m_state, parser->m_prevtoken.line, expression, parse_expression(parser));
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_this(Parser* parser, bool can_assign)
-                {
-                    auto expression = (Expression*)ExprThis::make(parser->m_state, parser->m_prevtoken.line);
-                    if(parser->match(LITTOK_LEFT_BRACKET))
-                    {
-                        return parse_subscript(parser, expression, can_assign);
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_super(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    bool ignoring;
-                    size_t line;
-                    Expression* expression;
-                    line = parser->m_prevtoken.line;
-                    if(!(parser->match(LITTOK_DOT) || parser->match(LITTOK_SMALL_ARROW)))
-                    {
-                        expression = (Expression*)ExprSuper::make(
-                        parser->m_state, line, String::copy(parser->m_state, LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1), false);
-                        parser->consume(LITTOK_LEFT_PAREN, "'(' after 'super'");
-                        return parse_call(parser, expression, false);
-                    }
-                    ignoring = parser->m_prevtoken.type == LITTOK_SMALL_ARROW;
-                    parser->consume(LITTOK_IDENTIFIER, ignoring ? "super method name after '->'" : "super method name after '.'");
-                    expression = (Expression*)ExprSuper::make(
-                    parser->m_state, line, String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length), ignoring);
-                    if(parser->match(LITTOK_LEFT_PAREN))
-                    {
-                        return parse_call(parser, expression, false);
-                    }
-                    return expression;
-                }
-
-                static Expression* parse_reference(Parser* parser, bool can_assign)
-                {
-                    (void)can_assign;
-                    size_t line;
-                    line = parser->m_prevtoken.line;
-                    parser->ignore_new_lines();
-                    auto expression = ExprReference::make(parser->m_state, line, parse_precedence(parser, LITPREC_CALL, false));
-                    if(parser->match(LITTOK_EQUAL))
-                    {
-                        return (Expression*)ExprAssign::make(parser->m_state, line, (Expression*)expression, parse_expression(parser));
-                    }
-                    return (Expression*)expression;
-                }
-
-                static Expression* parse_expression(Parser* parser)
-                {
-                    parser->ignore_new_lines();
-                    return parse_precedence(parser, LITPREC_ASSIGNMENT, true);
-                }
-
-                static Expression* parse_var_declaration(Parser* parser)
-                {
-                    bool constant;
-                    size_t line;
-                    size_t length;
-                    const char* name;
-                    Expression* vexpr;
-                    constant = parser->m_prevtoken.type == LITTOK_CONST;
-                    line = parser->m_prevtoken.line;
-                    parser->consume(LITTOK_IDENTIFIER, "variable name");
-                    name = parser->m_prevtoken.start;
-                    length = parser->m_prevtoken.length;
-                    vexpr = nullptr;
-                    if(parser->match(LITTOK_EQUAL))
-                    {
-                        vexpr = parse_expression(parser);
-                    }
-                    return (Expression*)StmtVar::make(parser->m_state, line, name, length, vexpr, constant);
-                }
-
-                static Expression* parse_if(Parser* parser)
-                {
-                    size_t line;
-                    bool invert;
-                    bool had_paren;
-                    Expression* condition;
-                    Expression* if_branch;
-                    Expression::List* elseif_conditions;
-                    Expression::List* elseif_branches;
-                    Expression* else_branch;
-                    Expression* e;
-                    line = parser->m_prevtoken.line;
-                    invert = parser->match(LITTOK_BANG);
-                    had_paren = parser->match(LITTOK_LEFT_PAREN);
-                    condition = parse_expression(parser);
-                    if(had_paren)
-                    {
-                        parser->consume(LITTOK_RIGHT_PAREN, "')'");
-                    }
-                    if(invert)
-                    {
-                        condition = (Expression*)ExprUnary::make(parser->m_state, condition->line, condition, LITTOK_BANG);
-                    }
-                    parser->ignore_new_lines();
-                    if_branch = parse_statement(parser);
-                    elseif_conditions = nullptr;
-                    elseif_branches = nullptr;
-                    else_branch = nullptr;
-                    parser->ignore_new_lines();
-                    while(parser->match(LITTOK_ELSE))
-                    {
-                        // else if
-                        parser->ignore_new_lines();
-                        if(parser->match(LITTOK_IF))
-                        {
-                            if(elseif_conditions == nullptr)
-                            {
-                                elseif_conditions = Expression::makeList(parser->m_state);
-                                elseif_branches = Expression::makeList(parser->m_state);
-                            }
-                            invert = parser->match(LITTOK_BANG);
-                            had_paren = parser->match(LITTOK_LEFT_PAREN);
-                            parser->ignore_new_lines();
-                            e = parse_expression(parser);
-                            if(had_paren)
-                            {
-                                parser->consume(LITTOK_RIGHT_PAREN, "')'");
-                            }
-                            parser->ignore_new_lines();
-                            if(invert)
-                            {
-                                e = (Expression*)ExprUnary::make(parser->m_state, condition->line, e, LITTOK_BANG);
-                            }
-                            elseif_conditions->push(e);
-                            elseif_branches->push(parse_statement(parser));
-                            continue;
-                        }
-                        // else
-                        if(else_branch != nullptr)
-                        {
-                            parser->raiseError(Error::LITERROR_MULTIPLE_ELSE_BRANCHES);
-                        }
-                        parser->ignore_new_lines();
-                        else_branch = parse_statement(parser);
-                    }
-                    return (Expression*)StmtIfClause::make(parser->m_state, line, condition, if_branch, else_branch, elseif_conditions, elseif_branches);
-                }
-
-                static Expression* parse_for(Parser* parser)
-                {
-
-                    bool c_style;
-                    bool had_paren;
-                    size_t line;
-                    Expression* condition;
-                    Expression* increment;
-                    Expression* var;
-                    Expression* exprinit;
-                    line= parser->m_prevtoken.line;
-                    had_paren = parser->match(LITTOK_LEFT_PAREN);
-                    var = nullptr;
-                    exprinit = nullptr;
-                    if(!parser->check(LITTOK_SEMICOLON))
-                    {
-                        if(parser->match(LITTOK_VAR))
-                        {
-                            var = parse_var_declaration(parser);
-                        }
-                        else
-                        {
-                            exprinit = parse_expression(parser);
-                        }
-                    }
-                    c_style = !parser->match(LITTOK_IN);
-                    condition= nullptr;
-                    increment = nullptr;
-                    if(c_style)
-                    {
-                        parser->consume(LITTOK_SEMICOLON, "';'");
-                        condition = parser->check(LITTOK_SEMICOLON) ? nullptr : parse_expression(parser);
-                        parser->consume(LITTOK_SEMICOLON, "';'");
-                        increment = parser->check(LITTOK_RIGHT_PAREN) ? nullptr : parse_expression(parser);
-                    }
-                    else
-                    {
-                        condition = parse_expression(parser);
-                        if(var == nullptr)
-                        {
-                            parser->raiseError(Error::LITERROR_VAR_MISSING_IN_FORIN);
-                        }
-                    }
-                    if(had_paren)
-                    {
-                        parser->consume(LITTOK_RIGHT_PAREN, "')'");
-                    }
-                    parser->ignore_new_lines();
-                    return (Expression*)StmtForLoop::make(parser->m_state, line, exprinit, var, condition, increment,
-                                                                   parse_statement(parser), c_style);
-                }
-
-                static Expression* parse_while(Parser* parser)
-                {
-                    bool had_paren;
-                    size_t line;
-                    Expression* body;
-                    line = parser->m_prevtoken.line;
-                    had_paren = parser->match(LITTOK_LEFT_PAREN);
-                    Expression* condition = parse_expression(parser);
-                    if(had_paren)
-                    {
-                        parser->consume(LITTOK_RIGHT_PAREN, "')'");
-                    }
-                    parser->ignore_new_lines();
-                    body = parse_statement(parser);
-                    return (Expression*)StmtWhileLoop::make(parser->m_state, line, condition, body);
-                }
-
-                static Expression* parse_function(Parser* parser)
-                {
-                    size_t line;
-                    size_t function_length;
-                    bool isexport;
-                    const char* function_name;
-                    Compiler compiler;
-                    StmtFunction* function;
-                    ExprLambda* lambda;
-                    ExprIndexSet* to;
-                    isexport = parser->m_prevtoken.type == LITTOK_EXPORT;
-                    if(isexport)
-                    {
-                        parser->consume(LITTOK_FUNCTION, "'function' after 'export'");
-                    }
-                    line = parser->m_prevtoken.line;
-                    parser->consume(LITTOK_IDENTIFIER, "function name");
-                    function_name = parser->m_prevtoken.start;
-                    function_length = parser->m_prevtoken.length;
-                    if(parser->match(LITTOK_DOT))
-                    {
-                        parser->consume(LITTOK_IDENTIFIER, "function name");
-                        lambda = ExprLambda::make(parser->m_state, line);
-                        to = ExprIndexSet::make(
-                        parser->m_state, line, (Expression*)ExprVar::make(parser->m_state, line, function_name, function_length),
-                        parser->m_prevtoken.start, parser->m_prevtoken.length, (Expression*)lambda);
-                        parser->consume(LITTOK_LEFT_PAREN, "'(' after function name");
-                        compiler.init(parser);
-                        parser->begin_scope();
-                        parse_parameters(parser, &lambda->parameters);
-                        if(lambda->parameters.m_count > 255)
-                        {
-                            parser->raiseError(Error::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)lambda->parameters.m_count);
-                        }
-                        parser->consume(LITTOK_RIGHT_PAREN, "')' after function arguments");
-                        parser->ignore_new_lines();
-                        lambda->body = parse_statement(parser);
-                        parser->end_scope();
-                        parser->end_compiler(&compiler);
-                        return (Expression*)ExprStatement::make(parser->m_state, line, (Expression*)to);
-                    }
-                    function = StmtFunction::make(parser->m_state, line, function_name, function_length);
-                    function->exported = isexport;
-                    parser->consume(LITTOK_LEFT_PAREN, "'(' after function name");
-                    compiler.init(parser);
-                    parser->begin_scope();
-                    parse_parameters(parser, &function->parameters);
-                    if(function->parameters.m_count > 255)
-                    {
-                        parser->raiseError(Error::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)function->parameters.m_count);
-                    }
-                    parser->consume(LITTOK_RIGHT_PAREN, "')' after function arguments");
-                    function->body = parse_statement(parser);
-                    parser->end_scope();
-                    parser->end_compiler(&compiler);
-                    return (Expression*)function;
-                }
-
-                static Expression* parse_return(Parser* parser)
-                {
-                    size_t line;
-                    Expression* expression;
-                    line = parser->m_prevtoken.line;
-                    expression = nullptr;
-                    if(!parser->check(LITTOK_NEW_LINE) && !parser->check(LITTOK_RIGHT_BRACE))
-                    {
-                        expression = parse_expression(parser);
-                    }
-                    return (Expression*)StmtReturn::make(parser->m_state, line, expression);
-                }
-
-                static Expression* parse_field(Parser* parser, String* name, bool is_static)
-                {
-                    size_t line;
-                    Expression* getter;
-                    Expression* setter;
-                    line = parser->m_prevtoken.line;
-                    getter = nullptr;
-                    setter = nullptr;
-                    if(parser->match(LITTOK_ARROW))
-                    {
-                        getter = parse_statement(parser);
-                    }
-                    else
-                    {
-                        parser->match(LITTOK_LEFT_BRACE);// Will be LITTOK_LEFT_BRACE, otherwise this method won't be called
-                        parser->ignore_new_lines();
-                        if(parser->match(LITTOK_GET))
-                        {
-                            parser->match(LITTOK_ARROW);// Ignore it if it's present
-                            getter = parse_statement(parser);
-                        }
-                        parser->ignore_new_lines();
-                        if(parser->match(LITTOK_SET))
-                        {
-                            parser->match(LITTOK_ARROW);// Ignore it if it's present
-                            setter = parse_statement(parser);
-                        }
-                        if(getter == nullptr && setter == nullptr)
-                        {
-                            parser->raiseError(Error::LITERROR_NO_GETTER_AND_SETTER);
-                        }
-                        parser->ignore_new_lines();
-                        parser->consume(LITTOK_RIGHT_BRACE, "'}' after field declaration");
-                    }
-                    return (Expression*)StmtField::make(parser->m_state, line, name, getter, setter, is_static);
-                }
-
-                static Expression* parse_method(Parser* parser, bool is_static)
-                {
-                    static TokenType operators[]=
-                    {
-                        LITTOK_PLUS, LITTOK_MINUS, LITTOK_STAR, LITTOK_PERCENT, LITTOK_SLASH,
-                        LITTOK_SHARP, LITTOK_BANG, LITTOK_LESS, LITTOK_LESS_EQUAL, LITTOK_GREATER,
-                        LITTOK_GREATER_EQUAL, LITTOK_EQUAL_EQUAL, LITTOK_LEFT_BRACKET, LITTOK_EOF
-                    };
-                    size_t i;
-                    Compiler compiler;
-                    StmtMethod* method;
-                    String* name;
-                    if(parser->match(LITTOK_STATIC))
-                    {
-                        is_static = true;
-                    }
-                    name = nullptr;
-                    parser->consume(LITTOK_FUNCTION, "expected 'function'");
-                    if(parser->match(LITTOK_OPERATOR))
-                    {
-                        if(is_static)
-                        {
-                            parser->raiseError(Error::LITERROR_STATIC_OPERATOR);
-                        }
-                        i = 0;
-                        while(operators[i] != LITTOK_EOF)
-                        {
-                            if(parser->match(operators[i]))
-                            {
-                                break;
-                            }
-                            i++;
-                        }
-                        if(parser->m_prevtoken.type == LITTOK_LEFT_BRACKET)
-                        {
-                            parser->consume(LITTOK_RIGHT_BRACKET, "']' after '[' in op method declaration");
-                            name = String::copy(parser->m_state, "[]", 2);
-                        }
-                        else
-                        {
-                            name = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
-                        }
-                    }
-                    else
-                    {
-                        parser->consume(LITTOK_IDENTIFIER, "method name");
-                        name = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
-                        if(parser->check(LITTOK_LEFT_BRACE) || parser->check(LITTOK_ARROW))
-                        {
-                            return parse_field(parser, name, is_static);
-                        }
-                    }
-                    method = StmtMethod::make(parser->m_state, parser->m_prevtoken.line, name, is_static);
-                    compiler.init(parser);
-                    parser->begin_scope();
-                    parser->consume(LITTOK_LEFT_PAREN, "'(' after method name");
-                    parse_parameters(parser, &method->parameters);
-                    if(method->parameters.m_count > 255)
-                    {
-                        parser->raiseError(Error::LITERROR_TOO_MANY_FUNCTION_ARGS, (int)method->parameters.m_count);
-                    }
-                    parser->consume(LITTOK_RIGHT_PAREN, "')' after method arguments");
-                    method->body = parse_statement(parser);
-                    parser->end_scope();
-                    parser->end_compiler(&compiler);
-                    return (Expression*)method;
-                }
-
-                static Expression* parse_class(Parser* parser)
-                {
-                    bool finished_parsing_fields;
-                    bool field_is_static;
-                    size_t line;
-                    bool is_static;
-                    String* name;
-                    String* super;
-                    StmtClass* klass;
-                    Expression* var;
-                    Expression* method;
-                    if(setjmp(parser->m_jumpbuffer))
-                    {
-                        return nullptr;
-                    }
-                    line = parser->m_prevtoken.line;
-                    is_static = parser->m_prevtoken.type == LITTOK_STATIC;
-                    if(is_static)
-                    {
-                        parser->consume(LITTOK_CLASS, "'class' after 'static'");
-                    }
-                    parser->consume(LITTOK_IDENTIFIER, "class name after 'class'");
-                    name = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
-                    super = nullptr;
-                    if(parser->match(LITTOK_COLON))
-                    {
-                        parser->consume(LITTOK_IDENTIFIER, "super class name after ':'");
-                        super = String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length);
-                        if(super == name)
-                        {
-                            parser->raiseError(Error::LITERROR_SELF_INHERITED_CLASS);
-                        }
-                    }
-                    klass = StmtClass::make(parser->m_state, line, name, super);
-                    parser->ignore_new_lines();
-                    parser->consume(LITTOK_LEFT_BRACE, "'{' before class body");
-                    parser->ignore_new_lines();
-                    finished_parsing_fields = false;
-                    while(!parser->check(LITTOK_RIGHT_BRACE))
-                    {
-                        field_is_static = false;
-                        if(parser->match(LITTOK_STATIC))
-                        {
-                            field_is_static = true;
-                            if(parser->match(LITTOK_VAR))
-                            {
-                                if(finished_parsing_fields)
-                                {
-                                    parser->raiseError(Error::LITERROR_STATIC_FIELDS_AFTER_METHODS);
-                                }
-                                var = parse_var_declaration(parser);
-                                if(var != nullptr)
-                                {
-                                    klass->fields.push(var);
-                                }
-                                parser->ignore_new_lines();
-                                continue;
-                            }
-                            else
-                            {
-                                finished_parsing_fields = true;
-                            }
-                        }
-                        method = parse_method(parser, is_static || field_is_static);
-                        if(method != nullptr)
-                        {
-                            klass->fields.push(method);
-                        }
-                        parser->ignore_new_lines();
-                    }
-                    parser->consume(LITTOK_RIGHT_BRACE, "'}' after class body");
-                    return (Expression*)klass;
-                }
-
-                static Expression* parse_statement(Parser* parser)
-                {
-                    Expression* expression;
-                    parser->ignore_new_lines();
-                    if(setjmp(parser->m_jumpbuffer))
-                    {
-                        return nullptr;
-                    }
-                    if(parser->match(LITTOK_VAR) || parser->match(LITTOK_CONST))
-                    {
-                        return parse_var_declaration(parser);
-                    }
-                    else if(parser->match(LITTOK_IF))
-                    {
-                        return parse_if(parser);
-                    }
-                    else if(parser->match(LITTOK_FOR))
-                    {
-                        return parse_for(parser);
-                    }
-                    else if(parser->match(LITTOK_WHILE))
-                    {
-                        return parse_while(parser);
-                    }
-                    else if(parser->match(LITTOK_CONTINUE))
-                    {
-                        return (Expression*)StmtContinue::make(parser->m_state, parser->m_prevtoken.line);
-                    }
-                    else if(parser->match(LITTOK_BREAK))
-                    {
-                        return (Expression*)StmtBreak::make(parser->m_state, parser->m_prevtoken.line);
-                    }
-                    else if(parser->match(LITTOK_FUNCTION) || parser->match(LITTOK_EXPORT))
-                    {
-                        return parse_function(parser);
-                    }
-                    else if(parser->match(LITTOK_CLASS))
-                    {
-                        parse_class(parser);
-                    }
-                    else if(parser->match(LITTOK_RETURN))
-                    {
-                        return parse_return(parser);
-                    }
-                    else if(parser->match(LITTOK_LEFT_BRACE))
-                    {
-                        return parse_block(parser);
-                    }
-                    
-                    else if(parser->match(LITTOK_SEMICOLON))
-                    {
-                        //return parser->parse();
-                        return parse_declaration(parser);
-                    }
-                    expression = parse_expression(parser);
-                    if(expression == nullptr)
-                    {
-                        return nullptr;
-                    }
-                    return (Expression*)ExprStatement::make(parser->m_state, parser->m_prevtoken.line, expression);
-                }
-
-                static Expression* parse_declaration(Parser* parser)
-                {
-                    Expression* statement;
-                    statement = nullptr;
-                    if(parser->match(LITTOK_CLASS) || parser->match(LITTOK_STATIC))
-                    {
-                        statement = parse_class(parser);
-                    }
-                    else
-                    {
-                        statement = parse_statement(parser);
-                    }
-                    return statement;
-                }
 
             // parservars
             public:
@@ -6448,11 +5477,11 @@ namespace lit
                 } \
                 return Object::NullVal;
 
-            #define optc_do_bitwise_op(op) \
+            #define optc_do_bitwise_op(op, typ) \
                 if(Object::isNumber(a) && Object::isNumber(b)) \
                 { \
                     optdbg("translating constant bitwise expression of '" #op "' to constant value"); \
-                    return Object::toValue((int)Object::toNumber(a) op(int) Object::toNumber(b)); \
+                    return Object::toValue(typ(Object::toNumber(a)) op typ(Object::toNumber(b))); \
                 } \
                 return Object::NullVal;
 
@@ -6565,7 +5594,7 @@ namespace lit
                             {
                                 m_optcount++;
                                 optdbg("translating constant expression of '=' to literal value");
-                                return BOOL_VALUE(Object::isFalsey(value));
+                                return Object::fromBool(Object::isFalsey(value));
                             }
                             break;
                         case LITTOK_TILDE:
@@ -6642,27 +5671,27 @@ namespace lit
                             break;
                         case LITTOK_LESS_LESS:
                             {
-                                optc_do_bitwise_op(<<);
+                                optc_do_bitwise_op(<<, uint64_t);
                             }
                             break;
                         case LITTOK_GREATER_GREATER:
                             {
-                                optc_do_bitwise_op(>>);
+                                optc_do_bitwise_op(>>, uint64_t);
                             }
                             break;
                         case LITTOK_BAR:
                             {
-                                optc_do_bitwise_op(|);
+                                optc_do_bitwise_op(|, uint64_t);
                             }
                             break;
                         case LITTOK_AMPERSAND:
                             {
-                                optc_do_bitwise_op(&);
+                                optc_do_bitwise_op(&, uint64_t);
                             }
                             break;
                         case LITTOK_CARET:
                             {
-                                optc_do_bitwise_op(^);
+                                optc_do_bitwise_op(^, uint64_t);
                             }
                             break;
                         case LITTOK_SHARP:
@@ -6676,12 +5705,12 @@ namespace lit
                             break;
                         case LITTOK_EQUAL_EQUAL:
                             {
-                                return BOOL_VALUE(a == b);
+                                return Object::fromBool(a == b);
                             }
                             break;
                         case LITTOK_BANG_EQUAL:
                             {
-                                return BOOL_VALUE(a != b);
+                                return Object::fromBool(a != b);
                             }
                             break;
                         case LITTOK_IS:
@@ -9061,6 +8090,7 @@ namespace lit
             // class class
             // Mental note:
             // When adding another class here, DO NOT forget to mark it in lit_mem.c or it will be GC-ed
+            Class* kernelvalue_class;
             Class* classvalue_class;
             Class* objectvalue_class;
             Class* numbervalue_class;
@@ -10687,6 +9717,7 @@ namespace lit
     {
         State* state;
         state = (State*)malloc(sizeof(State));
+        state->kernelvalue_class = nullptr;
         state->classvalue_class = nullptr;
         state->objectvalue_class = nullptr;
         state->numbervalue_class = nullptr;
@@ -11129,1302 +10160,7 @@ namespace lit
         RETURN_RUNTIME_ERROR();
     }
 
-    //#define LIT_TRACE_EXECUTION
-
-    /*
-    * visual studio doesn't support computed gotos, so
-    * instead a switch-case is used. 
-    */
-    #if !defined(_MSC_VER)
-        //#define LIT_USE_COMPUTEDGOTO
-    #endif
-
-    #ifdef LIT_TRACE_EXECUTION
-        #define vm_traceframe(fiber)\
-            lit_trace_frame(fiber);
-    #else
-        #define vm_traceframe(fiber) \
-            do \
-            { \
-            } while(0);
-    #endif
-
-    #ifdef LIT_USE_COMPUTEDGOTO
-        #define vm_default()
-        #define op_case(name) \
-            OP_##name:
-    #else
-        #define vm_default() default:
-        #define op_case(name) \
-            case OP_##name:
-    #endif
-
-    #define vm_pushgc(state, allow) \
-        bool was_allowed = state->allow_gc; \
-        state->allow_gc = allow;
-
-    #define vm_popgc(state) \
-        state->allow_gc = was_allowed;
-
-    #define vm_push(fiber, value) \
-        (*fiber->stack_top++ = value)
-
-    #define vm_pop(fiber) \
-        (*(--fiber->stack_top))
-
-    #define vm_drop(fiber) \
-        (fiber->stack_top--)
-
-    #define vm_dropn(fiber, amount) \
-        (fiber->stack_top -= amount)
-
-    #define vm_readbyte(ip) \
-        (*ip++)
-
-    #define vm_readshort(ip) \
-        (ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]))
-
-    #define vm_readconstant(current_chunk) \
-        (current_chunk->constants.m_values[vm_readbyte(ip)])
-
-    #define vm_readconstantlong(current_chunk, ip) \
-        (current_chunk->constants.m_values[vm_readshort(ip)])
-
-    #define vm_readstring(current_chunk) \
-        Object::as<String>(vm_readconstant(current_chunk))
-
-    #define vm_readstringlong(current_chunk, ip) \
-        Object::as<String>(vm_readconstantlong(current_chunk, ip))
-
-
-    static inline Value vm_peek(Fiber* fiber, short distance)
-    {
-        return fiber->stack_top[(-1) - distance];
-    }
-
-    #define vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues) \
-        frame = &fiber->frames[fiber->frame_count - 1]; \
-        current_chunk = &frame->function->chunk; \
-        ip = frame->ip; \
-        slots = frame->slots; \
-        fiber->module = frame->function->module; \
-        privates = fiber->module->privates; \
-        upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
-
-    #define vm_writeframe(frame, ip) \
-        frame->ip = ip;
-
-    #define vm_returnerror() \
-        vm_popgc(this); \
-        return (Result){ LITRESULT_RUNTIME_ERROR, Object::NullVal };
-
-    #define vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues) \
-        vm_writeframe(frame, ip); \
-        fiber = vm->fiber; \
-        if(fiber == nullptr) \
-        { \
-            return (Result){ LITRESULT_OK, vm_pop(fiber) }; \
-        } \
-        if(fiber->abort) \
-        { \
-            vm_returnerror(); \
-        } \
-        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
-        vm_traceframe(fiber);
-
-    #define vm_callvalue(name, callee, arg_count) \
-        if(vm->callValue(name, callee, arg_count)) \
-        { \
-            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-        }
-
-    #define vm_rterror(format) \
-        if(lit_runtime_error(vm, format)) \
-        { \
-            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-            continue; \
-        } \
-        else \
-        { \
-            vm_returnerror(); \
-        }
-
-    #define vm_rterrorvarg(format, ...) \
-        if(lit_runtime_error(vm, format, __VA_ARGS__)) \
-        { \
-            vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-            continue; \
-        } \
-        else \
-        { \
-            vm_returnerror(); \
-        }
-
-    #define vm_invoke_from_class_advanced(zklass, method_name, arg_count, error, stat, ignoring, callee) \
-        Value mthval; \
-        if((Object::isInstance(callee) && (Object::as<Instance>(callee)->fields.get(method_name, &mthval))) \
-           || zklass->stat.get(method_name, &mthval)) \
-        { \
-            if(ignoring) \
-            { \
-                if(vm->callValue(method_name->data(), mthval, arg_count)) \
-                { \
-                    vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues); \
-                    frame->result_ignored = true; \
-                } \
-                else \
-                { \
-                    fiber->stack_top[-1] = callee; \
-                } \
-            } \
-            else \
-            { \
-                vm_callvalue(method_name->data(), mthval, arg_count); \
-            } \
-        } \
-        else \
-        { \
-            if(error) \
-            { \
-                vm_rterrorvarg("Attempt to call method '%s', that is not defined in class %s", method_name->data(), \
-                                   zklass->name->data()) \
-            } \
-        } \
-        if(error) \
-        { \
-            continue; \
-        }
-
-    #define vm_invoke_from_class(klass, method_name, arg_count, error, stat, ignoring) \
-        vm_invoke_from_class_advanced(klass, method_name, arg_count, error, stat, ignoring, vm_peek(fiber, arg_count))
-
-    #define vm_invokemethod(instance, method_name, arg_count) \
-        Class* klass = Class::getClassFor(this, instance); \
-        if(klass == nullptr) \
-        { \
-            vm_rterror("invokemethod: only instances and classes have methods"); \
-        } \
-        vm_writeframe(frame, ip); \
-        vm_invoke_from_class_advanced(klass, String::intern(this, method_name), arg_count, true, methods, false, instance); \
-        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues)
-
-    #define vm_binaryop(type, op, op_string) \
-        Value a = vm_peek(fiber, 1); \
-        Value b = vm_peek(fiber, 0); \
-        if(Object::isNumber(a)) \
-        { \
-            if(!Object::isNumber(b)) \
-            { \
-                if(!Object::isNull(b)) \
-                { \
-                    vm_rterrorvarg("Attempt to use op %s with a number and a %s", op_string, Object::valueName(b)); \
-                } \
-            } \
-            vm_drop(fiber); \
-            *(fiber->stack_top - 1) = (type(Object::toNumber(a) op Object::toNumber(b))); \
-            continue; \
-        } \
-        if(Object::isNull(a)) \
-        { \
-        /* vm_rterrorvarg("Attempt to use op %s on a null value", op_string); */ \
-            vm_drop(fiber); \
-            *(fiber->stack_top - 1) = Object::TrueVal; \
-        } \
-        else \
-        { \
-            vm_invokemethod(a, op_string, 1); \
-        }
-
-    #define vm_bitwiseop(op, op_string) \
-        Value a = vm_peek(fiber, 1); \
-        Value b = vm_peek(fiber, 0); \
-        if(!Object::isNumber(a) || !Object::isNumber(b)) \
-        { \
-            vm_rterrorvarg("Operands of bitwise op %s must be two numbers, got %s and %s", op_string, \
-                               Object::valueName(a), Object::valueName(b)); \
-        } \
-        vm_drop(fiber); \
-        *(fiber->stack_top - 1) = (Object::toValue((int)Object::toNumber(a) op(int) Object::toNumber(b)));
-
-    #define vm_invokeoperation(ignoring) \
-        uint8_t arg_count = vm_readbyte(ip); \
-        String* method_name = vm_readstringlong(current_chunk, ip); \
-        Value receiver = vm_peek(fiber, arg_count); \
-        if(Object::isNull(receiver)) \
-        { \
-            vm_rterrorvarg("Attempt to index a null value with '%s'", method_name->data()); \
-        } \
-        vm_writeframe(frame, ip); \
-        if(Object::isClass(receiver)) \
-        { \
-            vm_invoke_from_class_advanced(Object::as<Class>(receiver), method_name, arg_count, true, static_fields, ignoring, receiver); \
-            continue; \
-        } \
-        else if(Object::isInstance(receiver)) \
-        { \
-            Instance* instance = Object::as<Instance>(receiver); \
-            Value value; \
-            if(instance->fields.get(method_name, &value)) \
-            { \
-                fiber->stack_top[-arg_count - 1] = value; \
-                vm_callvalue(method_name->data(), value, arg_count); \
-                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
-                continue; \
-            } \
-            vm_invoke_from_class_advanced(instance->klass, method_name, arg_count, true, methods, ignoring, receiver); \
-        } \
-        else \
-        { \
-            Class* type = Class::getClassFor(this, receiver); \
-            if(type == nullptr) \
-            { \
-                vm_rterror("invokeoperation: only instances and classes have methods"); \
-            } \
-            vm_invoke_from_class_advanced(type, method_name, arg_count, true, methods, ignoring, receiver); \
-        }
-
-    static void reset_stack(VM* vm)
-    {
-        if(vm->fiber != nullptr)
-        {
-            vm->fiber->stack_top = vm->fiber->stack;
-        }
-    }
-
-    Result State::execFiber(Fiber* fiber)
-    {
-        bool found;
-        size_t arg_count;
-        size_t arindex;
-        size_t i;
-        uint16_t offset;
-        uint8_t index;
-        uint8_t is_local;
-        uint8_t instruction;
-        uint8_t* ip;
-        Fiber::CallFrame* frame;
-        Chunk* current_chunk;
-        Class* instance_klass;
-        Class* klassobj;
-        Class* super_klass;
-        Class* type;
-        Closure* closure;
-        Fiber* parent;
-        Field* field;
-        Function* function;
-        Instance* instobj;
-        String* field_name;
-        String* method_name;
-        String* name;
-        Upvalue** upvalues;
-        Value a;
-        Value arg;
-        Value b;
-        Value getval;
-        Value instval;
-        Value klassval;
-        Value vobj;
-        Value operand;
-        Value reference;
-        Value result;
-        Value setter;
-        Value setval;
-        Value slot;
-        Value super;
-        Value tmpval;
-        Value value;
-        Value* privates;
-        Value* pval;
-        Value* slots;
-        PCGenericArray<Value>* values;
-        VM* vm;
-        (void)instruction;
-        vm = this->vm;
-        vm_pushgc(this, true);
-        vm->fiber = fiber;
-        fiber->abort = false;
-        frame = &fiber->frames[fiber->frame_count - 1];
-        current_chunk = &frame->function->chunk;
-        fiber->module = frame->function->module;
-        ip = frame->ip;
-        slots = frame->slots;
-        privates = fiber->module->privates;
-        upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
-
-        // Has to be inside of the function in order for goto to work
-        #ifdef LIT_USE_COMPUTEDGOTO
-            static void* dispatch_table[] =
-            {
-                #define OPCODE(name, effect) &&OP_##name,
-                #include "opcode.inc"
-                #undef OPCODE
-            };
-        #endif
-    #ifdef LIT_TRACE_EXECUTION
-        vm_traceframe(fiber);
-    #endif
-
-        while(true)
-        {
-    #ifdef LIT_TRACE_STACK
-            lit_trace_vm_stack(vm);
-    #endif
-
-    #ifdef LIT_CHECK_STACK_SIZE
-            if((fiber->stack_top - frame->slots) > fiber->stack_capacity)
-            {
-                vm_rterrorvarg("Fiber stack is not large enough (%i > %i)", (int)(fiber->stack_top - frame->slots),
-                                   fiber->stack_capacity);
-            }
-    #endif
-
-            #ifdef LIT_USE_COMPUTEDGOTO
-                #ifdef LIT_TRACE_EXECUTION
-                    instruction = *ip++;
-                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->m_code - 1), nullptr);
-                    goto* dispatch_table[instruction];
-                #else
-                    goto* dispatch_table[*ip++];
-                #endif
-            #else
-                instruction = *ip++;
-                #ifdef LIT_TRACE_EXECUTION
-                    lit_disassemble_instruction(this, current_chunk, (size_t)(ip - current_chunk->m_code - 1), nullptr);
-                #endif
-                switch(instruction)
-            #endif
-            /*
-            * each op_case(...){...} *MUST* end with either break, return, or continue.
-            * computationally, fall-throughs differ wildly between computed gotos or switch/case statements.
-            * in computed gotos, a "fall-through" just executes the next block (since it's just a labelled block),
-            * which may invalidate the stack, and while the same is technically true for switch/case, they
-            * could end up executing completely unrelated instructions.
-            * think, declaring a block for OP_BUILDHOUSE, and the next block is OP_SETHOUSEONFIRE.
-            * an easy mistake to make, but crucial to check.
-            */
-            {
-                op_case(POP)
-                {
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(RETURN)
-                {
-                    result = vm_pop(fiber);
-                    vm->closeUpvalues(slots);
-                    vm_writeframe(frame, ip);
-                    fiber->frame_count--;
-                    if(frame->return_to_c)
-                    {
-                        frame->return_to_c = false;
-                        fiber->module->return_value = result;
-                        fiber->stack_top = frame->slots;
-                        return (Result){ LITRESULT_OK, result };
-                    }
-                    if(fiber->frame_count == 0)
-                    {
-                        fiber->module->return_value = result;
-                        if(fiber->parent == nullptr)
-                        {
-                            vm_drop(fiber);
-                            this->allow_gc = was_allowed;
-                            return (Result){ LITRESULT_OK, result };
-                        }
-                        arg_count = fiber->arg_count;
-                        parent = fiber->parent;
-                        fiber->parent = nullptr;
-                        vm->fiber = fiber = parent;
-                        vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                        vm_traceframe(fiber);
-                        fiber->stack_top -= arg_count;
-                        fiber->stack_top[-1] = result;
-                        continue;
-                    }
-                    fiber->stack_top = frame->slots;
-                    if(frame->result_ignored)
-                    {
-                        fiber->stack_top++;
-                        frame->result_ignored = false;
-                    }
-                    else
-                    {
-                        vm_push(fiber, result);
-                    }
-                    vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                    vm_traceframe(fiber);
-                    continue;
-                }
-                op_case(CONSTANT)
-                {
-                    vm_push(fiber, vm_readconstant(current_chunk));
-                    continue;
-                }
-                op_case(CONSTANT_LONG)
-                {
-                    vm_push(fiber, vm_readconstantlong(current_chunk, ip));
-                    continue;
-                }
-                op_case(TRUE)
-                {
-                    vm_push(fiber, Object::TrueVal);
-                    continue;
-                }
-                op_case(FALSE)
-                {
-                    vm_push(fiber, Object::FalseVal);
-                    continue;
-                }
-                op_case(NULL)
-                {
-                    vm_push(fiber, Object::NullVal);
-                    continue;
-                }
-                op_case(ARRAY)
-                {
-                    vm_push(fiber, Array::make(this)->asValue());
-                    continue;
-                }
-                op_case(OBJECT)
-                {
-                    // TODO: use object, or map for literal '{...}' constructs?
-                    // objects would be more general-purpose, but don't implement anything map-like.
-                    //vm_push(fiber, Instance::make(this, state->objectvalue_class)->asValue());
-                    vm_push(fiber, Map::make(this)->asValue());
-
-                    continue;
-                }
-                op_case(RANGE)
-                {
-                    a = vm_pop(fiber);
-                    b = vm_pop(fiber);
-                    if(!Object::isNumber(a) || !Object::isNumber(b))
-                    {
-                        vm_rterror("Range operands must be number");
-                    }
-                    vm_push(fiber, Range::make(this, Object::toNumber(a), Object::toNumber(b))->asValue());
-                    continue;
-                }
-                op_case(NEGATE)
-                {
-                    if(!Object::isNumber(vm_peek(fiber, 0)))
-                    {
-                        arg = vm_peek(fiber, 0);
-                        // Don't even ask me why
-                        // This doesn't kill our performance, since it's a error anyway
-                        if(Object::isString(arg) && strcmp(Object::asString(arg)->data(), "muffin") == 0)
-                        {
-                            vm_rterror("Idk, can you negate a muffin?");
-                        }
-                        else
-                        {
-                            vm_rterror("Operand must be a number");
-                        }
-                    }
-                    tmpval = Object::toValue(-Object::toNumber(vm_pop(fiber)));
-                    vm_push(fiber, tmpval);
-                    continue;
-                }
-                op_case(NOT)
-                {
-                    if(Object::isInstance(vm_peek(fiber, 0)))
-                    {
-                        vm_writeframe(frame, ip);
-                        vm_invoke_from_class(Object::as<Instance>(vm_peek(fiber, 0))->klass, String::intern(this, "!"), 0, false, methods, false);
-                        continue;
-                    }
-                    tmpval = BOOL_VALUE(Object::isFalsey(vm_pop(fiber)));
-                    vm_push(fiber, tmpval);
-                    continue;
-                }
-                op_case(BNOT)
-                {
-                    if(!Object::isNumber(vm_peek(fiber, 0)))
-                    {
-                        vm_rterror("Operand must be a number");
-                    }
-                    tmpval = Object::toValue(~((int)Object::toNumber(vm_pop(fiber))));
-                    vm_push(fiber, tmpval);
-                    continue;
-                }
-                op_case(ADD)
-                {
-                    vm_binaryop(Object::toValue, +, "+");
-                    continue;
-                }
-                op_case(SUBTRACT)
-                {
-                    vm_binaryop(Object::toValue, -, "-");
-                    continue;
-                }
-                op_case(MULTIPLY)
-                {
-                    vm_binaryop(Object::toValue, *, "*");
-                    continue;
-                }
-                op_case(POWER)
-                {
-                    a = vm_peek(fiber, 1);
-                    b = vm_peek(fiber, 0);
-                    if(Object::isNumber(a) && Object::isNumber(b))
-                    {
-                        vm_drop(fiber);
-                        *(fiber->stack_top - 1) = (Object::toValue(pow(Object::toNumber(a), Object::toNumber(b))));
-                        continue;
-                    }
-                    vm_invokemethod(a, "**", 1);
-                    continue;
-                }
-                op_case(DIVIDE)
-                {
-                    vm_binaryop(Object::toValue, /, "/");
-                    continue;
-                }
-                op_case(FLOOR_DIVIDE)
-                {
-                    a = vm_peek(fiber, 1);
-                    b = vm_peek(fiber, 0);
-                    if(Object::isNumber(a) && Object::isNumber(b))
-                    {
-                        vm_drop(fiber);
-                        *(fiber->stack_top - 1) = (Object::toValue(floor(Object::toNumber(a) / Object::toNumber(b))));
-
-                        continue;
-                    }
-
-                    vm_invokemethod(a, "#", 1);
-                    continue;
-                }
-                op_case(MOD)
-                {
-                    a = vm_peek(fiber, 1);
-                    b = vm_peek(fiber, 0);
-                    if(Object::isNumber(a) && Object::isNumber(b))
-                    {
-                        vm_drop(fiber);
-                        *(fiber->stack_top - 1) = Object::toValue(fmod(Object::toNumber(a), Object::toNumber(b)));
-                        continue;
-                    }
-                    vm_invokemethod(a, "%", 1);
-                    continue;
-                }
-                op_case(BAND)
-                {
-                    vm_bitwiseop(&, "&");
-                    continue;
-                }
-                op_case(BOR)
-                {
-                    vm_bitwiseop(|, "|");
-                    continue;
-                }
-                op_case(BXOR)
-                {
-                    vm_bitwiseop(^, "^");
-                    continue;
-                }
-                op_case(LSHIFT)
-                {
-                    vm_bitwiseop(<<, "<<");
-                    continue;
-                }
-                op_case(RSHIFT)
-                {
-                    vm_bitwiseop(>>, ">>");
-                    continue;
-                }
-                op_case(EQUAL)
-                {
-                    /*
-                    if(Object::isInstance(vm_peek(fiber, 1)))
-                    {
-                        vm_writeframe(frame, ip);
-                        fprintf(stderr, "OP_EQUAL: trying to invoke '==' ...\n");
-                        vm_invoke_from_class(Object::as<Instance>(vm_peek(fiber, 1))->klass, String::intern(state, "=="), 1, false, methods, false);
-                        continue;
-                    }
-                    a = vm_pop(fiber);
-                    b = vm_pop(fiber);
-                    vm_push(fiber, BOOL_VALUE(a == b));
-                    */
-                    vm_binaryop(Object::toValue, ==, "==");
-                    continue;
-                }
-
-                op_case(GREATER)
-                {
-                    vm_binaryop(BOOL_VALUE, >, ">");
-                    continue;
-                }
-                op_case(GREATER_EQUAL)
-                {
-                    vm_binaryop(BOOL_VALUE, >=, ">=");
-                    continue;
-                }
-                op_case(LESS)
-                {
-                    vm_binaryop(BOOL_VALUE, <, "<");
-                    continue;
-                }
-                op_case(LESS_EQUAL)
-                {
-                    vm_binaryop(BOOL_VALUE, <=, "<=");
-                    continue;
-                }
-
-                op_case(SET_GLOBAL)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    vm->globals->m_values.set(name, vm_peek(fiber, 0));
-                    continue;
-                }
-
-                op_case(GET_GLOBAL)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    if(!vm->globals->m_values.get(name, &setval))
-                    {
-                        vm_push(fiber, Object::NullVal);
-                    }
-                    else
-                    {
-                        vm_push(fiber, setval);
-                    }
-                    continue;
-                }
-                op_case(SET_LOCAL)
-                {
-                    index = vm_readbyte(ip);
-                    slots[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_LOCAL)
-                {
-                    vm_push(fiber, slots[vm_readbyte(ip)]);
-                    continue;
-                }
-                op_case(SET_LOCAL_LONG)
-                {
-                    index = vm_readshort(ip);
-                    slots[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_LOCAL_LONG)
-                {
-                    vm_push(fiber, slots[vm_readshort(ip)]);
-                    continue;
-                }
-                op_case(SET_PRIVATE)
-                {
-                    index = vm_readbyte(ip);
-                    privates[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_PRIVATE)
-                {
-                    vm_push(fiber, privates[vm_readbyte(ip)]);
-                    continue;
-                }
-                op_case(SET_PRIVATE_LONG)
-                {
-                    index = vm_readshort(ip);
-                    privates[index] = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_PRIVATE_LONG)
-                {
-                    vm_push(fiber, privates[vm_readshort(ip)]);
-                    continue;
-                }
-                op_case(SET_UPVALUE)
-                {
-                    index = vm_readbyte(ip);
-                    *upvalues[index]->location = vm_peek(fiber, 0);
-                    continue;
-                }
-                op_case(GET_UPVALUE)
-                {
-                    vm_push(fiber, *upvalues[vm_readbyte(ip)]->location);
-                    continue;
-                }
-
-                op_case(JUMP_IF_FALSE)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isFalsey(vm_pop(fiber)))
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(JUMP_IF_NULL)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isNull(vm_peek(fiber, 0)))
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(JUMP_IF_NULL_POPPING)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isNull(vm_pop(fiber)))
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(JUMP)
-                {
-                    offset = vm_readshort(ip);
-                    ip += offset;
-                    continue;
-                }
-                op_case(JUMP_BACK)
-                {
-                    offset = vm_readshort(ip);
-                    ip -= offset;
-                    continue;
-                }
-                op_case(AND)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isFalsey(vm_peek(fiber, 0)))
-                    {
-                        ip += offset;
-                    }
-                    else
-                    {
-                        vm_drop(fiber);
-                    }
-                    continue;
-                }
-                op_case(OR)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isFalsey(vm_peek(fiber, 0)))
-                    {
-                        vm_drop(fiber);
-                    }
-                    else
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(NULL_OR)
-                {
-                    offset = vm_readshort(ip);
-                    if(Object::isNull(vm_peek(fiber, 0)))
-                    {
-                        vm_drop(fiber);
-                    }
-                    else
-                    {
-                        ip += offset;
-                    }
-                    continue;
-                }
-                op_case(CALL)
-                {
-                    const char* name = "unknown";
-                    arg_count = vm_readbyte(ip);
-                    vm_writeframe(frame, ip);
-                    //auto nameval = vm_peek(fiber, arg_count-1);
-                    //fprintf(stderr, "arg_count-1=%s\n", Object::toString(this, nameval)->data());
-                    // todo: figure out callee name!
-                    vm_callvalue(name, vm_peek(fiber, arg_count), arg_count);
-                    continue;
-                }
-                op_case(CLOSURE)
-                {
-                    function = Object::as<Function>(vm_readconstantlong(current_chunk, ip));
-                    closure = Closure::make(this, function);
-                    vm_push(fiber, closure->asValue());
-                    for(i = 0; i < closure->upvalue_count; i++)
-                    {
-                        is_local = vm_readbyte(ip);
-                        index = vm_readbyte(ip);
-                        if(is_local)
-                        {
-                            closure->upvalues[i] = this->captureUpvalue(frame->slots + index);
-                        }
-                        else
-                        {
-                            closure->upvalues[i] = upvalues[index];
-                        }
-                    }
-                    continue;
-                }
-                op_case(CLOSE_UPVALUE)
-                {
-                    vm->closeUpvalues(fiber->stack_top - 1);
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(CLASS)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Class::make(this, name);
-                    vm_push(fiber, klassobj->asValue());
-                    klassobj->super = this->objectvalue_class;
-                    klassobj->super->methods.addAll(&klassobj->methods);
-                    klassobj->super->static_fields.addAll(&klassobj->static_fields);
-                    vm->globals->m_values.set(name, klassobj->asValue());
-                    continue;
-                }
-                op_case(GET_FIELD)
-                {
-                    vobj = vm_peek(fiber, 1);
-                    if(Object::isNull(vobj))
-                    {
-                        vm_rterror("Attempt to index a null value");
-                    }
-                    name = Object::as<String>(vm_peek(fiber, 0));
-                    if(Object::isInstance(vobj))
-                    {
-                        instobj = Object::as<Instance>(vobj);
-
-                        if(!instobj->fields.get(name, &getval))
-                        {
-                            if(instobj->klass->methods.get(name, &getval))
-                            {
-                                if(Object::isField(getval))
-                                {
-                                    field = Object::as<Field>(getval);
-                                    if(field->getter == nullptr)
-                                    {
-                                        vm_rterrorvarg("Class %s does not have a getter for the field %s",
-                                                           instobj->klass->name->data(), name->data());
-                                    }
-                                    vm_drop(fiber);
-                                    vm_writeframe(frame, ip);
-                                    vm_callvalue(name->data(), Object::as<Field>(getval)->getter->asValue(), 0);
-                                    vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                                    continue;
-                                }
-                                else
-                                {
-                                    getval = BoundMethod::make(this, instobj->asValue(), getval)->asValue();
-                                }
-                            }
-                            else
-                            {
-                                getval = Object::NullVal;
-                            }
-                        }
-                    }
-                    else if(Object::isClass(vobj))
-                    {
-                        klassobj = Object::as<Class>(vobj);
-                        if(klassobj->static_fields.get(name, &getval))
-                        {
-                            if(Object::isNativeMethod(getval) || Object::isPrimitiveMethod(getval))
-                            {
-                                getval = BoundMethod::make(this, klassobj->asValue(), getval)->asValue();
-                            }
-                            else if(Object::isField(getval))
-                            {
-                                field = Object::as<Field>(getval);
-                                if(field->getter == nullptr)
-                                {
-                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->data(),
-                                                       name->data());
-                                }
-                                vm_drop(fiber);
-                                vm_writeframe(frame, ip);
-                                vm_callvalue(name->data(), field->getter->asValue(), 0);
-                                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            getval = Object::NullVal;
-                        }
-                    }
-                    else
-                    {
-                        klassobj = Class::getClassFor(this, vobj);
-                        if(klassobj == nullptr)
-                        {
-                            vm_rterror("GET_FIELD: only instances and classes have fields");
-                        }
-                        if(klassobj->methods.get(name, &getval))
-                        {
-                            if(Object::isField(getval))
-                            {
-                                field = Object::as<Field>(getval);
-                                if(field->getter == nullptr)
-                                {
-                                    vm_rterrorvarg("Class %s does not have a getter for the field %s", klassobj->name->data(),
-                                                       name->data());
-                                }
-                                vm_drop(fiber);
-                                vm_writeframe(frame, ip);
-                                vm_callvalue(name->data(), Object::as<Field>(getval)->getter->asValue(), 0);
-                                vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                                continue;
-                            }
-                            else if(Object::isNativeMethod(getval) || Object::isPrimitiveMethod(getval))
-                            {
-                                getval = BoundMethod::make(this, vobj, getval)->asValue();
-                            }
-                        }
-                        else
-                        {
-                            getval = Object::NullVal;
-                        }
-                    }
-                    vm_drop(fiber);// Pop field name
-                    fiber->stack_top[-1] = getval;
-                    continue;
-                }
-                op_case(SET_FIELD)
-                {
-                    instval = vm_peek(fiber, 2);
-                    if(Object::isNull(instval))
-                    {
-                        vm_rterror("Attempt to index a null value")
-                    }
-                    value = vm_peek(fiber, 1);
-                    field_name = Object::as<String>(vm_peek(fiber, 0));
-                    if(Object::isClass(instval))
-                    {
-                        klassobj = Object::as<Class>(instval);
-                        if(klassobj->static_fields.get(field_name, &setter) && Object::isField(setter))
-                        {
-                            field = Object::as<Field>(setter);
-                            if(field->setter == nullptr)
-                            {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->data(),
-                                                   field_name->data());
-                            }
-
-                            vm_dropn(fiber, 2);
-                            vm_push(fiber, value);
-                            vm_writeframe(frame, ip);
-                            vm_callvalue(field_name->data(), field->setter->asValue(), 1);
-                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                            continue;
-                        }
-                        if(Object::isNull(value))
-                        {
-                            klassobj->static_fields.remove(field_name);
-                        }
-                        else
-                        {
-                            klassobj->static_fields.set(field_name, value);
-                        }
-                        vm_dropn(fiber, 2);// Pop field name and the value
-                        fiber->stack_top[-1] = value;
-                    }
-                    else if(Object::isInstance(instval))
-                    {
-                        instobj = Object::as<Instance>(instval);
-                        if(instobj->klass->methods.get(field_name, &setter) && Object::isField(setter))
-                        {
-                            field = Object::as<Field>(setter);
-                            if(field->setter == nullptr)
-                            {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", instobj->klass->name->data(),
-                                                   field_name->data());
-                            }
-                            vm_dropn(fiber, 2);
-                            vm_push(fiber, value);
-                            vm_writeframe(frame, ip);
-                            vm_callvalue(field_name->data(), field->setter->asValue(), 1);
-                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                            continue;
-                        }
-                        if(Object::isNull(value))
-                        {
-                            instobj->fields.remove(field_name);
-                        }
-                        else
-                        {
-                            instobj->fields.set(field_name, value);
-                        }
-                        vm_dropn(fiber, 2);// Pop field name and the value
-                        fiber->stack_top[-1] = value;
-                    }
-                    else
-                    {
-                        klassobj = Class::getClassFor(this, instval);
-                        if(klassobj == nullptr)
-                        {
-                            vm_rterror("SET_FIELD: only instances and classes have fields");
-                        }
-                        if(klassobj->methods.get(field_name, &setter) && Object::isField(setter))
-                        {
-                            field = Object::as<Field>(setter);
-                            if(field->setter == nullptr)
-                            {
-                                vm_rterrorvarg("Class %s does not have a setter for the field %s", klassobj->name->data(),
-                                                   field_name->data());
-                            }
-                            vm_dropn(fiber, 2);
-                            vm_push(fiber, value);
-                            vm_writeframe(frame, ip);
-                            vm_callvalue(field_name->data(), field->setter->asValue(), 1);
-                            vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
-                            continue;
-                        }
-                        else
-                        {
-                            vm_rterrorvarg("Class %s does not contain field %s", klassobj->name->data(), field_name->data());
-                        }
-                    }
-                    continue;
-                }
-                op_case(SUBSCRIPT_GET)
-                {
-                    vm_invokemethod(vm_peek(fiber, 1), "[]", 1);
-                    continue;
-                }
-                op_case(SUBSCRIPT_SET)
-                {
-                    vm_invokemethod(vm_peek(fiber, 2), "[]", 2);
-                    continue;
-                }
-                op_case(PUSH_ARRAY_ELEMENT)
-                {
-                    values = &Object::as<Array>(vm_peek(fiber, 1))->m_actualarray;
-                    arindex = values->m_count;
-                    values->reserve(arindex + 1, Object::NullVal);
-                    values->m_values[arindex] = vm_peek(fiber, 0);
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(PUSH_OBJECT_FIELD)
-                {
-                    operand = vm_peek(fiber, 2);
-                    if(Object::isMap(operand))
-                    {
-                        Object::as<Map>(operand)->m_values.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
-                    }
-                    else if(Object::isInstance(operand))
-                    {
-                        Object::as<Instance>(operand)->fields.set(Object::as<String>(vm_peek(fiber, 1)), vm_peek(fiber, 0));
-                    }
-                    else
-                    {
-                        vm_rterrorvarg("Expected an object or a map as the operand, got %s", Object::valueName(operand));
-                    }
-                    vm_dropn(fiber, 2);
-                    continue;
-                }
-                op_case(STATIC_FIELD)
-                {
-                    Object::as<Class>(vm_peek(fiber, 1))->static_fields.set(vm_readstringlong(current_chunk, ip), vm_peek(fiber, 0));
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(METHOD)
-                {
-                    klassobj = Object::as<Class>(vm_peek(fiber, 1));
-                    name = vm_readstringlong(current_chunk, ip);
-                    if((klassobj->init_method == nullptr || (klassobj->super != nullptr && klassobj->init_method == ((Class*)klassobj->super)->init_method))
-                       && name->length() == 11 && memcmp(name->data(), LIT_NAME_CONSTRUCTOR, sizeof(LIT_NAME_CONSTRUCTOR)-1) == 0)
-                    {
-                        klassobj->init_method = Object::asObject(vm_peek(fiber, 0));
-                    }
-                    klassobj->methods.set(name, vm_peek(fiber, 0));
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(DEFINE_FIELD)
-                {
-                    Object::as<Class>(vm_peek(fiber, 1))->methods.set(vm_readstringlong(current_chunk, ip), vm_peek(fiber, 0));
-                    vm_drop(fiber);
-                    continue;
-                }
-                op_case(INVOKE)
-                {
-                    vm_invokeoperation(false);
-                    continue;
-                }
-                op_case(INVOKE_IGNORING)
-                {
-                    vm_invokeoperation(true);
-                    continue;
-                }
-                op_case(INVOKE_SUPER)
-                {
-                    arg_count = vm_readbyte(ip);
-                    method_name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Object::as<Class>(vm_pop(fiber));
-                    vm_writeframe(frame, ip);
-                    vm_invoke_from_class(klassobj, method_name, arg_count, true, methods, false);
-                    continue;
-                }
-                op_case(INVOKE_SUPER_IGNORING)
-                {
-                    arg_count = vm_readbyte(ip);
-                    method_name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Object::as<Class>(vm_pop(fiber));
-                    vm_writeframe(frame, ip);
-                    vm_invoke_from_class(klassobj, method_name, arg_count, true, methods, true);
-                    continue;
-                }
-                op_case(GET_SUPER_METHOD)
-                {
-                    method_name = vm_readstringlong(current_chunk, ip);
-                    klassobj = Object::as<Class>(vm_pop(fiber));
-                    instval = vm_pop(fiber);
-                    if(klassobj->methods.get(method_name, &value))
-                    {
-                        value = BoundMethod::make(this, instval, value)->asValue();
-                    }
-                    else
-                    {
-                        value = Object::NullVal;
-                    }
-                    vm_push(fiber, value);
-                    continue;
-                }
-                op_case(INHERIT)
-                {
-                    super = vm_peek(fiber, 1);
-                    if(!Object::isClass(super))
-                    {
-                        vm_rterror("Superclass must be a class");
-                    }
-                    klassobj = Object::as<Class>(vm_peek(fiber, 0));
-                    super_klass = Object::as<Class>(super);
-                    klassobj->super = super_klass;
-                    klassobj->init_method = super_klass->init_method;
-                    super_klass->methods.addAll(&klassobj->methods);
-                    klassobj->super->static_fields.addAll(&klassobj->static_fields);
-                    continue;
-                }
-                op_case(IS)
-                {
-                    instval = vm_peek(fiber, 1);
-                    if(Object::isNull(instval))
-                    {
-                        vm_dropn(fiber, 2);
-                        vm_push(fiber, Object::FalseVal);
-
-                        continue;
-                    }
-                    instance_klass = Class::getClassFor(this, instval);
-                    klassval = vm_peek(fiber, 0);
-                    if(instance_klass == nullptr || !Object::isClass(klassval))
-                    {
-                        vm_rterror("operands must be an instance and a class");
-                    }            
-                    type = Object::as<Class>(klassval);
-                    found = false;
-                    while(instance_klass != nullptr)
-                    {
-                        if(instance_klass == type)
-                        {
-                            found = true;
-                            break;
-                        }
-                        instance_klass = (Class*)instance_klass->super;
-                    }
-                    vm_dropn(fiber, 2);// Drop the instance and class
-                    vm_push(fiber, BOOL_VALUE(found));
-                    continue;
-                }
-                op_case(POP_LOCALS)
-                {
-                    vm_dropn(fiber, vm_readshort(ip));
-                    continue;
-                }
-                op_case(VARARG)
-                {
-                    slot = slots[vm_readbyte(ip)];
-                    if(!Object::isArray(slot))
-                    {
-                        continue;
-                    }
-                    values = &Object::as<Array>(slot)->m_actualarray;
-                    fiber->ensure_stack(values->m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
-                    for(i = 0; i < values->m_count; i++)
-                    {
-                        vm_push(fiber, values->m_values[i]);
-                    }
-                    // Hot-bytecode patching, increment the amount of arguments to OP_CALL
-                    ip[1] = ip[1] + values->m_count - 1;
-                    continue;
-                }
-
-                op_case(REFERENCE_GLOBAL)
-                {
-                    name = vm_readstringlong(current_chunk, ip);
-                    if(vm->globals->m_values.getSlot(name, &pval))
-                    {
-                        vm_push(fiber, Reference::make(this, pval)->asValue());
-                    }
-                    else
-                    {
-                        vm_rterror("Attempt to reference a null value");
-                    }
-                    continue;
-                }
-                op_case(REFERENCE_PRIVATE)
-                {
-                    vm_push(fiber, Reference::make(this, &privates[vm_readshort(ip)])->asValue());
-                    continue;
-                }
-                op_case(REFERENCE_LOCAL)
-                {
-                    vm_push(fiber, Reference::make(this, &slots[vm_readshort(ip)])->asValue());
-                    continue;
-                }
-                op_case(REFERENCE_UPVALUE)
-                {
-                    vm_push(fiber, Reference::make(this, upvalues[vm_readbyte(ip)]->location)->asValue());
-                    continue;
-                }
-                op_case(REFERENCE_FIELD)
-                {
-                    vobj = vm_peek(fiber, 1);
-                    if(Object::isNull(vobj))
-                    {
-                        vm_rterror("Attempt to index a null value");
-                    }
-                    name = Object::as<String>(vm_peek(fiber, 0));
-                    if(Object::isInstance(vobj))
-                    {
-                        if(!Object::as<Instance>(vobj)->fields.getSlot(name, &pval))
-                        {
-                            vm_rterror("Attempt to reference a null value");
-                        }
-                    }
-                    else
-                    {
-                        Object::print(this, &this->debugwriter, vobj);
-                        printf("\n");
-                        vm_rterror("You can only reference fields of real instances");
-                    }
-                    vm_drop(fiber);// Pop field name
-                    fiber->stack_top[-1] = Reference::make(this, pval)->asValue();
-                    continue;
-                }
-                op_case(SET_REFERENCE)
-                {
-                    reference = vm_pop(fiber);
-                    if(!Object::isReference(reference))
-                    {
-                        vm_rterror("Provided value is not a reference");
-                    }
-                    *Object::as<Reference>(reference)->slot = vm_peek(fiber, 0);
-                    continue;
-                }
-                vm_default()
-                {
-                    vm_rterrorvarg("Unknown op code '%d'", *ip);
-                    break;
-                }
-            }
-        }
-
-        vm_returnerror();
-    }
+    #include "execfiber.h"
 
     // impl::vm
     void VM::markRoots()
@@ -12437,6 +10173,7 @@ namespace lit
             this->markValue(state->roots[i]);
         }
         this->markObject((Object*)this->fiber);
+        this->markObject((Object*)state->kernelvalue_class);
         this->markObject((Object*)state->classvalue_class);
         this->markObject((Object*)state->objectvalue_class);
         this->markObject((Object*)state->numbervalue_class);
@@ -12808,6 +10545,27 @@ namespace lit
         }
     }
 
+    bool Object::compare(State* state, const Value a, const Value b)
+    {
+        Result inret;
+        Value args[3];
+        if(Object::isInstance(a))
+        {
+            args[0] = b;
+            inret = Instance::callMethod(state, a, String::intern(state, "=="), args, 1);
+            if(inret.type == LITRESULT_OK)
+            {
+                if(Object::fromBool(inret.result) == Object::TrueVal)
+                {
+                    return true;
+                }
+                return false;
+            }
+        }
+        return (a == b);
+    }
+
+
     inline State* Object::asState(VM* vm)
     {
         return vm->m_state;
@@ -12995,7 +10753,7 @@ namespace lit
         {
             for(i = 0; i < (size_t)map->size(); i++)
             {
-                entry = &map->m_values.m_inner.m_values[i];
+                entry = &map->at(i);
                 if(entry->key != nullptr)
                 {
                     if(had_before)
@@ -13265,6 +11023,11 @@ namespace lit
     }
 
     // impl::class
+    Class* Class::fromInstance(Value instance)
+    {
+        return Object::as<Instance>(instance)->klass;
+    }
+
     Class* Class::getClassFor(State* state, Value value)
     {
         Value* slot;
@@ -14585,15 +12348,17 @@ namespace lit
     static Value objfn_array_subscript(VM* vm, Value instance, size_t argc, Value* argv)
     {
         int index;
+        Array* self;
         Range* range;
         PCGenericArray<Value>* values;
+        self = Object::as<Array>(instance);
         if(argc == 2)
         {
             if(!Object::isNumber(argv[0]))
             {
                 lit_runtime_error_exiting(vm, "array index must be a number");
             }
-            values = &Object::as<Array>(instance)->m_actualarray;
+            values = &self->m_actualarray;
             index = Object::toNumber(argv[0]);
             if(index < 0)
             {
@@ -14607,42 +12372,24 @@ namespace lit
             if(Object::isRange(argv[0]))
             {
                 range = Object::as<Range>(argv[0]);
-                return objfn_array_splice(vm, Object::as<Array>(instance), (int)range->from, (int)range->to);
+                return objfn_array_splice(vm, self, (int)range->from, (int)range->to);
             }
             lit_runtime_error_exiting(vm, "array index must be a number");
             return Object::NullVal;
         }
-        values = &Object::as<Array>(instance)->m_actualarray;
+        values = &self->m_actualarray;
         index = Object::toNumber(argv[0]);
         if(index < 0)
         {
             index = fmax(0, values->m_count + index);
         }
-        if(values->m_capacity <= (size_t)index)
+        //if(values->m_capacity <= (size_t)index)
+        if(index >= values->size())
         {
+            lit_runtime_error_exiting(vm, "array index %d out of bounds", index);
             return Object::NullVal;
         }
         return values->m_values[index];
-    }
-
-    bool lit_compare_values(State* state, const Value a, const Value b)
-    {
-        Result inret;
-        Value args[3];
-        if(Object::isInstance(a))
-        {
-            args[0] = b;
-            inret = Instance::callMethod(state, a, String::intern(state, "=="), args, 1);
-            if(inret.type == LITRESULT_OK)
-            {
-                if(BOOL_VALUE(inret.result) == Object::TrueVal)
-                {
-                    return true;
-                }
-                return false;
-            }
-        }
-        return (a == b);
     }
 
     static Value objfn_array_compare(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14660,7 +12407,7 @@ namespace lit
             {
                 for(i=0; i<self->m_actualarray.m_count; i++)
                 {
-                    if(!lit_compare_values(vm->m_state, self->m_actualarray.m_values[i], other->m_actualarray.m_values[i]))
+                    if(!Object::compare(vm->m_state, self->m_actualarray.m_values[i], other->m_actualarray.m_values[i]))
                     {
                         return Object::FalseVal;
                     }
@@ -14773,7 +12520,7 @@ namespace lit
     static Value objfn_array_contains(VM* vm, Value instance, size_t argc, Value* argv)
     {
         LIT_ENSURE_ARGS(1);
-        return BOOL_VALUE(Object::as<Array>(instance)->indexOf(argv[0]) != -1);
+        return Object::fromBool(Object::as<Array>(instance)->indexOf(argv[0]) != -1);
     }
 
     static Value objfn_array_clear(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15016,6 +12763,7 @@ namespace lit
     void lit_open_array_library(State* state)
     {
         Class* klass = Class::make(state, "Array");
+        state->arrayvalue_class = klass;
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(objfn_array_constructor);
@@ -15038,7 +12786,6 @@ namespace lit
             klass->bindMethod("clone", objfn_array_clone);
             klass->bindMethod("toString", objfn_array_tostring);
             klass->setGetter("length", objfn_array_length);
-            state->arrayvalue_class = klass;
         }
         state->setGlobal(klass->name, klass->asValue());
         if(klass->super == nullptr)
@@ -15053,7 +12800,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "<class @>", Object::as<Class>(instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "<class $>", Object::as<Class>(instance)->name->data())->asValue();
     }
 
     static Value objfn_class_iterator(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15188,22 +12935,21 @@ namespace lit
     void lit_open_class_library(State* state)
     {
         Class* klass = Class::make(state, "Class");
+        state->classvalue_class = klass;
         {
+            klass->inheritFrom(state->kernelvalue_class);
             klass->bindMethod("[]", objfn_class_subscript);
             klass->bindMethod("==", objfn_class_compare);
             klass->bindMethod("toString", objfn_class_tostring);
-            klass->setGetter("super", objfn_class_super);
-            #if 0
-            klass->setGetter("methods", objfn_class_getmethods);
-            klass->setGetter("fields", objfn_class_getfields);
-            #endif
+            //klass->setGetter("super", objfn_class_super);
+
             klass->setStaticGetter("super", objfn_class_super);
             klass->setStaticGetter("name", objfn_class_name);
             klass->setStaticMethod("toString", objfn_class_tostring);
             klass->setStaticMethod("iterator", objfn_class_iterator);
             klass->setStaticMethod("iteratorValue", objfn_class_iteratorvalue);
-            state->classvalue_class = klass;
         }
+        state->classvalue_class->super = state->kernelvalue_class;
         state->setGlobal(klass->name, klass->asValue());
     }
 
@@ -15671,9 +13417,9 @@ namespace lit
         bv = Object::asBool(instance);
         if(Object::isNull(argv[0]))
         {
-            return BOOL_VALUE(false);
+            return Object::fromBool(false);
         }
-        return BOOL_VALUE(Object::asBool(argv[0]) == bv);
+        return Object::fromBool(Object::asBool(argv[0]) == bv);
     }
 
     static Value objfn_bool_tostring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15809,6 +13555,7 @@ namespace lit
     void lit_open_function_library(State* state);
     void lit_open_class_library(State* state);
     void lit_open_object_library(State* state);
+    void lit_open_kernel_library(State* state);
 
 
     void lit_open_core_library(State* state)
@@ -15818,6 +13565,7 @@ namespace lit
         * since object derives class, and everything else derives object.
         */
         {
+            lit_open_kernel_library(state);
             lit_open_class_library(state);
             lit_open_object_library(state);
             lit_open_string_library(state);
@@ -15830,6 +13578,7 @@ namespace lit
         }
         {
             Class* klass = Class::make(state, "Number");
+            state->numbervalue_class = klass;
             {
                 klass->inheritFrom(state->objectvalue_class);
                 klass->bindConstructor(util_invalid_constructor);
@@ -15847,6 +13596,7 @@ namespace lit
         }
         {
             Class* klass = Class::make(state, "Bool");
+            state->boolvalue_class = klass;
             {
                 klass->inheritFrom(state->objectvalue_class);
                 klass->bindConstructor(util_invalid_constructor);
@@ -15895,7 +13645,7 @@ namespace lit
         (void)vm;
         (void)argc;
         (void)argv;
-        return BOOL_VALUE(util_is_fiber_done(Object::as<Fiber>(instance)));
+        return Object::fromBool(util_is_fiber_done(Object::as<Fiber>(instance)));
     }
 
 
@@ -15994,6 +13744,7 @@ namespace lit
     void lit_open_fiber_library(State* state)
     {
         Class* klass = Class::make(state, "Fiber");
+        state->fibervalue_class = klass;
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(objfn_fiber_constructor);
@@ -16227,7 +13978,7 @@ namespace lit
         {
             file_name = (char*)lit_check_string(vm, argv, argc, 0);
         }
-        return BOOL_VALUE(lit_file_exists(file_name));
+        return Object::fromBool(lit_file_exists(file_name));
     }
 
     /*
@@ -16414,7 +14165,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return BOOL_VALUE((char)FileIO::read_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle) == '1');
+        return Object::fromBool((char)FileIO::read_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle) == '1');
     }
 
     static Value objmethod_file_readstring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -16467,7 +14218,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return BOOL_VALUE(stat(directory_name, &buffer) == 0 && S_ISDIR(buffer.st_mode));
+        return Object::fromBool(stat(directory_name, &buffer) == 0 && S_ISDIR(buffer.st_mode));
     }
 
     static Value objfunction_directory_listfiles(VM* vm, Value instance, size_t argc, Value* argv)
@@ -16648,7 +14399,8 @@ namespace lit
 
     void lit_open_function_library(State* state)
     {
-         Class* klass = Class::make(state, "Function");
+        Class* klass = Class::make(state, "Function");
+        state->functionvalue_class = klass; 
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(util_invalid_constructor);
@@ -16765,7 +14517,7 @@ namespace lit
         (void)vm;
         (void)argv;
         (void)argc;
-        Object::as<Map>(instance)->m_values.m_inner .m_count = 0;
+        Object::as<Map>(instance)->m_values.m_inner.m_count = 0;
         return Object::NullVal;
     }
 
@@ -16883,6 +14635,7 @@ namespace lit
             buffer_index += 3;
             memcpy(&buffer[buffer_index], value->data(), value->length());
             buffer_index += value->length();
+            /*
             if(has_more && i == value_amount - 1)
             {
                 #ifdef SINGLE_LINE_MAPS
@@ -16893,6 +14646,7 @@ namespace lit
                 buffer_index += 8;
             }
             else
+            */
             {
                 #ifdef SINGLE_LINE_MAPS
                 memcpy(&buffer[buffer_index], (i == value_amount - 1) ? " }" : ", ", 2);
@@ -16920,6 +14674,7 @@ namespace lit
     void lit_open_map_library(State* state)
     {
         Class* klass = Class::make(state, "Map");
+        state->mapvalue_class = klass;
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(objfn_map_constructor);
@@ -17199,7 +14954,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return BOOL_VALUE(rand_r((unsigned int*)extract_random_data(vm->m_state, instance)) % 2);
+        return Object::fromBool(rand_r((unsigned int*)extract_random_data(vm->m_state, instance)) % 2);
     }
 
     static Value random_chance(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17408,6 +15163,7 @@ namespace lit
     void lit_open_module_library(State* state)
     {
         Class* klass = Class::make(state, "Module");
+        state->modulevalue_class = klass;
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(util_invalid_constructor);
@@ -17425,6 +15181,107 @@ namespace lit
             klass->inheritFrom(state->objectvalue_class);
         }
     }
+
+
+    /*
+    String* name;
+    Object* init_method;
+    Table methods;
+    Table static_fields;
+    Class* super;
+    */
+    static Value objfn_kernel_getmethods(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        size_t i;
+        Map* m;
+        Class* self;
+        self = Object::as<Class>(instance);
+        m = Map::make(vm->m_state);
+        for(i=0; i<self->methods.size(); i++)
+        {
+            if(self->methods.at(i).key != nullptr)
+            {
+                m->set(self->methods.at(i).key, self->methods.at(i).value);
+            }
+        }
+        return m->asValue();
+    }
+
+    static void fillmap(State* state, Map* destmap, Table* fromtbl, bool includenullkeys)
+    {
+        size_t i;
+        String* key;
+        Value val;
+        (void)state;
+        (void)includenullkeys;
+        for(i=0; i<fromtbl->size(); i++)
+        {
+            key = fromtbl->at(i).key;
+            if(key != nullptr)
+            {
+                val = fromtbl->at(i).value;
+                destmap->set(key, val);
+            }
+        }
+    }
+
+    static Value objfn_kernel_tomap(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        (void)argc;
+        (void)argv;
+        Map* map;
+        Map* minst;
+        Map* mclass;
+        Map* mclstatics;
+        Map* mclmethods;
+        Instance* inst;
+        mclass = nullptr;
+        if(!Object::isInstance(instance))
+        {
+            lit_runtime_error_exiting(vm, "toMap() can only be used on instances");
+            return Object::NullVal;
+        }
+        inst = Object::as<Instance>(instance);
+        map = Map::make(vm->m_state);
+        {
+            minst = Map::make(vm->m_state);
+            fillmap(vm->m_state, minst, &(inst->fields), true);
+        }
+        {
+            mclass = Map::make(vm->m_state);
+            {
+                mclstatics = Map::make(vm->m_state);
+                fillmap(vm->m_state, mclstatics, &(inst->klass->static_fields), false);
+            }
+            {
+                mclmethods = Map::make(vm->m_state);
+                fillmap(vm->m_state, mclmethods, &(inst->klass->methods), false);
+            }
+            mclass->set(String::intern(vm->m_state, "statics"), mclstatics->asValue());
+            mclass->set(String::intern(vm->m_state, "methods"), mclmethods->asValue());
+        }
+        map->set(String::intern(vm->m_state, "instance"), minst->asValue());
+        map->set(String::intern(vm->m_state, "class"), mclass->asValue());
+        return map->asValue();
+    }
+
+    void lit_open_kernel_library(State* state)
+    {
+        Class* klass = Class::make(state, "Kernel");
+        {
+            //klass->setGetter("__map", objfn_kernel_tomap);
+            klass->setStaticGetter("__map", objfn_kernel_tomap);
+            klass->setGetter("__methods", objfn_kernel_getmethods);
+            //klass->setStaticGetter("__methods", objfn_kernel_getmethods);
+            #if 0
+            klass->setGetter("__fields", objfn_kernel_getfields);
+            //klass->setStaticGetter("__fields", objfn_kernel_getfields);
+            #endif
+        }
+        state->kernelvalue_class = klass;
+        state->setGlobal(klass->name, klass->asValue());
+    }
+
 
     static Value objfn_object_class(VM* vm, Value instance, size_t argc, Value* argv)
     {
@@ -17453,62 +15310,7 @@ namespace lit
         return String::format(vm->m_state, "<instance @>", Class::getClassFor(vm->m_state, instance)->name->asValue())->asValue();
     }
 
-    static void fillmap(State* state, Map* destmap, Table* fromtbl, bool includenullkeys)
-    {
-        size_t i;
-        String* key;
-        Value val;
-        (void)state;
-        (void)includenullkeys;
-        for(i=0; i<fromtbl->size(); i++)
-        {
-            key = fromtbl->at(i).key;
-            if(key != nullptr)
-            {
-                val = fromtbl->at(i).value;
-                destmap->set(key, val);
-            }
-        }
-    }
 
-    static Value objfn_object_tomap(VM* vm, Value instance, size_t argc, Value* argv)
-    {
-        (void)argc;
-        (void)argv;
-        Map* map;
-        Map* minst;
-        Map* mclass;
-        Map* mclstatics;
-        Map* mclmethods;
-        Instance* inst;
-        mclass = nullptr;
-        if(!Object::isInstance(instance))
-        {
-            lit_runtime_error_exiting(vm, "toMap() can only be used on instances");
-        }
-        inst = Object::as<Instance>(instance);
-        map = Map::make(vm->m_state);
-        {
-            minst = Map::make(vm->m_state);
-            fillmap(vm->m_state, minst, &(inst->fields), true);
-        }
-        {
-            mclass = Map::make(vm->m_state);
-            {
-                mclstatics = Map::make(vm->m_state);
-                fillmap(vm->m_state, mclstatics, &(inst->klass->static_fields), false);
-            }
-            {
-                mclmethods = Map::make(vm->m_state);
-                fillmap(vm->m_state, mclmethods, &(inst->klass->methods), false);
-            }
-            mclass->set(String::intern(vm->m_state, "statics"), mclstatics->asValue());
-            mclass->set(String::intern(vm->m_state, "methods"), mclmethods->asValue());
-        }
-        map->set(String::intern(vm->m_state, "instance"), minst->asValue());
-        map->set(String::intern(vm->m_state, "class"), mclass->asValue());
-        return map->asValue();
-    }
 
     static Value objfn_object_subscript(VM* vm, Value instance, size_t argc, Value* argv)
     {
@@ -17583,17 +15385,12 @@ namespace lit
             klass->setGetter("super", objfn_object_super);
             klass->bindMethod("[]", objfn_object_subscript);
             klass->bindMethod("toString", objfn_object_tostring);
-            klass->bindMethod("toMap", objfn_object_tomap);
             klass->bindMethod("iterator", objfn_object_iterator);
             klass->bindMethod("iteratorValue", objfn_object_iteratorvalue);
-            state->objectvalue_class = klass;
-            state->objectvalue_class->super = state->classvalue_class;
         }
+        state->objectvalue_class = klass;
+        state->objectvalue_class->super = state->classvalue_class;
         state->setGlobal(klass->name, klass->asValue());
-        if(klass->super == nullptr)
-        {
-            klass->inheritFrom(state->objectvalue_class);
-        }
     }
 
     static Value objfn_range_iterator(VM* vm, Value instance, size_t argc, Value* argv)
@@ -17679,6 +15476,7 @@ namespace lit
     void lit_open_range_library(State* state)
     {
         Class* klass = Class::make(state, "Range");
+        state->rangevalue_class = klass;
         {
             klass->inheritFrom(state->objectvalue_class);
             klass->bindConstructor(util_invalid_constructor);
@@ -17942,12 +15740,12 @@ namespace lit
 
     static Value objfn_string_less(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        return BOOL_VALUE(strcmp(Object::as<String>(instance)->data(), lit_check_string(vm, argv, argc, 0)) < 0);
+        return Object::fromBool(strcmp(Object::as<String>(instance)->data(), lit_check_string(vm, argv, argc, 0)) < 0);
     }
 
     static Value objfn_string_greater(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        return BOOL_VALUE(strcmp(Object::as<String>(instance)->data(), lit_check_string(vm, argv, argc, 0)) > 0);
+        return Object::fromBool(strcmp(Object::as<String>(instance)->data(), lit_check_string(vm, argv, argc, 0)) > 0);
     }
 
     static Value objfn_string_tostring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -18432,113 +16230,110 @@ namespace lit
 
     void lit_open_string_library(State* state)
     {
+        Class* klass = Class::make(state, "String");        
+        klass->inheritFrom(state->objectvalue_class);
+        klass->bindConstructor(util_invalid_constructor);
+        klass->bindMethod("+", objfn_string_plus);
+        klass->bindMethod("[]", objfn_string_subscript);
+        klass->bindMethod("<", objfn_string_less);
+        klass->bindMethod(">", objfn_string_greater);
+        klass->bindMethod("==", objfn_string_compare);
+        klass->bindMethod("append", objfn_string_append);
+        // this is technically redundant due to Number.chr, but lets add it anyway.
+        klass->bindMethod("appendByte", objfn_string_appendbyte);
+        klass->bindMethod("toString", objfn_string_tostring);
         {
-            Class* klass = Class::make(state, "String");
-            
-                klass->inheritFrom(state->objectvalue_class);
-                klass->bindConstructor(util_invalid_constructor);
-                klass->bindMethod("+", objfn_string_plus);
-                klass->bindMethod("[]", objfn_string_subscript);
-                klass->bindMethod("<", objfn_string_less);
-                klass->bindMethod(">", objfn_string_greater);
-                klass->bindMethod("==", objfn_string_compare);
-                klass->bindMethod("append", objfn_string_append);
-                // this is technically redundant due to Number.chr, but lets add it anyway.
-                klass->bindMethod("appendByte", objfn_string_appendbyte);
-                klass->bindMethod("toString", objfn_string_tostring);
-                {
-                    klass->bindMethod("toNumber", objfn_string_tonumber);
-                    klass->setGetter("to_i", objfn_string_tonumber);
-                }
-                /*
-                *
-                */
-                {
-                    klass->bindMethod("split", objfn_string_split);
-                }
-                /*
-                * javascript shit (does what [] does)
-                */
-                {
-                    klass->bindMethod("charCodeAt", objfn_string_byteat);
-                }
-                /*
-                * String.toUpper()
-                * turns string to uppercase.
-                */
-                {
-                    klass->bindMethod("toUpperCase", objfn_string_touppercase);
-                    klass->bindMethod("toUpper", objfn_string_touppercase);
-                    klass->setGetter("upper", objfn_string_touppercase);
-                }
-                /*
-                * String.toLower()
-                * turns string to lowercase.
-                */
-                {
-                    klass->bindMethod("toLowerCase", objfn_string_tolowercase);
-                    klass->bindMethod("toLower", objfn_string_tolowercase);
-                    klass->setGetter("lower", objfn_string_tolowercase);
-                }
-                /*
-                * String.toByte
-                * turns string into a byte integer.
-                * if the string is multi character string, then $self[0] is used.
-                * i.e., "foo".toByte == 102 (equiv: "foo"[0].toByte)
-                */
-                {
-                    klass->setGetter("toByte", objfn_string_tobyte);
-                    klass->bindMethod("byteAt", objfn_string_byteat);
-                }
-                //TODO: byteAt
-                //LIT_BIND_METHOD(state, klass, "byteAt", objfn_string_byteat);
-                /*
-                * String.bytes
-                * returns the string as an array of bytes
-                */
-                {
-                    klass->setGetter("bytes", objfn_string_bytes);
-                }
-                /*
-                * String.contains(String str[, bool icase])
-                * returns true if $self contains $str.
-                * if optional param $icase is true, then search is case-insensitive.
-                * this is faster than, eg, "FOO".lower.contains("BLAH".lower), since
-                * only the characters searched are tolower()'d.
-                */
-                klass->bindMethod("contains", objfn_string_contains);
-                /*
-                * String.startsWith(String str)
-                * returns true if $self starts with $str
-                */
-                klass->bindMethod("startsWith", objfn_string_startswith);
-                /*
-                * String.endsWith(String str)
-                * returns true if $self ends with $str
-                */
-                klass->bindMethod("endsWith", objfn_string_endswith);
-                /*
-                * String.replace(String find, String rep)
-                * replaces every $find with $rep
-                */
-                klass->bindMethod("replace", objfn_string_replace);
-                {
-                    klass->bindMethod("substring", objfn_string_substring);
-                    klass->bindMethod("substr", objfn_string_substring);
-                }
-                klass->bindMethod("iterator", objfn_string_iterator);
-                klass->bindMethod("iteratorValue", objfn_string_iteratorvalue);
-                klass->setGetter("length", objfn_string_length);
-                klass->bindMethod("format", objfn_string_format);
-                state->stringvalue_class = klass;
-            
-            state->setGlobal(klass->name, klass->asValue());
-            if(klass->super == nullptr)
-            {
-                klass->inheritFrom(state->objectvalue_class);
-            }
+            klass->bindMethod("toNumber", objfn_string_tonumber);
+            klass->setGetter("to_i", objfn_string_tonumber);
         }
-
+        /*
+        *
+        */
+        {
+            klass->bindMethod("split", objfn_string_split);
+        }
+        /*
+        * javascript shit (does what [] does)
+        */
+        {
+            klass->bindMethod("charCodeAt", objfn_string_byteat);
+        }
+        /*
+        * String.toUpper()
+        * turns string to uppercase.
+        */
+        {
+            klass->bindMethod("toUpperCase", objfn_string_touppercase);
+            klass->bindMethod("toUpper", objfn_string_touppercase);
+            klass->setGetter("upper", objfn_string_touppercase);
+        }
+        /*
+        * String.toLower()
+        * turns string to lowercase.
+        */
+        {
+            klass->bindMethod("toLowerCase", objfn_string_tolowercase);
+            klass->bindMethod("toLower", objfn_string_tolowercase);
+            klass->setGetter("lower", objfn_string_tolowercase);
+        }
+        /*
+        * String.toByte
+        * turns string into a byte integer.
+        * if the string is multi character string, then $self[0] is used.
+        * i.e., "foo".toByte == 102 (equiv: "foo"[0].toByte)
+        */
+        {
+            klass->setGetter("toByte", objfn_string_tobyte);
+            klass->bindMethod("byteAt", objfn_string_byteat);
+        }
+        //TODO: byteAt
+        //LIT_BIND_METHOD(state, klass, "byteAt", objfn_string_byteat);
+        /*
+        * String.bytes
+        * returns the string as an array of bytes
+        */
+        {
+            klass->setGetter("bytes", objfn_string_bytes);
+        }
+        /*
+        * String.contains(String str[, bool icase])
+        * returns true if $self contains $str.
+        * if optional param $icase is true, then search is case-insensitive.
+        * this is faster than, eg, "FOO".lower.contains("BLAH".lower), since
+        * only the characters searched are tolower()'d.
+        */
+        klass->bindMethod("contains", objfn_string_contains);
+        /*
+        * String.startsWith(String str)
+        * returns true if $self starts with $str
+        */
+        klass->bindMethod("startsWith", objfn_string_startswith);
+        /*
+        * String.endsWith(String str)
+        * returns true if $self ends with $str
+        */
+        klass->bindMethod("endsWith", objfn_string_endswith);
+        /*
+        * String.replace(String find, String rep)
+        * replaces every $find with $rep
+        */
+        klass->bindMethod("replace", objfn_string_replace);
+        {
+            klass->bindMethod("substring", objfn_string_substring);
+            klass->bindMethod("substr", objfn_string_substring);
+        }
+        klass->bindMethod("iterator", objfn_string_iterator);
+        klass->bindMethod("iteratorValue", objfn_string_iteratorvalue);
+        klass->setGetter("length", objfn_string_length);
+        klass->bindMethod("format", objfn_string_format);
+        state->stringvalue_class = klass;
+        
+        state->setGlobal(klass->name, klass->asValue());
+        if(klass->super == nullptr)
+        {
+            klass->inheritFrom(state->objectvalue_class);
+        }
+    
     }
 }
 

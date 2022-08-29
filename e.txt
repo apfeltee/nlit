@@ -1,12 +1,11 @@
-num_files_to_run=1, (argc+1)=4
-reading source: 0.463ms
+reading source: 0.766ms
 -----------------------
 Preprocessing:  0.001ms
-Parsing:        1.172ms
-Optimization:   0.001ms
-Emitting:       0.665ms
+Parsing:        1.329ms
+Optimization:   0ms
+Emitting:       0.668ms
 
-Total:          2.311ms
+Total:          2.771ms
 -----------------------
 == mod32bits ==
 [31m        return (x & 0xffffffff);[0m
@@ -271,28 +270,28 @@ Total:          2.311ms
 0021    | [33mOP_NULL[0m
 0022    | [33mOP_RETURN[0m
 == md5 ==
-[31m        words = [][0m
+[31m        words = [];[0m
 0000 [34m  79[0m [33mOP_ARRAY[0m
 0001    | [33mOP_SET_GLOBAL   [0m    0 'words'
 0004    | [33mOP_POP[0m
-[31m        chars = input.split()[0m
+[31m        chars = input.split();[0m
 0005 [34m  80[0m [33mOP_GET_LOCAL    [0m    1
 0007    | [33mOP_INVOKE       [0m (0 args)    1 'split'
 0011    | [33mOP_SET_GLOBAL   [0m    2 'chars'
 0014    | [33mOP_POP[0m
-[31m        nbytes = chars.length[0m
+[31m        nbytes = chars.length;[0m
 0015 [34m  81[0m [33mOP_GET_GLOBAL   [0m    2 'chars'
 0018    | [33mOP_CONSTANT     [0m    3 'length'
 0020    | [33mOP_GET_FIELD[0m
 0021    | [33mOP_SET_GLOBAL   [0m    4 'nbytes'
 0024    | [33mOP_POP[0m
-[31m        bytes = input.bytes[0m
+[31m        bytes = input.bytes;[0m
 0025 [34m  82[0m [33mOP_GET_LOCAL    [0m    1
 0027    | [33mOP_CONSTANT     [0m    5 'bytes'
 0029    | [33mOP_GET_FIELD[0m
 0030    | [33mOP_SET_GLOBAL   [0m    5 'bytes'
 0033    | [33mOP_POP[0m
-[31m        println("words=", bytes)[0m
+[31m        println("words=", bytes);[0m
 0034 [34m  83[0m [33mOP_GET_GLOBAL   [0m    6 'println'
 0037    | [33mOP_CONSTANT     [0m    7 'words='
 0039    | [33mOP_GET_GLOBAL   [0m    5 'bytes'
@@ -312,7 +311,7 @@ Total:          2.311ms
 0069    | [33mOP_SET_GLOBAL   [0m    9 'i'
 0072    | [33mOP_POP[0m
 0073    | [33mOP_JUMP_BACK    [0m   73 -> 50
-[31m        b0 = bytes[i + 0] || 0[0m
+[31m        b0 = bytes[i + 0] || 0;[0m
 0076 [34m  89[0m [33mOP_GET_GLOBAL   [0m    5 'bytes'
 0079    | [33mOP_GET_GLOBAL   [0m    9 'i'
 0082    | [33mOP_CONSTANT     [0m   11 '0'
@@ -322,7 +321,7 @@ Total:          2.311ms
 0089    | [33mOP_CONSTANT     [0m   11 '0'
 0091    | [33mOP_SET_GLOBAL   [0m   12 'b0'
 0094    | [33mOP_POP[0m
-[31m        b1 = bytes[i + 1] || 0[0m
+[31m        b1 = bytes[i + 1] || 0;[0m
 0095 [34m  90[0m [33mOP_GET_GLOBAL   [0m    5 'bytes'
 0098    | [33mOP_GET_GLOBAL   [0m    9 'i'
 0101    | [33mOP_CONSTANT     [0m    8 '1'
@@ -332,7 +331,7 @@ Total:          2.311ms
 0108    | [33mOP_CONSTANT     [0m   11 '0'
 0110    | [33mOP_SET_GLOBAL   [0m   13 'b1'
 0113    | [33mOP_POP[0m
-[31m        b2 = bytes[i + 2] || 0[0m
+[31m        b2 = bytes[i + 2] || 0;[0m
 0114 [34m  91[0m [33mOP_GET_GLOBAL   [0m    5 'bytes'
 0117    | [33mOP_GET_GLOBAL   [0m    9 'i'
 0120    | [33mOP_CONSTANT     [0m   14 '2'
@@ -342,7 +341,7 @@ Total:          2.311ms
 0127    | [33mOP_CONSTANT     [0m   11 '0'
 0129    | [33mOP_SET_GLOBAL   [0m   15 'b2'
 0132    | [33mOP_POP[0m
-[31m        b3 = bytes[i + 3] || 0[0m
+[31m        b3 = bytes[i + 3] || 0;[0m
 0133 [34m  92[0m [33mOP_GET_GLOBAL   [0m    5 'bytes'
 0136    | [33mOP_GET_GLOBAL   [0m    9 'i'
 0139    | [33mOP_CONSTANT     [0m   16 '3'
@@ -352,7 +351,7 @@ Total:          2.311ms
 0146    | [33mOP_CONSTANT     [0m   11 '0'
 0148    | [33mOP_SET_GLOBAL   [0m   17 'b3'
 0151    | [33mOP_POP[0m
-[31m        hi = ((b3 << 8) | b2)[0m
+[31m        hi = ((b3 << 8) | b2);[0m
 0152 [34m  93[0m [33mOP_GET_GLOBAL   [0m   17 'b3'
 0155    | [33mOP_CONSTANT     [0m   18 '8'
 0157    | [33mOP_LSHIFT[0m
@@ -360,7 +359,7 @@ Total:          2.311ms
 0161    | [33mOP_BOR[0m
 0162    | [33mOP_SET_GLOBAL   [0m   19 'hi'
 0165    | [33mOP_POP[0m
-[31m        lo = ((b1 << 8) | b0)[0m
+[31m        lo = ((b1 << 8) | b0);[0m
 0166 [34m  94[0m [33mOP_GET_GLOBAL   [0m   13 'b1'
 0169    | [33mOP_CONSTANT     [0m   18 '8'
 0171    | [33mOP_LSHIFT[0m
@@ -378,1240 +377,1250 @@ Total:          2.311ms
 0193    | [33mOP_INVOKE       [0m (1 args)   22 'push'
 0197    | [33mOP_POP[0m
 0198    | [33mOP_JUMP_BACK    [0m  198 -> 63
-[31m        nwords = words.length[0m
+[31m        nwords = words.length;[0m
 0201 [34m  97[0m [33mOP_GET_GLOBAL   [0m    0 'words'
 0204    | [33mOP_CONSTANT     [0m    3 'length'
 0206    | [33mOP_GET_FIELD[0m
 0207    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
-[31m        // Step 1. Append Padding Bits[0m
-0210 [34m  98[0m [33mOP_POP[0m
-[31m        if (nbytes % 4 == 0) {[0m
+0210    | [33mOP_POP[0m
+[31m        if(nbytes % 4 == 0)[0m
 0211 [34m  99[0m [33mOP_GET_GLOBAL   [0m    4 'nbytes'
 0214    | [33mOP_CONSTANT     [0m   10 '4'
 0216    | [33mOP_MOD[0m
 0217    | [33mOP_CONSTANT     [0m   11 '0'
 0219    | [33mOP_EQUAL[0m
-0220    | [33mOP_JUMP_IF_FALSE[0m  220 -> 242
-[31m        words[nwords++] = 0x80;[0m
-0223 [34m 102[0m [33mOP_GET_GLOBAL   [0m    0 'words'
-0226    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0229    | [33mOP_CONSTANT     [0m    8 '1'
-0231    | [33mOP_ADD[0m
-0232    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
-0235    | [33mOP_CONSTANT     [0m   24 '128'
-0237    | [33mOP_SUBSCRIPT_SET[0m
-0238    | [33mOP_POP[0m
-0239    | [33mOP_JUMP         [0m  239 -> 276
-[31m        words[nwords - 1] = (words[nwords - 1] | (0x80 << (nbytes % 4) * 8));[0m
-0242 [34m 105[0m [33mOP_GET_GLOBAL   [0m    0 'words'
-0245    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0248    | [33mOP_CONSTANT     [0m    8 '1'
-0250    | [33mOP_SUBTRACT[0m
-0251    | [33mOP_GET_GLOBAL   [0m    0 'words'
-0254    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0257    | [33mOP_CONSTANT     [0m    8 '1'
-0259    | [33mOP_SUBTRACT[0m
-0260    | [33mOP_SUBSCRIPT_GET[0m
-0261    | [33mOP_CONSTANT     [0m   24 '128'
-0263    | [33mOP_GET_GLOBAL   [0m    4 'nbytes'
-0266    | [33mOP_CONSTANT     [0m   10 '4'
-0268    | [33mOP_MOD[0m
-0269    | [33mOP_CONSTANT     [0m   18 '8'
-0271    | [33mOP_MULTIPLY[0m
-0272    | [33mOP_LSHIFT[0m
-0273    | [33mOP_BOR[0m
-0274    | [33mOP_SUBSCRIPT_SET[0m
-0275    | [33mOP_POP[0m
-[31m        while ((nwords % 16) != 14)[0m
-0276 [34m 109[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0279    | [33mOP_CONSTANT     [0m   21 '16'
-0281    | [33mOP_MOD[0m
-0282    | [33mOP_CONSTANT     [0m   25 '14'
-0284    | [33mOP_EQUAL[0m
-0285    | [33mOP_NOT[0m
-0286    | [33mOP_JUMP_IF_FALSE[0m  286 -> 302
+0220    | [33mOP_JUMP_IF_FALSE[0m  220 -> 246
+[31m        words.push(0x80);[0m
+0223 [34m 101[0m [33mOP_GET_GLOBAL   [0m    0 'words'
+0226    | [33mOP_CONSTANT     [0m   24 '128'
+0228    | [33mOP_INVOKE       [0m (1 args)   22 'push'
+0232    | [33mOP_POP[0m
 [31m        nwords++;[0m
-0289 [34m 110[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0292    | [33mOP_CONSTANT     [0m    8 '1'
-0294    | [33mOP_ADD[0m
-0295    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
-0298    | [33mOP_POP[0m
-0299    | [33mOP_JUMP_BACK    [0m  299 -> 276
-[31m        hi = ((nbytes * 8) >> 32)[0m
-0302 [34m 113[0m [33mOP_GET_GLOBAL   [0m    4 'nbytes'
-0305    | [33mOP_CONSTANT     [0m   18 '8'
-0307    | [33mOP_MULTIPLY[0m
-0308    | [33mOP_CONSTANT     [0m   26 '32'
-0310    | [33mOP_RSHIFT[0m
-0311    | [33mOP_SET_GLOBAL   [0m   19 'hi'
-0314    | [33mOP_POP[0m
-[31m        lo = (nbytes * 8) - (hi << 32)[0m
-0315 [34m 114[0m [33mOP_GET_GLOBAL   [0m    4 'nbytes'
-0318    | [33mOP_CONSTANT     [0m   18 '8'
-0320    | [33mOP_MULTIPLY[0m
-0321    | [33mOP_GET_GLOBAL   [0m   19 'hi'
-0324    | [33mOP_CONSTANT     [0m   26 '32'
-0326    | [33mOP_LSHIFT[0m
-0327    | [33mOP_SUBTRACT[0m
-0328    | [33mOP_SET_GLOBAL   [0m   20 'lo'
-0331    | [33mOP_POP[0m
-[31m        words[nwords++] = lo[0m
-0332 [34m 115[0m [33mOP_GET_GLOBAL   [0m    0 'words'
-0335    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0338    | [33mOP_CONSTANT     [0m    8 '1'
-0340    | [33mOP_ADD[0m
-0341    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
-0344    | [33mOP_GET_GLOBAL   [0m   20 'lo'
-0347    | [33mOP_SUBSCRIPT_SET[0m
-0348    | [33mOP_POP[0m
-[31m        words[nwords++] = mod32bits(hi) // truncate to 32 bits[0m
-0349 [34m 116[0m [33mOP_GET_GLOBAL   [0m    0 'words'
-0352    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0355    | [33mOP_CONSTANT     [0m    8 '1'
-0357    | [33mOP_ADD[0m
-0358    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
-0361    | [33mOP_GET_PRIVATE  [0m    0
-0363    | [33mOP_GET_GLOBAL   [0m   19 'hi'
-0366    | [33mOP_CALL         [0m    1
-0368    | [33mOP_SUBSCRIPT_SET[0m
-[31m        // Step 3. Initialize MD Buffer[0m
-0369 [34m 118[0m [33mOP_POP[0m
+0233 [34m 102[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0236    | [33mOP_CONSTANT     [0m    8 '1'
+0238    | [33mOP_ADD[0m
+0239    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
+0242    | [33mOP_POP[0m
+0243    | [33mOP_JUMP         [0m  243 -> 280
+[31m        words[nwords - 1] = (words[nwords - 1] | (0x80 << (nbytes % 4) * 8));[0m
+0246 [34m 106[0m [33mOP_GET_GLOBAL   [0m    0 'words'
+0249    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0252    | [33mOP_CONSTANT     [0m    8 '1'
+0254    | [33mOP_SUBTRACT[0m
+0255    | [33mOP_GET_GLOBAL   [0m    0 'words'
+0258    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0261    | [33mOP_CONSTANT     [0m    8 '1'
+0263    | [33mOP_SUBTRACT[0m
+0264    | [33mOP_SUBSCRIPT_GET[0m
+0265    | [33mOP_CONSTANT     [0m   24 '128'
+0267    | [33mOP_GET_GLOBAL   [0m    4 'nbytes'
+0270    | [33mOP_CONSTANT     [0m   10 '4'
+0272    | [33mOP_MOD[0m
+0273    | [33mOP_CONSTANT     [0m   18 '8'
+0275    | [33mOP_MULTIPLY[0m
+0276    | [33mOP_LSHIFT[0m
+0277    | [33mOP_BOR[0m
+0278    | [33mOP_SUBSCRIPT_SET[0m
+0279    | [33mOP_POP[0m
+[31m        while ((nwords % 16) != 14)[0m
+0280 [34m 110[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0283    | [33mOP_CONSTANT     [0m   21 '16'
+0285    | [33mOP_MOD[0m
+0286    | [33mOP_CONSTANT     [0m   25 '14'
+0288    | [33mOP_EQUAL[0m
+0289    | [33mOP_NOT[0m
+0290    | [33mOP_JUMP_IF_FALSE[0m  290 -> 306
+[31m        nwords++;[0m
+0293 [34m 112[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0296    | [33mOP_CONSTANT     [0m    8 '1'
+0298    | [33mOP_ADD[0m
+0299    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
+0302    | [33mOP_POP[0m
+0303    | [33mOP_JUMP_BACK    [0m  303 -> 280
+[31m        hi = ((nbytes * 8) >> 32);[0m
+0306 [34m 115[0m [33mOP_GET_GLOBAL   [0m    4 'nbytes'
+0309    | [33mOP_CONSTANT     [0m   18 '8'
+0311    | [33mOP_MULTIPLY[0m
+0312    | [33mOP_CONSTANT     [0m   26 '32'
+0314    | [33mOP_RSHIFT[0m
+0315    | [33mOP_SET_GLOBAL   [0m   19 'hi'
+0318    | [33mOP_POP[0m
+[31m        lo = (nbytes * 8) - (hi << 32);[0m
+0319 [34m 116[0m [33mOP_GET_GLOBAL   [0m    4 'nbytes'
+0322    | [33mOP_CONSTANT     [0m   18 '8'
+0324    | [33mOP_MULTIPLY[0m
+0325    | [33mOP_GET_GLOBAL   [0m   19 'hi'
+0328    | [33mOP_CONSTANT     [0m   26 '32'
+0330    | [33mOP_LSHIFT[0m
+0331    | [33mOP_SUBTRACT[0m
+0332    | [33mOP_SET_GLOBAL   [0m   20 'lo'
+0335    | [33mOP_POP[0m
+[31m        words.push(lo);[0m
+0336 [34m 117[0m [33mOP_GET_GLOBAL   [0m    0 'words'
+0339    | [33mOP_GET_GLOBAL   [0m   20 'lo'
+0342    | [33mOP_INVOKE       [0m (1 args)   22 'push'
+0346    | [33mOP_POP[0m
+[31m        nwords++;[0m
+0347 [34m 118[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0350    | [33mOP_CONSTANT     [0m    8 '1'
+0352    | [33mOP_ADD[0m
+0353    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
+0356    | [33mOP_POP[0m
+[31m        println("words = ", words);[0m
+0357 [34m 119[0m [33mOP_GET_GLOBAL   [0m    6 'println'
+0360    | [33mOP_CONSTANT     [0m   27 'words = '
+0362    | [33mOP_GET_GLOBAL   [0m    0 'words'
+0365    | [33mOP_CALL         [0m    2
+0367    | [33mOP_POP[0m
+[31m        words.push(mod32bits(hi)); // truncate to 32 bits[0m
+0368 [34m 120[0m [33mOP_GET_GLOBAL   [0m    0 'words'
+0371    | [33mOP_GET_PRIVATE  [0m    0
+0373    | [33mOP_GET_GLOBAL   [0m   19 'hi'
+0376    | [33mOP_CALL         [0m    1
+0378    | [33mOP_INVOKE       [0m (1 args)   22 'push'
+0382    | [33mOP_POP[0m
+[31m        nwords++;[0m
+0383 [34m 121[0m [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0386    | [33mOP_CONSTANT     [0m    8 '1'
+0388    | [33mOP_ADD[0m
+0389    | [33mOP_SET_GLOBAL   [0m   23 'nwords'
+0392    | [33mOP_POP[0m
 [31m        state[0] = 0x67452301;[0m
-0370 [34m 119[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0373    | [33mOP_CONSTANT     [0m   11 '0'
-0375    | [33mOP_CONSTANT     [0m   28 '1.73258e+09'
-0377    | [33mOP_SUBSCRIPT_SET[0m
-0378    | [33mOP_POP[0m
+0393 [34m 123[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0396    | [33mOP_CONSTANT     [0m   11 '0'
+0398    | [33mOP_CONSTANT     [0m   29 '1.73258e+09'
+0400    | [33mOP_SUBSCRIPT_SET[0m
+0401    | [33mOP_POP[0m
 [31m        state[1] = 0xefcdab89;[0m
-0379 [34m 120[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0382    | [33mOP_CONSTANT     [0m    8 '1'
-0384    | [33mOP_CONSTANT     [0m   29 '4.02323e+09'
-0386    | [33mOP_SUBSCRIPT_SET[0m
-0387    | [33mOP_POP[0m
+0402 [34m 124[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0405    | [33mOP_CONSTANT     [0m    8 '1'
+0407    | [33mOP_CONSTANT     [0m   30 '4.02323e+09'
+0409    | [33mOP_SUBSCRIPT_SET[0m
+0410    | [33mOP_POP[0m
 [31m        state[2] = 0x98badcfe;[0m
-0388 [34m 121[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0391    | [33mOP_CONSTANT     [0m   14 '2'
-0393    | [33mOP_CONSTANT     [0m   30 '2.56238e+09'
-0395    | [33mOP_SUBSCRIPT_SET[0m
-0396    | [33mOP_POP[0m
+0411 [34m 125[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0414    | [33mOP_CONSTANT     [0m   14 '2'
+0416    | [33mOP_CONSTANT     [0m   31 '2.56238e+09'
+0418    | [33mOP_SUBSCRIPT_SET[0m
+0419    | [33mOP_POP[0m
 [31m        state[3] = 0x10325476;[0m
-0397 [34m 122[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0400    | [33mOP_CONSTANT     [0m   16 '3'
-0402    | [33mOP_CONSTANT     [0m   31 '2.71734e+08'
-0404    | [33mOP_SUBSCRIPT_SET[0m
-0405    | [33mOP_POP[0m
+0420 [34m 126[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0423    | [33mOP_CONSTANT     [0m   16 '3'
+0425    | [33mOP_CONSTANT     [0m   32 '2.71734e+08'
+0427    | [33mOP_SUBSCRIPT_SET[0m
+0428    | [33mOP_POP[0m
 [31m        for (i = 0; i < nwords; i += 16)[0m
-0406 [34m 126[0m [33mOP_CONSTANT     [0m   11 '0'
-0408    | [33mOP_SET_GLOBAL   [0m    9 'i'
-0411    | [33mOP_GET_GLOBAL   [0m    9 'i'
-0414    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
-0417    | [33mOP_LESS[0m
-0418    | [33mOP_JUMP_IF_FALSE[0m  418 -> 2600
-0421    | [33mOP_JUMP         [0m  421 -> 437
-0424    | [33mOP_GET_GLOBAL   [0m    9 'i'
-0427    | [33mOP_CONSTANT     [0m   21 '16'
-0429    | [33mOP_ADD[0m
-0430    | [33mOP_SET_GLOBAL   [0m    9 'i'
-0433    | [33mOP_POP[0m
-0434    | [33mOP_JUMP_BACK    [0m  434 -> 411
+0429 [34m 130[0m [33mOP_CONSTANT     [0m   11 '0'
+0431    | [33mOP_SET_GLOBAL   [0m    9 'i'
+0434    | [33mOP_GET_GLOBAL   [0m    9 'i'
+0437    | [33mOP_GET_GLOBAL   [0m   23 'nwords'
+0440    | [33mOP_LESS[0m
+0441    | [33mOP_JUMP_IF_FALSE[0m  441 -> 2623
+0444    | [33mOP_JUMP         [0m  444 -> 460
+0447    | [33mOP_GET_GLOBAL   [0m    9 'i'
+0450    | [33mOP_CONSTANT     [0m   21 '16'
+0452    | [33mOP_ADD[0m
+0453    | [33mOP_SET_GLOBAL   [0m    9 'i'
+0456    | [33mOP_POP[0m
+0457    | [33mOP_JUMP_BACK    [0m  457 -> 434
 [31m        for (j = 0; j < 16; j++)[0m
-0437 [34m 129[0m [33mOP_CONSTANT     [0m   11 '0'
-0439    | [33mOP_SET_GLOBAL   [0m   32 'j'
-0442    | [33mOP_GET_GLOBAL   [0m   32 'j'
-0445    | [33mOP_CONSTANT     [0m   21 '16'
-0447    | [33mOP_LESS[0m
-0448    | [33mOP_JUMP_IF_FALSE[0m  448 -> 489
-0451    | [33mOP_JUMP         [0m  451 -> 467
-0454    | [33mOP_GET_GLOBAL   [0m   32 'j'
-0457    | [33mOP_CONSTANT     [0m    8 '1'
-0459    | [33mOP_ADD[0m
-0460    | [33mOP_SET_GLOBAL   [0m   32 'j'
-0463    | [33mOP_POP[0m
-0464    | [33mOP_JUMP_BACK    [0m  464 -> 442
-[31m        x[j] = words[i + j];[0m
-0467 [34m 131[0m [33mOP_GET_GLOBAL   [0m   33 'x'
-0470    | [33mOP_GET_GLOBAL   [0m   32 'j'
-0473    | [33mOP_GET_GLOBAL   [0m    0 'words'
-0476    | [33mOP_GET_GLOBAL   [0m    9 'i'
-0479    | [33mOP_GET_GLOBAL   [0m   32 'j'
+0460 [34m 133[0m [33mOP_CONSTANT     [0m   11 '0'
+0462    | [33mOP_SET_GLOBAL   [0m   33 'j'
+0465    | [33mOP_GET_GLOBAL   [0m   33 'j'
+0468    | [33mOP_CONSTANT     [0m   21 '16'
+0470    | [33mOP_LESS[0m
+0471    | [33mOP_JUMP_IF_FALSE[0m  471 -> 512
+0474    | [33mOP_JUMP         [0m  474 -> 490
+0477    | [33mOP_GET_GLOBAL   [0m   33 'j'
+0480    | [33mOP_CONSTANT     [0m    8 '1'
 0482    | [33mOP_ADD[0m
-0483    | [33mOP_SUBSCRIPT_GET[0m
-0484    | [33mOP_SUBSCRIPT_SET[0m
-0485    | [33mOP_POP[0m
-0486    | [33mOP_JUMP_BACK    [0m  486 -> 454
-[31m        a = state[0];[0m
-0489 [34m 133[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0492    | [33mOP_CONSTANT     [0m   11 '0'
-0494    | [33mOP_SUBSCRIPT_GET[0m
-0495    | [33mOP_SET_GLOBAL   [0m   34 'a'
-0498    | [33mOP_POP[0m
-[31m        b = state[1];[0m
-0499 [34m 134[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0502    | [33mOP_CONSTANT     [0m    8 '1'
-0504    | [33mOP_SUBSCRIPT_GET[0m
-0505    | [33mOP_SET_GLOBAL   [0m   35 'b'
+0483    | [33mOP_SET_GLOBAL   [0m   33 'j'
+0486    | [33mOP_POP[0m
+0487    | [33mOP_JUMP_BACK    [0m  487 -> 465
+[31m        x[j] = words[i + j];[0m
+0490 [34m 135[0m [33mOP_GET_GLOBAL   [0m   34 'x'
+0493    | [33mOP_GET_GLOBAL   [0m   33 'j'
+0496    | [33mOP_GET_GLOBAL   [0m    0 'words'
+0499    | [33mOP_GET_GLOBAL   [0m    9 'i'
+0502    | [33mOP_GET_GLOBAL   [0m   33 'j'
+0505    | [33mOP_ADD[0m
+0506    | [33mOP_SUBSCRIPT_GET[0m
+0507    | [33mOP_SUBSCRIPT_SET[0m
 0508    | [33mOP_POP[0m
+0509    | [33mOP_JUMP_BACK    [0m  509 -> 477
+[31m        a = state[0];[0m
+0512 [34m 137[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0515    | [33mOP_CONSTANT     [0m   11 '0'
+0517    | [33mOP_SUBSCRIPT_GET[0m
+0518    | [33mOP_SET_GLOBAL   [0m   35 'a'
+0521    | [33mOP_POP[0m
+[31m        b = state[1];[0m
+0522 [34m 138[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0525    | [33mOP_CONSTANT     [0m    8 '1'
+0527    | [33mOP_SUBSCRIPT_GET[0m
+0528    | [33mOP_SET_GLOBAL   [0m   36 'b'
+0531    | [33mOP_POP[0m
 [31m        c = state[2];[0m
-0509 [34m 135[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0512    | [33mOP_CONSTANT     [0m   14 '2'
-0514    | [33mOP_SUBSCRIPT_GET[0m
-0515    | [33mOP_SET_GLOBAL   [0m   36 'c'
-0518    | [33mOP_POP[0m
+0532 [34m 139[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0535    | [33mOP_CONSTANT     [0m   14 '2'
+0537    | [33mOP_SUBSCRIPT_GET[0m
+0538    | [33mOP_SET_GLOBAL   [0m   37 'c'
+0541    | [33mOP_POP[0m
 [31m        d = state[3];[0m
-0519 [34m 136[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-0522    | [33mOP_CONSTANT     [0m   16 '3'
-0524    | [33mOP_SUBSCRIPT_GET[0m
-0525    | [33mOP_SET_GLOBAL   [0m   37 'd'
-0528    | [33mOP_POP[0m
+0542 [34m 140[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+0545    | [33mOP_CONSTANT     [0m   16 '3'
+0547    | [33mOP_SUBSCRIPT_GET[0m
+0548    | [33mOP_SET_GLOBAL   [0m   38 'd'
+0551    | [33mOP_POP[0m
 [31m        a = FF(a, b, c, d, x[ 0], S11, 0xd76aa478);[0m
-0529 [34m 139[0m [33mOP_GET_PRIVATE  [0m    5
-0531    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0534    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0537    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0540    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0543    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0546    | [33mOP_CONSTANT     [0m   11 '0'
-0548    | [33mOP_SUBSCRIPT_GET[0m
-0549    | [33mOP_GET_GLOBAL   [0m   38 'S11'
-0552    | [33mOP_CONSTANT     [0m   39 '3.61409e+09'
-0554    | [33mOP_CALL         [0m    7
-0556    | [33mOP_SET_GLOBAL   [0m   34 'a'
-0559    | [33mOP_POP[0m
+0552 [34m 143[0m [33mOP_GET_PRIVATE  [0m    5
+0554    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0557    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0560    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0563    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0566    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0569    | [33mOP_CONSTANT     [0m   11 '0'
+0571    | [33mOP_SUBSCRIPT_GET[0m
+0572    | [33mOP_GET_GLOBAL   [0m   39 'S11'
+0575    | [33mOP_CONSTANT     [0m   40 '3.61409e+09'
+0577    | [33mOP_CALL         [0m    7
+0579    | [33mOP_SET_GLOBAL   [0m   35 'a'
+0582    | [33mOP_POP[0m
 [31m        d = FF(d, a, b, c, x[ 1], S12, 0xe8c7b756);[0m
-0560 [34m 140[0m [33mOP_GET_PRIVATE  [0m    5
-0562    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0565    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0568    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0571    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0574    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0577    | [33mOP_CONSTANT     [0m    8 '1'
-0579    | [33mOP_SUBSCRIPT_GET[0m
-0580    | [33mOP_GET_GLOBAL   [0m   40 'S12'
-0583    | [33mOP_CONSTANT     [0m   41 '3.9054e+09'
-0585    | [33mOP_CALL         [0m    7
-0587    | [33mOP_SET_GLOBAL   [0m   37 'd'
-0590    | [33mOP_POP[0m
+0583 [34m 144[0m [33mOP_GET_PRIVATE  [0m    5
+0585    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0588    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0591    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0594    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0597    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0600    | [33mOP_CONSTANT     [0m    8 '1'
+0602    | [33mOP_SUBSCRIPT_GET[0m
+0603    | [33mOP_GET_GLOBAL   [0m   41 'S12'
+0606    | [33mOP_CONSTANT     [0m   42 '3.9054e+09'
+0608    | [33mOP_CALL         [0m    7
+0610    | [33mOP_SET_GLOBAL   [0m   38 'd'
+0613    | [33mOP_POP[0m
 [31m        c = FF(c, d, a, b, x[ 2], S13, 0x242070db);[0m
-0591 [34m 141[0m [33mOP_GET_PRIVATE  [0m    5
-0593    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0596    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0599    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0602    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0605    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0608    | [33mOP_CONSTANT     [0m   14 '2'
-0610    | [33mOP_SUBSCRIPT_GET[0m
-0611    | [33mOP_GET_GLOBAL   [0m   42 'S13'
-0614    | [33mOP_CONSTANT     [0m   43 '6.06106e+08'
-0616    | [33mOP_CALL         [0m    7
-0618    | [33mOP_SET_GLOBAL   [0m   36 'c'
-0621    | [33mOP_POP[0m
+0614 [34m 145[0m [33mOP_GET_PRIVATE  [0m    5
+0616    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0619    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0622    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0625    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0628    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0631    | [33mOP_CONSTANT     [0m   14 '2'
+0633    | [33mOP_SUBSCRIPT_GET[0m
+0634    | [33mOP_GET_GLOBAL   [0m   43 'S13'
+0637    | [33mOP_CONSTANT     [0m   44 '6.06106e+08'
+0639    | [33mOP_CALL         [0m    7
+0641    | [33mOP_SET_GLOBAL   [0m   37 'c'
+0644    | [33mOP_POP[0m
 [31m        b = FF(b, c, d, a, x[ 3], S14, 0xc1bdceee);[0m
-0622 [34m 142[0m [33mOP_GET_PRIVATE  [0m    5
-0624    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0627    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0630    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0633    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0636    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0639    | [33mOP_CONSTANT     [0m   16 '3'
-0641    | [33mOP_SUBSCRIPT_GET[0m
-0642    | [33mOP_GET_GLOBAL   [0m   44 'S14'
-0645    | [33mOP_CONSTANT     [0m   45 '3.25044e+09'
-0647    | [33mOP_CALL         [0m    7
-0649    | [33mOP_SET_GLOBAL   [0m   35 'b'
-0652    | [33mOP_POP[0m
+0645 [34m 146[0m [33mOP_GET_PRIVATE  [0m    5
+0647    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0650    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0653    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0656    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0659    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0662    | [33mOP_CONSTANT     [0m   16 '3'
+0664    | [33mOP_SUBSCRIPT_GET[0m
+0665    | [33mOP_GET_GLOBAL   [0m   45 'S14'
+0668    | [33mOP_CONSTANT     [0m   46 '3.25044e+09'
+0670    | [33mOP_CALL         [0m    7
+0672    | [33mOP_SET_GLOBAL   [0m   36 'b'
+0675    | [33mOP_POP[0m
 [31m        a = FF(a, b, c, d, x[ 4], S11, 0xf57c0faf);[0m
-0653 [34m 143[0m [33mOP_GET_PRIVATE  [0m    5
-0655    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0658    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0661    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0664    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0667    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0670    | [33mOP_CONSTANT     [0m   10 '4'
-0672    | [33mOP_SUBSCRIPT_GET[0m
-0673    | [33mOP_GET_GLOBAL   [0m   38 'S11'
-0676    | [33mOP_CONSTANT     [0m   46 '4.11855e+09'
-0678    | [33mOP_CALL         [0m    7
-0680    | [33mOP_SET_GLOBAL   [0m   34 'a'
-0683    | [33mOP_POP[0m
+0676 [34m 147[0m [33mOP_GET_PRIVATE  [0m    5
+0678    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0681    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0684    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0687    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0690    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0693    | [33mOP_CONSTANT     [0m   10 '4'
+0695    | [33mOP_SUBSCRIPT_GET[0m
+0696    | [33mOP_GET_GLOBAL   [0m   39 'S11'
+0699    | [33mOP_CONSTANT     [0m   47 '4.11855e+09'
+0701    | [33mOP_CALL         [0m    7
+0703    | [33mOP_SET_GLOBAL   [0m   35 'a'
+0706    | [33mOP_POP[0m
 [31m        d = FF(d, a, b, c, x[ 5], S12, 0x4787c62a);[0m
-0684 [34m 144[0m [33mOP_GET_PRIVATE  [0m    5
-0686    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0689    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0692    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0695    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0698    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0701    | [33mOP_CONSTANT     [0m   47 '5'
-0703    | [33mOP_SUBSCRIPT_GET[0m
-0704    | [33mOP_GET_GLOBAL   [0m   40 'S12'
-0707    | [33mOP_CONSTANT     [0m   48 '1.20008e+09'
-0709    | [33mOP_CALL         [0m    7
-0711    | [33mOP_SET_GLOBAL   [0m   37 'd'
-0714    | [33mOP_POP[0m
+0707 [34m 148[0m [33mOP_GET_PRIVATE  [0m    5
+0709    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0712    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0715    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0718    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0721    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0724    | [33mOP_CONSTANT     [0m   48 '5'
+0726    | [33mOP_SUBSCRIPT_GET[0m
+0727    | [33mOP_GET_GLOBAL   [0m   41 'S12'
+0730    | [33mOP_CONSTANT     [0m   49 '1.20008e+09'
+0732    | [33mOP_CALL         [0m    7
+0734    | [33mOP_SET_GLOBAL   [0m   38 'd'
+0737    | [33mOP_POP[0m
 [31m        c = FF(c, d, a, b, x[ 6], S13, 0xa8304613);[0m
-0715 [34m 145[0m [33mOP_GET_PRIVATE  [0m    5
-0717    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0720    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0723    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0726    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0729    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0732    | [33mOP_CONSTANT     [0m   49 '6'
-0734    | [33mOP_SUBSCRIPT_GET[0m
-0735    | [33mOP_GET_GLOBAL   [0m   42 'S13'
-0738    | [33mOP_CONSTANT     [0m   50 '2.82174e+09'
-0740    | [33mOP_CALL         [0m    7
-0742    | [33mOP_SET_GLOBAL   [0m   36 'c'
-0745    | [33mOP_POP[0m
+0738 [34m 149[0m [33mOP_GET_PRIVATE  [0m    5
+0740    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0743    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0746    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0749    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0752    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0755    | [33mOP_CONSTANT     [0m   50 '6'
+0757    | [33mOP_SUBSCRIPT_GET[0m
+0758    | [33mOP_GET_GLOBAL   [0m   43 'S13'
+0761    | [33mOP_CONSTANT     [0m   51 '2.82174e+09'
+0763    | [33mOP_CALL         [0m    7
+0765    | [33mOP_SET_GLOBAL   [0m   37 'c'
+0768    | [33mOP_POP[0m
 [31m        b = FF(b, c, d, a, x[ 7], S14, 0xfd469501);[0m
-0746 [34m 146[0m [33mOP_GET_PRIVATE  [0m    5
-0748    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0751    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0754    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0757    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0760    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0763    | [33mOP_CONSTANT     [0m   51 '7'
-0765    | [33mOP_SUBSCRIPT_GET[0m
-0766    | [33mOP_GET_GLOBAL   [0m   44 'S14'
-0769    | [33mOP_CONSTANT     [0m   52 '4.24926e+09'
-0771    | [33mOP_CALL         [0m    7
-0773    | [33mOP_SET_GLOBAL   [0m   35 'b'
-0776    | [33mOP_POP[0m
+0769 [34m 150[0m [33mOP_GET_PRIVATE  [0m    5
+0771    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0774    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0777    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0780    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0783    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0786    | [33mOP_CONSTANT     [0m   52 '7'
+0788    | [33mOP_SUBSCRIPT_GET[0m
+0789    | [33mOP_GET_GLOBAL   [0m   45 'S14'
+0792    | [33mOP_CONSTANT     [0m   53 '4.24926e+09'
+0794    | [33mOP_CALL         [0m    7
+0796    | [33mOP_SET_GLOBAL   [0m   36 'b'
+0799    | [33mOP_POP[0m
 [31m        a = FF(a, b, c, d, x[ 8], S11, 0x698098d8);[0m
-0777 [34m 147[0m [33mOP_GET_PRIVATE  [0m    5
-0779    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0782    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0785    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0788    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0791    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0794    | [33mOP_CONSTANT     [0m   18 '8'
-0796    | [33mOP_SUBSCRIPT_GET[0m
-0797    | [33mOP_GET_GLOBAL   [0m   38 'S11'
-0800    | [33mOP_CONSTANT     [0m   53 '1.77004e+09'
-0802    | [33mOP_CALL         [0m    7
-0804    | [33mOP_SET_GLOBAL   [0m   34 'a'
-0807    | [33mOP_POP[0m
+0800 [34m 151[0m [33mOP_GET_PRIVATE  [0m    5
+0802    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0805    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0808    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0811    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0814    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0817    | [33mOP_CONSTANT     [0m   18 '8'
+0819    | [33mOP_SUBSCRIPT_GET[0m
+0820    | [33mOP_GET_GLOBAL   [0m   39 'S11'
+0823    | [33mOP_CONSTANT     [0m   54 '1.77004e+09'
+0825    | [33mOP_CALL         [0m    7
+0827    | [33mOP_SET_GLOBAL   [0m   35 'a'
+0830    | [33mOP_POP[0m
 [31m        d = FF(d, a, b, c, x[ 9], S12, 0x8b44f7af);[0m
-0808 [34m 148[0m [33mOP_GET_PRIVATE  [0m    5
-0810    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0813    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0816    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0819    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0822    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0825    | [33mOP_CONSTANT     [0m   54 '9'
-0827    | [33mOP_SUBSCRIPT_GET[0m
-0828    | [33mOP_GET_GLOBAL   [0m   40 'S12'
-0831    | [33mOP_CONSTANT     [0m   55 '2.33655e+09'
-0833    | [33mOP_CALL         [0m    7
-0835    | [33mOP_SET_GLOBAL   [0m   37 'd'
-0838    | [33mOP_POP[0m
+0831 [34m 152[0m [33mOP_GET_PRIVATE  [0m    5
+0833    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0836    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0839    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0842    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0845    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0848    | [33mOP_CONSTANT     [0m   55 '9'
+0850    | [33mOP_SUBSCRIPT_GET[0m
+0851    | [33mOP_GET_GLOBAL   [0m   41 'S12'
+0854    | [33mOP_CONSTANT     [0m   56 '2.33655e+09'
+0856    | [33mOP_CALL         [0m    7
+0858    | [33mOP_SET_GLOBAL   [0m   38 'd'
+0861    | [33mOP_POP[0m
 [31m        c = FF(c, d, a, b, x[10], S13, 0xffff5bb1);[0m
-0839 [34m 149[0m [33mOP_GET_PRIVATE  [0m    5
-0841    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0844    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0847    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0850    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0853    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0856    | [33mOP_CONSTANT     [0m   56 '10'
-0858    | [33mOP_SUBSCRIPT_GET[0m
-0859    | [33mOP_GET_GLOBAL   [0m   42 'S13'
-0862    | [33mOP_CONSTANT     [0m   57 '4.29493e+09'
-0864    | [33mOP_CALL         [0m    7
-0866    | [33mOP_SET_GLOBAL   [0m   36 'c'
-0869    | [33mOP_POP[0m
+0862 [34m 153[0m [33mOP_GET_PRIVATE  [0m    5
+0864    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0867    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0870    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0873    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0876    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0879    | [33mOP_CONSTANT     [0m   57 '10'
+0881    | [33mOP_SUBSCRIPT_GET[0m
+0882    | [33mOP_GET_GLOBAL   [0m   43 'S13'
+0885    | [33mOP_CONSTANT     [0m   58 '4.29493e+09'
+0887    | [33mOP_CALL         [0m    7
+0889    | [33mOP_SET_GLOBAL   [0m   37 'c'
+0892    | [33mOP_POP[0m
 [31m        b = FF(b, c, d, a, x[11], S14, 0x895cd7be);[0m
-0870 [34m 150[0m [33mOP_GET_PRIVATE  [0m    5
-0872    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0875    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0878    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0881    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0884    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0887    | [33mOP_CONSTANT     [0m   58 '11'
-0889    | [33mOP_SUBSCRIPT_GET[0m
-0890    | [33mOP_GET_GLOBAL   [0m   44 'S14'
-0893    | [33mOP_CONSTANT     [0m   59 '2.30456e+09'
-0895    | [33mOP_CALL         [0m    7
-0897    | [33mOP_SET_GLOBAL   [0m   35 'b'
-0900    | [33mOP_POP[0m
+0893 [34m 154[0m [33mOP_GET_PRIVATE  [0m    5
+0895    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0898    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0901    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0904    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0907    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0910    | [33mOP_CONSTANT     [0m   59 '11'
+0912    | [33mOP_SUBSCRIPT_GET[0m
+0913    | [33mOP_GET_GLOBAL   [0m   45 'S14'
+0916    | [33mOP_CONSTANT     [0m   60 '2.30456e+09'
+0918    | [33mOP_CALL         [0m    7
+0920    | [33mOP_SET_GLOBAL   [0m   36 'b'
+0923    | [33mOP_POP[0m
 [31m        a = FF(a, b, c, d, x[12], S11, 0x6b901122);[0m
-0901 [34m 151[0m [33mOP_GET_PRIVATE  [0m    5
-0903    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0906    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0909    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0912    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0915    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0918    | [33mOP_CONSTANT     [0m   60 '12'
-0920    | [33mOP_SUBSCRIPT_GET[0m
-0921    | [33mOP_GET_GLOBAL   [0m   38 'S11'
-0924    | [33mOP_CONSTANT     [0m   61 '1.8046e+09'
-0926    | [33mOP_CALL         [0m    7
-0928    | [33mOP_SET_GLOBAL   [0m   34 'a'
-0931    | [33mOP_POP[0m
+0924 [34m 155[0m [33mOP_GET_PRIVATE  [0m    5
+0926    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0929    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0932    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0935    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0938    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0941    | [33mOP_CONSTANT     [0m   61 '12'
+0943    | [33mOP_SUBSCRIPT_GET[0m
+0944    | [33mOP_GET_GLOBAL   [0m   39 'S11'
+0947    | [33mOP_CONSTANT     [0m   62 '1.8046e+09'
+0949    | [33mOP_CALL         [0m    7
+0951    | [33mOP_SET_GLOBAL   [0m   35 'a'
+0954    | [33mOP_POP[0m
 [31m        d = FF(d, a, b, c, x[13], S12, 0xfd987193);[0m
-0932 [34m 152[0m [33mOP_GET_PRIVATE  [0m    5
-0934    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0937    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0940    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0943    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0946    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0949    | [33mOP_CONSTANT     [0m   62 '13'
-0951    | [33mOP_SUBSCRIPT_GET[0m
-0952    | [33mOP_GET_GLOBAL   [0m   40 'S12'
-0955    | [33mOP_CONSTANT     [0m   63 '4.25463e+09'
-0957    | [33mOP_CALL         [0m    7
-0959    | [33mOP_SET_GLOBAL   [0m   37 'd'
-0962    | [33mOP_POP[0m
+0955 [34m 156[0m [33mOP_GET_PRIVATE  [0m    5
+0957    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0960    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0963    | [33mOP_GET_GLOBAL   [0m   36 'b'
+0966    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0969    | [33mOP_GET_GLOBAL   [0m   34 'x'
+0972    | [33mOP_CONSTANT     [0m   63 '13'
+0974    | [33mOP_SUBSCRIPT_GET[0m
+0975    | [33mOP_GET_GLOBAL   [0m   41 'S12'
+0978    | [33mOP_CONSTANT     [0m   64 '4.25463e+09'
+0980    | [33mOP_CALL         [0m    7
+0982    | [33mOP_SET_GLOBAL   [0m   38 'd'
+0985    | [33mOP_POP[0m
 [31m        c = FF(c, d, a, b, x[14], S13, 0xa679438e);[0m
-0963 [34m 153[0m [33mOP_GET_PRIVATE  [0m    5
-0965    | [33mOP_GET_GLOBAL   [0m   36 'c'
-0968    | [33mOP_GET_GLOBAL   [0m   37 'd'
-0971    | [33mOP_GET_GLOBAL   [0m   34 'a'
-0974    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0977    | [33mOP_GET_GLOBAL   [0m   33 'x'
-0980    | [33mOP_CONSTANT     [0m   25 '14'
-0982    | [33mOP_SUBSCRIPT_GET[0m
-0983    | [33mOP_GET_GLOBAL   [0m   42 'S13'
-0986    | [33mOP_CONSTANT     [0m   64 '2.79297e+09'
-0988    | [33mOP_CALL         [0m    7
-0990    | [33mOP_SET_GLOBAL   [0m   36 'c'
-0993    | [33mOP_POP[0m
+0986 [34m 157[0m [33mOP_GET_PRIVATE  [0m    5
+0988    | [33mOP_GET_GLOBAL   [0m   37 'c'
+0991    | [33mOP_GET_GLOBAL   [0m   38 'd'
+0994    | [33mOP_GET_GLOBAL   [0m   35 'a'
+0997    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1000    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1003    | [33mOP_CONSTANT     [0m   25 '14'
+1005    | [33mOP_SUBSCRIPT_GET[0m
+1006    | [33mOP_GET_GLOBAL   [0m   43 'S13'
+1009    | [33mOP_CONSTANT     [0m   65 '2.79297e+09'
+1011    | [33mOP_CALL         [0m    7
+1013    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1016    | [33mOP_POP[0m
 [31m        b = FF(b, c, d, a, x[15], S14, 0x49b40821);[0m
-0994 [34m 154[0m [33mOP_GET_PRIVATE  [0m    5
-0996    | [33mOP_GET_GLOBAL   [0m   35 'b'
-0999    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1002    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1005    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1008    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1011    | [33mOP_CONSTANT     [0m   65 '15'
-1013    | [33mOP_SUBSCRIPT_GET[0m
-1014    | [33mOP_GET_GLOBAL   [0m   44 'S14'
-1017    | [33mOP_CONSTANT     [0m   66 '1.23654e+09'
-1019    | [33mOP_CALL         [0m    7
-1021    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1024    | [33mOP_POP[0m
+1017 [34m 158[0m [33mOP_GET_PRIVATE  [0m    5
+1019    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1022    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1025    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1028    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1031    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1034    | [33mOP_CONSTANT     [0m   66 '15'
+1036    | [33mOP_SUBSCRIPT_GET[0m
+1037    | [33mOP_GET_GLOBAL   [0m   45 'S14'
+1040    | [33mOP_CONSTANT     [0m   67 '1.23654e+09'
+1042    | [33mOP_CALL         [0m    7
+1044    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1047    | [33mOP_POP[0m
 [31m        a = GG(a, b, c, d, x[ 1], S21, 0xf61e2562);[0m
-1025 [34m 157[0m [33mOP_GET_PRIVATE  [0m    6
-1027    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1030    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1033    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1036    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1039    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1042    | [33mOP_CONSTANT     [0m    8 '1'
-1044    | [33mOP_SUBSCRIPT_GET[0m
-1045    | [33mOP_GET_GLOBAL   [0m   67 'S21'
-1048    | [33mOP_CONSTANT     [0m   68 '4.12917e+09'
-1050    | [33mOP_CALL         [0m    7
-1052    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1055    | [33mOP_POP[0m
+1048 [34m 161[0m [33mOP_GET_PRIVATE  [0m    6
+1050    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1053    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1056    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1059    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1062    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1065    | [33mOP_CONSTANT     [0m    8 '1'
+1067    | [33mOP_SUBSCRIPT_GET[0m
+1068    | [33mOP_GET_GLOBAL   [0m   68 'S21'
+1071    | [33mOP_CONSTANT     [0m   69 '4.12917e+09'
+1073    | [33mOP_CALL         [0m    7
+1075    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1078    | [33mOP_POP[0m
 [31m        d = GG(d, a, b, c, x[ 6], S22, 0xc040b340);[0m
-1056 [34m 158[0m [33mOP_GET_PRIVATE  [0m    6
-1058    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1061    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1064    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1067    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1070    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1073    | [33mOP_CONSTANT     [0m   49 '6'
-1075    | [33mOP_SUBSCRIPT_GET[0m
-1076    | [33mOP_GET_GLOBAL   [0m   69 'S22'
-1079    | [33mOP_CONSTANT     [0m   70 '3.22547e+09'
-1081    | [33mOP_CALL         [0m    7
-1083    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1086    | [33mOP_POP[0m
+1079 [34m 162[0m [33mOP_GET_PRIVATE  [0m    6
+1081    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1084    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1087    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1090    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1093    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1096    | [33mOP_CONSTANT     [0m   50 '6'
+1098    | [33mOP_SUBSCRIPT_GET[0m
+1099    | [33mOP_GET_GLOBAL   [0m   70 'S22'
+1102    | [33mOP_CONSTANT     [0m   71 '3.22547e+09'
+1104    | [33mOP_CALL         [0m    7
+1106    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1109    | [33mOP_POP[0m
 [31m        c = GG(c, d, a, b, x[11], S23, 0x265e5a51);[0m
-1087 [34m 159[0m [33mOP_GET_PRIVATE  [0m    6
-1089    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1092    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1095    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1098    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1101    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1104    | [33mOP_CONSTANT     [0m   58 '11'
-1106    | [33mOP_SUBSCRIPT_GET[0m
-1107    | [33mOP_GET_GLOBAL   [0m   71 'S23'
-1110    | [33mOP_CONSTANT     [0m   72 '6.43718e+08'
-1112    | [33mOP_CALL         [0m    7
-1114    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1117    | [33mOP_POP[0m
+1110 [34m 163[0m [33mOP_GET_PRIVATE  [0m    6
+1112    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1115    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1118    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1121    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1124    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1127    | [33mOP_CONSTANT     [0m   59 '11'
+1129    | [33mOP_SUBSCRIPT_GET[0m
+1130    | [33mOP_GET_GLOBAL   [0m   72 'S23'
+1133    | [33mOP_CONSTANT     [0m   73 '6.43718e+08'
+1135    | [33mOP_CALL         [0m    7
+1137    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1140    | [33mOP_POP[0m
 [31m        b = GG(b, c, d, a, x[ 0], S24, 0xe9b6c7aa);[0m
-1118 [34m 160[0m [33mOP_GET_PRIVATE  [0m    6
-1120    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1123    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1126    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1129    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1132    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1135    | [33mOP_CONSTANT     [0m   11 '0'
-1137    | [33mOP_SUBSCRIPT_GET[0m
-1138    | [33mOP_GET_GLOBAL   [0m   73 'S24'
-1141    | [33mOP_CONSTANT     [0m   74 '3.92107e+09'
-1143    | [33mOP_CALL         [0m    7
-1145    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1148    | [33mOP_POP[0m
+1141 [34m 164[0m [33mOP_GET_PRIVATE  [0m    6
+1143    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1146    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1149    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1152    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1155    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1158    | [33mOP_CONSTANT     [0m   11 '0'
+1160    | [33mOP_SUBSCRIPT_GET[0m
+1161    | [33mOP_GET_GLOBAL   [0m   74 'S24'
+1164    | [33mOP_CONSTANT     [0m   75 '3.92107e+09'
+1166    | [33mOP_CALL         [0m    7
+1168    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1171    | [33mOP_POP[0m
 [31m        a = GG(a, b, c, d, x[ 5], S21, 0xd62f105d);[0m
-1149 [34m 161[0m [33mOP_GET_PRIVATE  [0m    6
-1151    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1154    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1157    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1160    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1163    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1166    | [33mOP_CONSTANT     [0m   47 '5'
-1168    | [33mOP_SUBSCRIPT_GET[0m
-1169    | [33mOP_GET_GLOBAL   [0m   67 'S21'
-1172    | [33mOP_CONSTANT     [0m   75 '3.59341e+09'
-1174    | [33mOP_CALL         [0m    7
-1176    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1179    | [33mOP_POP[0m
+1172 [34m 165[0m [33mOP_GET_PRIVATE  [0m    6
+1174    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1177    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1180    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1183    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1186    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1189    | [33mOP_CONSTANT     [0m   48 '5'
+1191    | [33mOP_SUBSCRIPT_GET[0m
+1192    | [33mOP_GET_GLOBAL   [0m   68 'S21'
+1195    | [33mOP_CONSTANT     [0m   76 '3.59341e+09'
+1197    | [33mOP_CALL         [0m    7
+1199    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1202    | [33mOP_POP[0m
 [31m        d = GG(d, a, b, c, x[10], S22,  0x2441453);[0m
-1180 [34m 162[0m [33mOP_GET_PRIVATE  [0m    6
-1182    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1185    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1188    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1191    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1194    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1197    | [33mOP_CONSTANT     [0m   56 '10'
-1199    | [33mOP_SUBSCRIPT_GET[0m
-1200    | [33mOP_GET_GLOBAL   [0m   69 'S22'
-1203    | [33mOP_CONSTANT     [0m   76 '3.80161e+07'
-1205    | [33mOP_CALL         [0m    7
-1207    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1210    | [33mOP_POP[0m
+1203 [34m 166[0m [33mOP_GET_PRIVATE  [0m    6
+1205    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1208    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1211    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1214    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1217    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1220    | [33mOP_CONSTANT     [0m   57 '10'
+1222    | [33mOP_SUBSCRIPT_GET[0m
+1223    | [33mOP_GET_GLOBAL   [0m   70 'S22'
+1226    | [33mOP_CONSTANT     [0m   77 '3.80161e+07'
+1228    | [33mOP_CALL         [0m    7
+1230    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1233    | [33mOP_POP[0m
 [31m        c = GG(c, d, a, b, x[15], S23, 0xd8a1e681);[0m
-1211 [34m 163[0m [33mOP_GET_PRIVATE  [0m    6
-1213    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1216    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1219    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1222    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1225    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1228    | [33mOP_CONSTANT     [0m   65 '15'
-1230    | [33mOP_SUBSCRIPT_GET[0m
-1231    | [33mOP_GET_GLOBAL   [0m   71 'S23'
-1234    | [33mOP_CONSTANT     [0m   77 '3.63449e+09'
-1236    | [33mOP_CALL         [0m    7
-1238    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1241    | [33mOP_POP[0m
+1234 [34m 167[0m [33mOP_GET_PRIVATE  [0m    6
+1236    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1239    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1242    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1245    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1248    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1251    | [33mOP_CONSTANT     [0m   66 '15'
+1253    | [33mOP_SUBSCRIPT_GET[0m
+1254    | [33mOP_GET_GLOBAL   [0m   72 'S23'
+1257    | [33mOP_CONSTANT     [0m   78 '3.63449e+09'
+1259    | [33mOP_CALL         [0m    7
+1261    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1264    | [33mOP_POP[0m
 [31m        b = GG(b, c, d, a, x[ 4], S24, 0xe7d3fbc8);[0m
-1242 [34m 164[0m [33mOP_GET_PRIVATE  [0m    6
-1244    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1247    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1250    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1253    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1256    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1259    | [33mOP_CONSTANT     [0m   10 '4'
-1261    | [33mOP_SUBSCRIPT_GET[0m
-1262    | [33mOP_GET_GLOBAL   [0m   73 'S24'
-1265    | [33mOP_CONSTANT     [0m   78 '3.88943e+09'
-1267    | [33mOP_CALL         [0m    7
-1269    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1272    | [33mOP_POP[0m
+1265 [34m 168[0m [33mOP_GET_PRIVATE  [0m    6
+1267    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1270    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1273    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1276    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1279    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1282    | [33mOP_CONSTANT     [0m   10 '4'
+1284    | [33mOP_SUBSCRIPT_GET[0m
+1285    | [33mOP_GET_GLOBAL   [0m   74 'S24'
+1288    | [33mOP_CONSTANT     [0m   79 '3.88943e+09'
+1290    | [33mOP_CALL         [0m    7
+1292    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1295    | [33mOP_POP[0m
 [31m        a = GG(a, b, c, d, x[ 9], S21, 0x21e1cde6);[0m
-1273 [34m 165[0m [33mOP_GET_PRIVATE  [0m    6
-1275    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1278    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1281    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1284    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1287    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1290    | [33mOP_CONSTANT     [0m   54 '9'
-1292    | [33mOP_SUBSCRIPT_GET[0m
-1293    | [33mOP_GET_GLOBAL   [0m   67 'S21'
-1296    | [33mOP_CONSTANT     [0m   79 '5.68446e+08'
-1298    | [33mOP_CALL         [0m    7
-1300    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1303    | [33mOP_POP[0m
+1296 [34m 169[0m [33mOP_GET_PRIVATE  [0m    6
+1298    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1301    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1304    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1307    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1310    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1313    | [33mOP_CONSTANT     [0m   55 '9'
+1315    | [33mOP_SUBSCRIPT_GET[0m
+1316    | [33mOP_GET_GLOBAL   [0m   68 'S21'
+1319    | [33mOP_CONSTANT     [0m   80 '5.68446e+08'
+1321    | [33mOP_CALL         [0m    7
+1323    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1326    | [33mOP_POP[0m
 [31m        d = GG(d, a, b, c, x[14], S22, 0xc33707d6);[0m
-1304 [34m 166[0m [33mOP_GET_PRIVATE  [0m    6
-1306    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1309    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1312    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1315    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1318    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1321    | [33mOP_CONSTANT     [0m   25 '14'
-1323    | [33mOP_SUBSCRIPT_GET[0m
-1324    | [33mOP_GET_GLOBAL   [0m   69 'S22'
-1327    | [33mOP_CONSTANT     [0m   80 '3.27516e+09'
-1329    | [33mOP_CALL         [0m    7
-1331    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1334    | [33mOP_POP[0m
+1327 [34m 170[0m [33mOP_GET_PRIVATE  [0m    6
+1329    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1332    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1335    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1338    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1341    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1344    | [33mOP_CONSTANT     [0m   25 '14'
+1346    | [33mOP_SUBSCRIPT_GET[0m
+1347    | [33mOP_GET_GLOBAL   [0m   70 'S22'
+1350    | [33mOP_CONSTANT     [0m   81 '3.27516e+09'
+1352    | [33mOP_CALL         [0m    7
+1354    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1357    | [33mOP_POP[0m
 [31m        c = GG(c, d, a, b, x[ 3], S23, 0xf4d50d87);[0m
-1335 [34m 167[0m [33mOP_GET_PRIVATE  [0m    6
-1337    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1340    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1343    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1346    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1349    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1352    | [33mOP_CONSTANT     [0m   16 '3'
-1354    | [33mOP_SUBSCRIPT_GET[0m
-1355    | [33mOP_GET_GLOBAL   [0m   71 'S23'
-1358    | [33mOP_CONSTANT     [0m   81 '4.1076e+09'
-1360    | [33mOP_CALL         [0m    7
-1362    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1365    | [33mOP_POP[0m
+1358 [34m 171[0m [33mOP_GET_PRIVATE  [0m    6
+1360    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1363    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1366    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1369    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1372    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1375    | [33mOP_CONSTANT     [0m   16 '3'
+1377    | [33mOP_SUBSCRIPT_GET[0m
+1378    | [33mOP_GET_GLOBAL   [0m   72 'S23'
+1381    | [33mOP_CONSTANT     [0m   82 '4.1076e+09'
+1383    | [33mOP_CALL         [0m    7
+1385    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1388    | [33mOP_POP[0m
 [31m        b = GG(b, c, d, a, x[ 8], S24, 0x455a14ed);[0m
-1366 [34m 168[0m [33mOP_GET_PRIVATE  [0m    6
-1368    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1371    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1374    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1377    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1380    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1383    | [33mOP_CONSTANT     [0m   18 '8'
-1385    | [33mOP_SUBSCRIPT_GET[0m
-1386    | [33mOP_GET_GLOBAL   [0m   73 'S24'
-1389    | [33mOP_CONSTANT     [0m   82 '1.16353e+09'
-1391    | [33mOP_CALL         [0m    7
-1393    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1396    | [33mOP_POP[0m
+1389 [34m 172[0m [33mOP_GET_PRIVATE  [0m    6
+1391    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1394    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1397    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1400    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1403    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1406    | [33mOP_CONSTANT     [0m   18 '8'
+1408    | [33mOP_SUBSCRIPT_GET[0m
+1409    | [33mOP_GET_GLOBAL   [0m   74 'S24'
+1412    | [33mOP_CONSTANT     [0m   83 '1.16353e+09'
+1414    | [33mOP_CALL         [0m    7
+1416    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1419    | [33mOP_POP[0m
 [31m        a = GG(a, b, c, d, x[13], S21, 0xa9e3e905);[0m
-1397 [34m 169[0m [33mOP_GET_PRIVATE  [0m    6
-1399    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1402    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1405    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1408    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1411    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1414    | [33mOP_CONSTANT     [0m   62 '13'
-1416    | [33mOP_SUBSCRIPT_GET[0m
-1417    | [33mOP_GET_GLOBAL   [0m   67 'S21'
-1420    | [33mOP_CONSTANT     [0m   83 '2.85029e+09'
-1422    | [33mOP_CALL         [0m    7
-1424    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1427    | [33mOP_POP[0m
+1420 [34m 173[0m [33mOP_GET_PRIVATE  [0m    6
+1422    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1425    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1428    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1431    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1434    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1437    | [33mOP_CONSTANT     [0m   63 '13'
+1439    | [33mOP_SUBSCRIPT_GET[0m
+1440    | [33mOP_GET_GLOBAL   [0m   68 'S21'
+1443    | [33mOP_CONSTANT     [0m   84 '2.85029e+09'
+1445    | [33mOP_CALL         [0m    7
+1447    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1450    | [33mOP_POP[0m
 [31m        d = GG(d, a, b, c, x[ 2], S22, 0xfcefa3f8);[0m
-1428 [34m 170[0m [33mOP_GET_PRIVATE  [0m    6
-1430    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1433    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1436    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1439    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1442    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1445    | [33mOP_CONSTANT     [0m   14 '2'
-1447    | [33mOP_SUBSCRIPT_GET[0m
-1448    | [33mOP_GET_GLOBAL   [0m   69 'S22'
-1451    | [33mOP_CONSTANT     [0m   84 '4.24356e+09'
-1453    | [33mOP_CALL         [0m    7
-1455    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1458    | [33mOP_POP[0m
+1451 [34m 174[0m [33mOP_GET_PRIVATE  [0m    6
+1453    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1456    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1459    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1462    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1465    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1468    | [33mOP_CONSTANT     [0m   14 '2'
+1470    | [33mOP_SUBSCRIPT_GET[0m
+1471    | [33mOP_GET_GLOBAL   [0m   70 'S22'
+1474    | [33mOP_CONSTANT     [0m   85 '4.24356e+09'
+1476    | [33mOP_CALL         [0m    7
+1478    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1481    | [33mOP_POP[0m
 [31m        c = GG(c, d, a, b, x[ 7], S23, 0x676f02d9);[0m
-1459 [34m 171[0m [33mOP_GET_PRIVATE  [0m    6
-1461    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1464    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1467    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1470    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1473    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1476    | [33mOP_CONSTANT     [0m   51 '7'
-1478    | [33mOP_SUBSCRIPT_GET[0m
-1479    | [33mOP_GET_GLOBAL   [0m   71 'S23'
-1482    | [33mOP_CONSTANT     [0m   85 '1.73533e+09'
-1484    | [33mOP_CALL         [0m    7
-1486    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1489    | [33mOP_POP[0m
+1482 [34m 175[0m [33mOP_GET_PRIVATE  [0m    6
+1484    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1487    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1490    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1493    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1496    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1499    | [33mOP_CONSTANT     [0m   52 '7'
+1501    | [33mOP_SUBSCRIPT_GET[0m
+1502    | [33mOP_GET_GLOBAL   [0m   72 'S23'
+1505    | [33mOP_CONSTANT     [0m   86 '1.73533e+09'
+1507    | [33mOP_CALL         [0m    7
+1509    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1512    | [33mOP_POP[0m
 [31m        b = GG(b, c, d, a, x[12], S24, 0x8d2a4c8a);[0m
-1490 [34m 172[0m [33mOP_GET_PRIVATE  [0m    6
-1492    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1495    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1498    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1501    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1504    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1507    | [33mOP_CONSTANT     [0m   60 '12'
-1509    | [33mOP_SUBSCRIPT_GET[0m
-1510    | [33mOP_GET_GLOBAL   [0m   73 'S24'
-1513    | [33mOP_CONSTANT     [0m   86 '2.36836e+09'
-1515    | [33mOP_CALL         [0m    7
-1517    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1520    | [33mOP_POP[0m
+1513 [34m 176[0m [33mOP_GET_PRIVATE  [0m    6
+1515    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1518    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1521    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1524    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1527    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1530    | [33mOP_CONSTANT     [0m   61 '12'
+1532    | [33mOP_SUBSCRIPT_GET[0m
+1533    | [33mOP_GET_GLOBAL   [0m   74 'S24'
+1536    | [33mOP_CONSTANT     [0m   87 '2.36836e+09'
+1538    | [33mOP_CALL         [0m    7
+1540    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1543    | [33mOP_POP[0m
 [31m        a = HH(a, b, c, d, x[ 5], S31, 0xfffa3942);[0m
-1521 [34m 175[0m [33mOP_GET_PRIVATE  [0m    7
-1523    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1526    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1529    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1532    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1535    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1538    | [33mOP_CONSTANT     [0m   47 '5'
-1540    | [33mOP_SUBSCRIPT_GET[0m
-1541    | [33mOP_GET_GLOBAL   [0m   87 'S31'
-1544    | [33mOP_CONSTANT     [0m   88 '4.29459e+09'
-1546    | [33mOP_CALL         [0m    7
-1548    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1551    | [33mOP_POP[0m
+1544 [34m 179[0m [33mOP_GET_PRIVATE  [0m    7
+1546    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1549    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1552    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1555    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1558    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1561    | [33mOP_CONSTANT     [0m   48 '5'
+1563    | [33mOP_SUBSCRIPT_GET[0m
+1564    | [33mOP_GET_GLOBAL   [0m   88 'S31'
+1567    | [33mOP_CONSTANT     [0m   89 '4.29459e+09'
+1569    | [33mOP_CALL         [0m    7
+1571    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1574    | [33mOP_POP[0m
 [31m        d = HH(d, a, b, c, x[ 8], S32, 0x8771f681);[0m
-1552 [34m 176[0m [33mOP_GET_PRIVATE  [0m    7
-1554    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1557    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1560    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1563    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1566    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1569    | [33mOP_CONSTANT     [0m   18 '8'
-1571    | [33mOP_SUBSCRIPT_GET[0m
-1572    | [33mOP_GET_GLOBAL   [0m   89 'S32'
-1575    | [33mOP_CONSTANT     [0m   90 '2.27239e+09'
-1577    | [33mOP_CALL         [0m    7
-1579    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1582    | [33mOP_POP[0m
+1575 [34m 180[0m [33mOP_GET_PRIVATE  [0m    7
+1577    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1580    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1583    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1586    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1589    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1592    | [33mOP_CONSTANT     [0m   18 '8'
+1594    | [33mOP_SUBSCRIPT_GET[0m
+1595    | [33mOP_GET_GLOBAL   [0m   90 'S32'
+1598    | [33mOP_CONSTANT     [0m   91 '2.27239e+09'
+1600    | [33mOP_CALL         [0m    7
+1602    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1605    | [33mOP_POP[0m
 [31m        c = HH(c, d, a, b, x[11], S33, 0x6d9d6122);[0m
-1583 [34m 177[0m [33mOP_GET_PRIVATE  [0m    7
-1585    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1588    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1591    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1594    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1597    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1600    | [33mOP_CONSTANT     [0m   58 '11'
-1602    | [33mOP_SUBSCRIPT_GET[0m
-1603    | [33mOP_GET_GLOBAL   [0m   91 'S33'
-1606    | [33mOP_CONSTANT     [0m   92 '1.83903e+09'
-1608    | [33mOP_CALL         [0m    7
-1610    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1613    | [33mOP_POP[0m
+1606 [34m 181[0m [33mOP_GET_PRIVATE  [0m    7
+1608    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1611    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1614    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1617    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1620    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1623    | [33mOP_CONSTANT     [0m   59 '11'
+1625    | [33mOP_SUBSCRIPT_GET[0m
+1626    | [33mOP_GET_GLOBAL   [0m   92 'S33'
+1629    | [33mOP_CONSTANT     [0m   93 '1.83903e+09'
+1631    | [33mOP_CALL         [0m    7
+1633    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1636    | [33mOP_POP[0m
 [31m        b = HH(b, c, d, a, x[14], S34, 0xfde5380c);[0m
-1614 [34m 178[0m [33mOP_GET_PRIVATE  [0m    7
-1616    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1619    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1622    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1625    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1628    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1631    | [33mOP_CONSTANT     [0m   25 '14'
-1633    | [33mOP_SUBSCRIPT_GET[0m
-1634    | [33mOP_GET_GLOBAL   [0m   93 'S34'
-1637    | [33mOP_CONSTANT     [0m   94 '4.25966e+09'
-1639    | [33mOP_CALL         [0m    7
-1641    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1644    | [33mOP_POP[0m
+1637 [34m 182[0m [33mOP_GET_PRIVATE  [0m    7
+1639    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1642    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1645    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1648    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1651    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1654    | [33mOP_CONSTANT     [0m   25 '14'
+1656    | [33mOP_SUBSCRIPT_GET[0m
+1657    | [33mOP_GET_GLOBAL   [0m   94 'S34'
+1660    | [33mOP_CONSTANT     [0m   95 '4.25966e+09'
+1662    | [33mOP_CALL         [0m    7
+1664    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1667    | [33mOP_POP[0m
 [31m        a = HH(a, b, c, d, x[ 1], S31, 0xa4beea44);[0m
-1645 [34m 179[0m [33mOP_GET_PRIVATE  [0m    7
-1647    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1650    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1653    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1656    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1659    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1662    | [33mOP_CONSTANT     [0m    8 '1'
-1664    | [33mOP_SUBSCRIPT_GET[0m
-1665    | [33mOP_GET_GLOBAL   [0m   87 'S31'
-1668    | [33mOP_CONSTANT     [0m   95 '2.76398e+09'
-1670    | [33mOP_CALL         [0m    7
-1672    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1675    | [33mOP_POP[0m
+1668 [34m 183[0m [33mOP_GET_PRIVATE  [0m    7
+1670    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1673    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1676    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1679    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1682    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1685    | [33mOP_CONSTANT     [0m    8 '1'
+1687    | [33mOP_SUBSCRIPT_GET[0m
+1688    | [33mOP_GET_GLOBAL   [0m   88 'S31'
+1691    | [33mOP_CONSTANT     [0m   96 '2.76398e+09'
+1693    | [33mOP_CALL         [0m    7
+1695    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1698    | [33mOP_POP[0m
 [31m        d = HH(d, a, b, c, x[ 4], S32, 0x4bdecfa9);[0m
-1676 [34m 180[0m [33mOP_GET_PRIVATE  [0m    7
-1678    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1681    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1684    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1687    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1690    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1693    | [33mOP_CONSTANT     [0m   10 '4'
-1695    | [33mOP_SUBSCRIPT_GET[0m
-1696    | [33mOP_GET_GLOBAL   [0m   89 'S32'
-1699    | [33mOP_CONSTANT     [0m   96 '1.27289e+09'
-1701    | [33mOP_CALL         [0m    7
-1703    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1706    | [33mOP_POP[0m
+1699 [34m 184[0m [33mOP_GET_PRIVATE  [0m    7
+1701    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1704    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1707    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1710    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1713    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1716    | [33mOP_CONSTANT     [0m   10 '4'
+1718    | [33mOP_SUBSCRIPT_GET[0m
+1719    | [33mOP_GET_GLOBAL   [0m   90 'S32'
+1722    | [33mOP_CONSTANT     [0m   97 '1.27289e+09'
+1724    | [33mOP_CALL         [0m    7
+1726    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1729    | [33mOP_POP[0m
 [31m        c = HH(c, d, a, b, x[ 7], S33, 0xf6bb4b60);[0m
-1707 [34m 181[0m [33mOP_GET_PRIVATE  [0m    7
-1709    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1712    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1715    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1718    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1721    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1724    | [33mOP_CONSTANT     [0m   51 '7'
-1726    | [33mOP_SUBSCRIPT_GET[0m
-1727    | [33mOP_GET_GLOBAL   [0m   91 'S33'
-1730    | [33mOP_CONSTANT     [0m   97 '4.13947e+09'
-1732    | [33mOP_CALL         [0m    7
-1734    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1737    | [33mOP_POP[0m
+1730 [34m 185[0m [33mOP_GET_PRIVATE  [0m    7
+1732    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1735    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1738    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1741    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1744    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1747    | [33mOP_CONSTANT     [0m   52 '7'
+1749    | [33mOP_SUBSCRIPT_GET[0m
+1750    | [33mOP_GET_GLOBAL   [0m   92 'S33'
+1753    | [33mOP_CONSTANT     [0m   98 '4.13947e+09'
+1755    | [33mOP_CALL         [0m    7
+1757    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1760    | [33mOP_POP[0m
 [31m        b = HH(b, c, d, a, x[10], S34, 0xbebfbc70);[0m
-1738 [34m 182[0m [33mOP_GET_PRIVATE  [0m    7
-1740    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1743    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1746    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1749    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1752    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1755    | [33mOP_CONSTANT     [0m   56 '10'
-1757    | [33mOP_SUBSCRIPT_GET[0m
-1758    | [33mOP_GET_GLOBAL   [0m   93 'S34'
-1761    | [33mOP_CONSTANT     [0m   98 '3.20024e+09'
-1763    | [33mOP_CALL         [0m    7
-1765    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1768    | [33mOP_POP[0m
+1761 [34m 186[0m [33mOP_GET_PRIVATE  [0m    7
+1763    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1766    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1769    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1772    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1775    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1778    | [33mOP_CONSTANT     [0m   57 '10'
+1780    | [33mOP_SUBSCRIPT_GET[0m
+1781    | [33mOP_GET_GLOBAL   [0m   94 'S34'
+1784    | [33mOP_CONSTANT     [0m   99 '3.20024e+09'
+1786    | [33mOP_CALL         [0m    7
+1788    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1791    | [33mOP_POP[0m
 [31m        a = HH(a, b, c, d, x[13], S31, 0x289b7ec6);[0m
-1769 [34m 183[0m [33mOP_GET_PRIVATE  [0m    7
-1771    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1774    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1777    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1780    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1783    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1786    | [33mOP_CONSTANT     [0m   62 '13'
-1788    | [33mOP_SUBSCRIPT_GET[0m
-1789    | [33mOP_GET_GLOBAL   [0m   87 'S31'
-1792    | [33mOP_CONSTANT     [0m   99 '6.81279e+08'
-1794    | [33mOP_CALL         [0m    7
-1796    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1799    | [33mOP_POP[0m
+1792 [34m 187[0m [33mOP_GET_PRIVATE  [0m    7
+1794    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1797    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1800    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1803    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1806    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1809    | [33mOP_CONSTANT     [0m   63 '13'
+1811    | [33mOP_SUBSCRIPT_GET[0m
+1812    | [33mOP_GET_GLOBAL   [0m   88 'S31'
+1815    | [33mOP_CONSTANT     [0m  100 '6.81279e+08'
+1817    | [33mOP_CALL         [0m    7
+1819    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1822    | [33mOP_POP[0m
 [31m        d = HH(d, a, b, c, x[ 0], S32, 0xeaa127fa);[0m
-1800 [34m 184[0m [33mOP_GET_PRIVATE  [0m    7
-1802    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1805    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1808    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1811    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1814    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1817    | [33mOP_CONSTANT     [0m   11 '0'
-1819    | [33mOP_SUBSCRIPT_GET[0m
-1820    | [33mOP_GET_GLOBAL   [0m   89 'S32'
-1823    | [33mOP_CONSTANT     [0m  100 '3.93643e+09'
-1825    | [33mOP_CALL         [0m    7
-1827    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1830    | [33mOP_POP[0m
+1823 [34m 188[0m [33mOP_GET_PRIVATE  [0m    7
+1825    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1828    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1831    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1834    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1837    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1840    | [33mOP_CONSTANT     [0m   11 '0'
+1842    | [33mOP_SUBSCRIPT_GET[0m
+1843    | [33mOP_GET_GLOBAL   [0m   90 'S32'
+1846    | [33mOP_CONSTANT     [0m  101 '3.93643e+09'
+1848    | [33mOP_CALL         [0m    7
+1850    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1853    | [33mOP_POP[0m
 [31m        c = HH(c, d, a, b, x[ 3], S33, 0xd4ef3085);[0m
-1831 [34m 185[0m [33mOP_GET_PRIVATE  [0m    7
-1833    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1836    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1839    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1842    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1845    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1848    | [33mOP_CONSTANT     [0m   16 '3'
-1850    | [33mOP_SUBSCRIPT_GET[0m
-1851    | [33mOP_GET_GLOBAL   [0m   91 'S33'
-1854    | [33mOP_CONSTANT     [0m  101 '3.57245e+09'
-1856    | [33mOP_CALL         [0m    7
-1858    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1861    | [33mOP_POP[0m
+1854 [34m 189[0m [33mOP_GET_PRIVATE  [0m    7
+1856    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1859    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1862    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1865    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1868    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1871    | [33mOP_CONSTANT     [0m   16 '3'
+1873    | [33mOP_SUBSCRIPT_GET[0m
+1874    | [33mOP_GET_GLOBAL   [0m   92 'S33'
+1877    | [33mOP_CONSTANT     [0m  102 '3.57245e+09'
+1879    | [33mOP_CALL         [0m    7
+1881    | [33mOP_SET_GLOBAL   [0m   37 'c'
+1884    | [33mOP_POP[0m
 [31m        b = HH(b, c, d, a, x[ 6], S34,  0x4881d05);[0m
-1862 [34m 186[0m [33mOP_GET_PRIVATE  [0m    7
-1864    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1867    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1870    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1873    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1876    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1879    | [33mOP_CONSTANT     [0m   49 '6'
-1881    | [33mOP_SUBSCRIPT_GET[0m
-1882    | [33mOP_GET_GLOBAL   [0m   93 'S34'
-1885    | [33mOP_CONSTANT     [0m  102 '7.60292e+07'
-1887    | [33mOP_CALL         [0m    7
-1889    | [33mOP_SET_GLOBAL   [0m   35 'b'
-1892    | [33mOP_POP[0m
+1885 [34m 190[0m [33mOP_GET_PRIVATE  [0m    7
+1887    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1890    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1893    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1896    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1899    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1902    | [33mOP_CONSTANT     [0m   50 '6'
+1904    | [33mOP_SUBSCRIPT_GET[0m
+1905    | [33mOP_GET_GLOBAL   [0m   94 'S34'
+1908    | [33mOP_CONSTANT     [0m  103 '7.60292e+07'
+1910    | [33mOP_CALL         [0m    7
+1912    | [33mOP_SET_GLOBAL   [0m   36 'b'
+1915    | [33mOP_POP[0m
 [31m        a = HH(a, b, c, d, x[ 9], S31, 0xd9d4d039);[0m
-1893 [34m 187[0m [33mOP_GET_PRIVATE  [0m    7
-1895    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1898    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1901    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1904    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1907    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1910    | [33mOP_CONSTANT     [0m   54 '9'
-1912    | [33mOP_SUBSCRIPT_GET[0m
-1913    | [33mOP_GET_GLOBAL   [0m   87 'S31'
-1916    | [33mOP_CONSTANT     [0m  103 '3.6546e+09'
-1918    | [33mOP_CALL         [0m    7
-1920    | [33mOP_SET_GLOBAL   [0m   34 'a'
-1923    | [33mOP_POP[0m
+1916 [34m 191[0m [33mOP_GET_PRIVATE  [0m    7
+1918    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1921    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1924    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1927    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1930    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1933    | [33mOP_CONSTANT     [0m   55 '9'
+1935    | [33mOP_SUBSCRIPT_GET[0m
+1936    | [33mOP_GET_GLOBAL   [0m   88 'S31'
+1939    | [33mOP_CONSTANT     [0m  104 '3.6546e+09'
+1941    | [33mOP_CALL         [0m    7
+1943    | [33mOP_SET_GLOBAL   [0m   35 'a'
+1946    | [33mOP_POP[0m
 [31m        d = HH(d, a, b, c, x[12], S32, 0xe6db99e5);[0m
-1924 [34m 188[0m [33mOP_GET_PRIVATE  [0m    7
-1926    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1929    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1932    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1935    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1938    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1941    | [33mOP_CONSTANT     [0m   60 '12'
-1943    | [33mOP_SUBSCRIPT_GET[0m
-1944    | [33mOP_GET_GLOBAL   [0m   89 'S32'
-1947    | [33mOP_CONSTANT     [0m  104 '3.87315e+09'
-1949    | [33mOP_CALL         [0m    7
-1951    | [33mOP_SET_GLOBAL   [0m   37 'd'
-1954    | [33mOP_POP[0m
+1947 [34m 192[0m [33mOP_GET_PRIVATE  [0m    7
+1949    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1952    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1955    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1958    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1961    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1964    | [33mOP_CONSTANT     [0m   61 '12'
+1966    | [33mOP_SUBSCRIPT_GET[0m
+1967    | [33mOP_GET_GLOBAL   [0m   90 'S32'
+1970    | [33mOP_CONSTANT     [0m  105 '3.87315e+09'
+1972    | [33mOP_CALL         [0m    7
+1974    | [33mOP_SET_GLOBAL   [0m   38 'd'
+1977    | [33mOP_POP[0m
 [31m        c = HH(c, d, a, b, x[15], S33, 0x1fa27cf8);[0m
-1955 [34m 189[0m [33mOP_GET_PRIVATE  [0m    7
-1957    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1960    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1963    | [33mOP_GET_GLOBAL   [0m   34 'a'
-1966    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1969    | [33mOP_GET_GLOBAL   [0m   33 'x'
-1972    | [33mOP_CONSTANT     [0m   65 '15'
-1974    | [33mOP_SUBSCRIPT_GET[0m
-1975    | [33mOP_GET_GLOBAL   [0m   91 'S33'
-1978    | [33mOP_CONSTANT     [0m  105 '5.30743e+08'
-1980    | [33mOP_CALL         [0m    7
-1982    | [33mOP_SET_GLOBAL   [0m   36 'c'
-1985    | [33mOP_POP[0m
+1978 [34m 193[0m [33mOP_GET_PRIVATE  [0m    7
+1980    | [33mOP_GET_GLOBAL   [0m   37 'c'
+1983    | [33mOP_GET_GLOBAL   [0m   38 'd'
+1986    | [33mOP_GET_GLOBAL   [0m   35 'a'
+1989    | [33mOP_GET_GLOBAL   [0m   36 'b'
+1992    | [33mOP_GET_GLOBAL   [0m   34 'x'
+1995    | [33mOP_CONSTANT     [0m   66 '15'
+1997    | [33mOP_SUBSCRIPT_GET[0m
+1998    | [33mOP_GET_GLOBAL   [0m   92 'S33'
+2001    | [33mOP_CONSTANT     [0m  106 '5.30743e+08'
+2003    | [33mOP_CALL         [0m    7
+2005    | [33mOP_SET_GLOBAL   [0m   37 'c'
+2008    | [33mOP_POP[0m
 [31m        b = HH(b, c, d, a, x[ 2], S34, 0xc4ac5665);[0m
-1986 [34m 190[0m [33mOP_GET_PRIVATE  [0m    7
-1988    | [33mOP_GET_GLOBAL   [0m   35 'b'
-1991    | [33mOP_GET_GLOBAL   [0m   36 'c'
-1994    | [33mOP_GET_GLOBAL   [0m   37 'd'
-1997    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2000    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2003    | [33mOP_CONSTANT     [0m   14 '2'
-2005    | [33mOP_SUBSCRIPT_GET[0m
-2006    | [33mOP_GET_GLOBAL   [0m   93 'S34'
-2009    | [33mOP_CONSTANT     [0m  106 '3.29963e+09'
-2011    | [33mOP_CALL         [0m    7
-2013    | [33mOP_SET_GLOBAL   [0m   35 'b'
-2016    | [33mOP_POP[0m
+2009 [34m 194[0m [33mOP_GET_PRIVATE  [0m    7
+2011    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2014    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2017    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2020    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2023    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2026    | [33mOP_CONSTANT     [0m   14 '2'
+2028    | [33mOP_SUBSCRIPT_GET[0m
+2029    | [33mOP_GET_GLOBAL   [0m   94 'S34'
+2032    | [33mOP_CONSTANT     [0m  107 '3.29963e+09'
+2034    | [33mOP_CALL         [0m    7
+2036    | [33mOP_SET_GLOBAL   [0m   36 'b'
+2039    | [33mOP_POP[0m
 [31m        a = II(a, b, c, d, x[ 0], S41, 0xf4292244);[0m
-2017 [34m 193[0m [33mOP_GET_PRIVATE  [0m    8
-2019    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2022    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2025    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2028    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2031    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2034    | [33mOP_CONSTANT     [0m   11 '0'
-2036    | [33mOP_SUBSCRIPT_GET[0m
-2037    | [33mOP_GET_GLOBAL   [0m  107 'S41'
-2040    | [33mOP_CONSTANT     [0m  108 '4.09634e+09'
-2042    | [33mOP_CALL         [0m    7
-2044    | [33mOP_SET_GLOBAL   [0m   34 'a'
-2047    | [33mOP_POP[0m
+2040 [34m 197[0m [33mOP_GET_PRIVATE  [0m    8
+2042    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2045    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2048    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2051    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2054    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2057    | [33mOP_CONSTANT     [0m   11 '0'
+2059    | [33mOP_SUBSCRIPT_GET[0m
+2060    | [33mOP_GET_GLOBAL   [0m  108 'S41'
+2063    | [33mOP_CONSTANT     [0m  109 '4.09634e+09'
+2065    | [33mOP_CALL         [0m    7
+2067    | [33mOP_SET_GLOBAL   [0m   35 'a'
+2070    | [33mOP_POP[0m
 [31m        d = II(d, a, b, c, x[ 7], S42, 0x432aff97);[0m
-2048 [34m 194[0m [33mOP_GET_PRIVATE  [0m    8
-2050    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2053    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2056    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2059    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2062    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2065    | [33mOP_CONSTANT     [0m   51 '7'
-2067    | [33mOP_SUBSCRIPT_GET[0m
-2068    | [33mOP_GET_GLOBAL   [0m  109 'S42'
-2071    | [33mOP_CONSTANT     [0m  110 '1.12689e+09'
-2073    | [33mOP_CALL         [0m    7
-2075    | [33mOP_SET_GLOBAL   [0m   37 'd'
-2078    | [33mOP_POP[0m
+2071 [34m 198[0m [33mOP_GET_PRIVATE  [0m    8
+2073    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2076    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2079    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2082    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2085    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2088    | [33mOP_CONSTANT     [0m   52 '7'
+2090    | [33mOP_SUBSCRIPT_GET[0m
+2091    | [33mOP_GET_GLOBAL   [0m  110 'S42'
+2094    | [33mOP_CONSTANT     [0m  111 '1.12689e+09'
+2096    | [33mOP_CALL         [0m    7
+2098    | [33mOP_SET_GLOBAL   [0m   38 'd'
+2101    | [33mOP_POP[0m
 [31m        c = II(c, d, a, b, x[14], S43, 0xab9423a7);[0m
-2079 [34m 195[0m [33mOP_GET_PRIVATE  [0m    8
-2081    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2084    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2087    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2090    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2093    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2096    | [33mOP_CONSTANT     [0m   25 '14'
-2098    | [33mOP_SUBSCRIPT_GET[0m
-2099    | [33mOP_GET_GLOBAL   [0m  111 'S43'
-2102    | [33mOP_CONSTANT     [0m  112 '2.87861e+09'
-2104    | [33mOP_CALL         [0m    7
-2106    | [33mOP_SET_GLOBAL   [0m   36 'c'
-2109    | [33mOP_POP[0m
+2102 [34m 199[0m [33mOP_GET_PRIVATE  [0m    8
+2104    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2107    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2110    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2113    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2116    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2119    | [33mOP_CONSTANT     [0m   25 '14'
+2121    | [33mOP_SUBSCRIPT_GET[0m
+2122    | [33mOP_GET_GLOBAL   [0m  112 'S43'
+2125    | [33mOP_CONSTANT     [0m  113 '2.87861e+09'
+2127    | [33mOP_CALL         [0m    7
+2129    | [33mOP_SET_GLOBAL   [0m   37 'c'
+2132    | [33mOP_POP[0m
 [31m        b = II(b, c, d, a, x[ 5], S44, 0xfc93a039);[0m
-2110 [34m 196[0m [33mOP_GET_PRIVATE  [0m    8
-2112    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2115    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2118    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2121    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2124    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2127    | [33mOP_CONSTANT     [0m   47 '5'
-2129    | [33mOP_SUBSCRIPT_GET[0m
-2130    | [33mOP_GET_GLOBAL   [0m  113 'S44'
-2133    | [33mOP_CONSTANT     [0m  114 '4.23753e+09'
-2135    | [33mOP_CALL         [0m    7
-2137    | [33mOP_SET_GLOBAL   [0m   35 'b'
-2140    | [33mOP_POP[0m
+2133 [34m 200[0m [33mOP_GET_PRIVATE  [0m    8
+2135    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2138    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2141    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2144    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2147    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2150    | [33mOP_CONSTANT     [0m   48 '5'
+2152    | [33mOP_SUBSCRIPT_GET[0m
+2153    | [33mOP_GET_GLOBAL   [0m  114 'S44'
+2156    | [33mOP_CONSTANT     [0m  115 '4.23753e+09'
+2158    | [33mOP_CALL         [0m    7
+2160    | [33mOP_SET_GLOBAL   [0m   36 'b'
+2163    | [33mOP_POP[0m
 [31m        a = II(a, b, c, d, x[12], S41, 0x655b59c3);[0m
-2141 [34m 197[0m [33mOP_GET_PRIVATE  [0m    8
-2143    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2146    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2149    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2152    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2155    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2158    | [33mOP_CONSTANT     [0m   60 '12'
-2160    | [33mOP_SUBSCRIPT_GET[0m
-2161    | [33mOP_GET_GLOBAL   [0m  107 'S41'
-2164    | [33mOP_CONSTANT     [0m  115 '1.70049e+09'
-2166    | [33mOP_CALL         [0m    7
-2168    | [33mOP_SET_GLOBAL   [0m   34 'a'
-2171    | [33mOP_POP[0m
+2164 [34m 201[0m [33mOP_GET_PRIVATE  [0m    8
+2166    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2169    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2172    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2175    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2178    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2181    | [33mOP_CONSTANT     [0m   61 '12'
+2183    | [33mOP_SUBSCRIPT_GET[0m
+2184    | [33mOP_GET_GLOBAL   [0m  108 'S41'
+2187    | [33mOP_CONSTANT     [0m  116 '1.70049e+09'
+2189    | [33mOP_CALL         [0m    7
+2191    | [33mOP_SET_GLOBAL   [0m   35 'a'
+2194    | [33mOP_POP[0m
 [31m        d = II(d, a, b, c, x[ 3], S42, 0x8f0ccc92);[0m
-2172 [34m 198[0m [33mOP_GET_PRIVATE  [0m    8
-2174    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2177    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2180    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2183    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2186    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2189    | [33mOP_CONSTANT     [0m   16 '3'
-2191    | [33mOP_SUBSCRIPT_GET[0m
-2192    | [33mOP_GET_GLOBAL   [0m  109 'S42'
-2195    | [33mOP_CONSTANT     [0m  116 '2.39998e+09'
-2197    | [33mOP_CALL         [0m    7
-2199    | [33mOP_SET_GLOBAL   [0m   37 'd'
-2202    | [33mOP_POP[0m
+2195 [34m 202[0m [33mOP_GET_PRIVATE  [0m    8
+2197    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2200    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2203    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2206    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2209    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2212    | [33mOP_CONSTANT     [0m   16 '3'
+2214    | [33mOP_SUBSCRIPT_GET[0m
+2215    | [33mOP_GET_GLOBAL   [0m  110 'S42'
+2218    | [33mOP_CONSTANT     [0m  117 '2.39998e+09'
+2220    | [33mOP_CALL         [0m    7
+2222    | [33mOP_SET_GLOBAL   [0m   38 'd'
+2225    | [33mOP_POP[0m
 [31m        c = II(c, d, a, b, x[10], S43, 0xffeff47d);[0m
-2203 [34m 199[0m [33mOP_GET_PRIVATE  [0m    8
-2205    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2208    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2211    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2214    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2217    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2220    | [33mOP_CONSTANT     [0m   56 '10'
-2222    | [33mOP_SUBSCRIPT_GET[0m
-2223    | [33mOP_GET_GLOBAL   [0m  111 'S43'
-2226    | [33mOP_CONSTANT     [0m  117 '4.29392e+09'
-2228    | [33mOP_CALL         [0m    7
-2230    | [33mOP_SET_GLOBAL   [0m   36 'c'
-2233    | [33mOP_POP[0m
+2226 [34m 203[0m [33mOP_GET_PRIVATE  [0m    8
+2228    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2231    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2234    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2237    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2240    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2243    | [33mOP_CONSTANT     [0m   57 '10'
+2245    | [33mOP_SUBSCRIPT_GET[0m
+2246    | [33mOP_GET_GLOBAL   [0m  112 'S43'
+2249    | [33mOP_CONSTANT     [0m  118 '4.29392e+09'
+2251    | [33mOP_CALL         [0m    7
+2253    | [33mOP_SET_GLOBAL   [0m   37 'c'
+2256    | [33mOP_POP[0m
 [31m        b = II(b, c, d, a, x[ 1], S44, 0x85845dd1);[0m
-2234 [34m 200[0m [33mOP_GET_PRIVATE  [0m    8
-2236    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2239    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2242    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2245    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2248    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2251    | [33mOP_CONSTANT     [0m    8 '1'
-2253    | [33mOP_SUBSCRIPT_GET[0m
-2254    | [33mOP_GET_GLOBAL   [0m  113 'S44'
-2257    | [33mOP_CONSTANT     [0m  118 '2.24004e+09'
-2259    | [33mOP_CALL         [0m    7
-2261    | [33mOP_SET_GLOBAL   [0m   35 'b'
-2264    | [33mOP_POP[0m
+2257 [34m 204[0m [33mOP_GET_PRIVATE  [0m    8
+2259    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2262    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2265    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2268    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2271    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2274    | [33mOP_CONSTANT     [0m    8 '1'
+2276    | [33mOP_SUBSCRIPT_GET[0m
+2277    | [33mOP_GET_GLOBAL   [0m  114 'S44'
+2280    | [33mOP_CONSTANT     [0m  119 '2.24004e+09'
+2282    | [33mOP_CALL         [0m    7
+2284    | [33mOP_SET_GLOBAL   [0m   36 'b'
+2287    | [33mOP_POP[0m
 [31m        a = II(a, b, c, d, x[ 8], S41, 0x6fa87e4f);[0m
-2265 [34m 201[0m [33mOP_GET_PRIVATE  [0m    8
-2267    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2270    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2273    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2276    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2279    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2282    | [33mOP_CONSTANT     [0m   18 '8'
-2284    | [33mOP_SUBSCRIPT_GET[0m
-2285    | [33mOP_GET_GLOBAL   [0m  107 'S41'
-2288    | [33mOP_CONSTANT     [0m  119 '1.87331e+09'
-2290    | [33mOP_CALL         [0m    7
-2292    | [33mOP_SET_GLOBAL   [0m   34 'a'
-2295    | [33mOP_POP[0m
+2288 [34m 205[0m [33mOP_GET_PRIVATE  [0m    8
+2290    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2293    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2296    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2299    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2302    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2305    | [33mOP_CONSTANT     [0m   18 '8'
+2307    | [33mOP_SUBSCRIPT_GET[0m
+2308    | [33mOP_GET_GLOBAL   [0m  108 'S41'
+2311    | [33mOP_CONSTANT     [0m  120 '1.87331e+09'
+2313    | [33mOP_CALL         [0m    7
+2315    | [33mOP_SET_GLOBAL   [0m   35 'a'
+2318    | [33mOP_POP[0m
 [31m        d = II(d, a, b, c, x[15], S42, 0xfe2ce6e0);[0m
-2296 [34m 202[0m [33mOP_GET_PRIVATE  [0m    8
-2298    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2301    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2304    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2307    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2310    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2313    | [33mOP_CONSTANT     [0m   65 '15'
-2315    | [33mOP_SUBSCRIPT_GET[0m
-2316    | [33mOP_GET_GLOBAL   [0m  109 'S42'
-2319    | [33mOP_CONSTANT     [0m  120 '4.26436e+09'
-2321    | [33mOP_CALL         [0m    7
-2323    | [33mOP_SET_GLOBAL   [0m   37 'd'
-2326    | [33mOP_POP[0m
+2319 [34m 206[0m [33mOP_GET_PRIVATE  [0m    8
+2321    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2324    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2327    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2330    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2333    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2336    | [33mOP_CONSTANT     [0m   66 '15'
+2338    | [33mOP_SUBSCRIPT_GET[0m
+2339    | [33mOP_GET_GLOBAL   [0m  110 'S42'
+2342    | [33mOP_CONSTANT     [0m  121 '4.26436e+09'
+2344    | [33mOP_CALL         [0m    7
+2346    | [33mOP_SET_GLOBAL   [0m   38 'd'
+2349    | [33mOP_POP[0m
 [31m        c = II(c, d, a, b, x[ 6], S43, 0xa3014314);[0m
-2327 [34m 203[0m [33mOP_GET_PRIVATE  [0m    8
-2329    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2332    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2335    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2338    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2341    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2344    | [33mOP_CONSTANT     [0m   49 '6'
-2346    | [33mOP_SUBSCRIPT_GET[0m
-2347    | [33mOP_GET_GLOBAL   [0m  111 'S43'
-2350    | [33mOP_CONSTANT     [0m  121 '2.73477e+09'
-2352    | [33mOP_CALL         [0m    7
-2354    | [33mOP_SET_GLOBAL   [0m   36 'c'
-2357    | [33mOP_POP[0m
+2350 [34m 207[0m [33mOP_GET_PRIVATE  [0m    8
+2352    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2355    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2358    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2361    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2364    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2367    | [33mOP_CONSTANT     [0m   50 '6'
+2369    | [33mOP_SUBSCRIPT_GET[0m
+2370    | [33mOP_GET_GLOBAL   [0m  112 'S43'
+2373    | [33mOP_CONSTANT     [0m  122 '2.73477e+09'
+2375    | [33mOP_CALL         [0m    7
+2377    | [33mOP_SET_GLOBAL   [0m   37 'c'
+2380    | [33mOP_POP[0m
 [31m        b = II(b, c, d, a, x[13], S44, 0x4e0811a1);[0m
-2358 [34m 204[0m [33mOP_GET_PRIVATE  [0m    8
-2360    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2363    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2366    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2369    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2372    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2375    | [33mOP_CONSTANT     [0m   62 '13'
-2377    | [33mOP_SUBSCRIPT_GET[0m
-2378    | [33mOP_GET_GLOBAL   [0m  113 'S44'
-2381    | [33mOP_CONSTANT     [0m  122 '1.30915e+09'
-2383    | [33mOP_CALL         [0m    7
-2385    | [33mOP_SET_GLOBAL   [0m   35 'b'
-2388    | [33mOP_POP[0m
+2381 [34m 208[0m [33mOP_GET_PRIVATE  [0m    8
+2383    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2386    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2389    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2392    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2395    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2398    | [33mOP_CONSTANT     [0m   63 '13'
+2400    | [33mOP_SUBSCRIPT_GET[0m
+2401    | [33mOP_GET_GLOBAL   [0m  114 'S44'
+2404    | [33mOP_CONSTANT     [0m  123 '1.30915e+09'
+2406    | [33mOP_CALL         [0m    7
+2408    | [33mOP_SET_GLOBAL   [0m   36 'b'
+2411    | [33mOP_POP[0m
 [31m        a = II(a, b, c, d, x[ 4], S41, 0xf7537e82);[0m
-2389 [34m 205[0m [33mOP_GET_PRIVATE  [0m    8
-2391    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2394    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2397    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2400    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2403    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2406    | [33mOP_CONSTANT     [0m   10 '4'
-2408    | [33mOP_SUBSCRIPT_GET[0m
-2409    | [33mOP_GET_GLOBAL   [0m  107 'S41'
-2412    | [33mOP_CONSTANT     [0m  123 '4.14944e+09'
-2414    | [33mOP_CALL         [0m    7
-2416    | [33mOP_SET_GLOBAL   [0m   34 'a'
-2419    | [33mOP_POP[0m
+2412 [34m 209[0m [33mOP_GET_PRIVATE  [0m    8
+2414    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2417    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2420    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2423    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2426    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2429    | [33mOP_CONSTANT     [0m   10 '4'
+2431    | [33mOP_SUBSCRIPT_GET[0m
+2432    | [33mOP_GET_GLOBAL   [0m  108 'S41'
+2435    | [33mOP_CONSTANT     [0m  124 '4.14944e+09'
+2437    | [33mOP_CALL         [0m    7
+2439    | [33mOP_SET_GLOBAL   [0m   35 'a'
+2442    | [33mOP_POP[0m
 [31m        d = II(d, a, b, c, x[11], S42, 0xbd3af235);[0m
-2420 [34m 206[0m [33mOP_GET_PRIVATE  [0m    8
-2422    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2425    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2428    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2431    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2434    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2437    | [33mOP_CONSTANT     [0m   58 '11'
-2439    | [33mOP_SUBSCRIPT_GET[0m
-2440    | [33mOP_GET_GLOBAL   [0m  109 'S42'
-2443    | [33mOP_CONSTANT     [0m  124 '3.17476e+09'
-2445    | [33mOP_CALL         [0m    7
-2447    | [33mOP_SET_GLOBAL   [0m   37 'd'
-2450    | [33mOP_POP[0m
+2443 [34m 210[0m [33mOP_GET_PRIVATE  [0m    8
+2445    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2448    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2451    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2454    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2457    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2460    | [33mOP_CONSTANT     [0m   59 '11'
+2462    | [33mOP_SUBSCRIPT_GET[0m
+2463    | [33mOP_GET_GLOBAL   [0m  110 'S42'
+2466    | [33mOP_CONSTANT     [0m  125 '3.17476e+09'
+2468    | [33mOP_CALL         [0m    7
+2470    | [33mOP_SET_GLOBAL   [0m   38 'd'
+2473    | [33mOP_POP[0m
 [31m        c = II(c, d, a, b, x[ 2], S43, 0x2ad7d2bb);[0m
-2451 [34m 207[0m [33mOP_GET_PRIVATE  [0m    8
-2453    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2456    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2459    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2462    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2465    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2468    | [33mOP_CONSTANT     [0m   14 '2'
-2470    | [33mOP_SUBSCRIPT_GET[0m
-2471    | [33mOP_GET_GLOBAL   [0m  111 'S43'
-2474    | [33mOP_CONSTANT     [0m  125 '7.18787e+08'
-2476    | [33mOP_CALL         [0m    7
-2478    | [33mOP_SET_GLOBAL   [0m   36 'c'
-2481    | [33mOP_POP[0m
+2474 [34m 211[0m [33mOP_GET_PRIVATE  [0m    8
+2476    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2479    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2482    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2485    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2488    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2491    | [33mOP_CONSTANT     [0m   14 '2'
+2493    | [33mOP_SUBSCRIPT_GET[0m
+2494    | [33mOP_GET_GLOBAL   [0m  112 'S43'
+2497    | [33mOP_CONSTANT     [0m  126 '7.18787e+08'
+2499    | [33mOP_CALL         [0m    7
+2501    | [33mOP_SET_GLOBAL   [0m   37 'c'
+2504    | [33mOP_POP[0m
 [31m        b = II(b, c, d, a, x[ 9], S44, 0xeb86d391);[0m
-2482 [34m 208[0m [33mOP_GET_PRIVATE  [0m    8
-2484    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2487    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2490    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2493    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2496    | [33mOP_GET_GLOBAL   [0m   33 'x'
-2499    | [33mOP_CONSTANT     [0m   54 '9'
-2501    | [33mOP_SUBSCRIPT_GET[0m
-2502    | [33mOP_GET_GLOBAL   [0m  113 'S44'
-2505    | [33mOP_CONSTANT     [0m  126 '3.95148e+09'
-2507    | [33mOP_CALL         [0m    7
-2509    | [33mOP_SET_GLOBAL   [0m   35 'b'
-2512    | [33mOP_POP[0m
+2505 [34m 212[0m [33mOP_GET_PRIVATE  [0m    8
+2507    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2510    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2513    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2516    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2519    | [33mOP_GET_GLOBAL   [0m   34 'x'
+2522    | [33mOP_CONSTANT     [0m   55 '9'
+2524    | [33mOP_SUBSCRIPT_GET[0m
+2525    | [33mOP_GET_GLOBAL   [0m  114 'S44'
+2528    | [33mOP_CONSTANT     [0m  127 '3.95148e+09'
+2530    | [33mOP_CALL         [0m    7
+2532    | [33mOP_SET_GLOBAL   [0m   36 'b'
+2535    | [33mOP_POP[0m
 [31m        state[0] = mod32bits(state[0] + a);[0m
-2513 [34m 210[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-2516    | [33mOP_CONSTANT     [0m   11 '0'
-2518    | [33mOP_GET_PRIVATE  [0m    0
-2520    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2523    | [33mOP_CONSTANT     [0m   11 '0'
-2525    | [33mOP_SUBSCRIPT_GET[0m
-2526    | [33mOP_GET_GLOBAL   [0m   34 'a'
-2529    | [33mOP_ADD[0m
-2530    | [33mOP_CALL         [0m    1
-2532    | [33mOP_SUBSCRIPT_SET[0m
-2533    | [33mOP_POP[0m
+2536 [34m 214[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+2539    | [33mOP_CONSTANT     [0m   11 '0'
+2541    | [33mOP_GET_PRIVATE  [0m    0
+2543    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2546    | [33mOP_CONSTANT     [0m   11 '0'
+2548    | [33mOP_SUBSCRIPT_GET[0m
+2549    | [33mOP_GET_GLOBAL   [0m   35 'a'
+2552    | [33mOP_ADD[0m
+2553    | [33mOP_CALL         [0m    1
+2555    | [33mOP_SUBSCRIPT_SET[0m
+2556    | [33mOP_POP[0m
 [31m        state[1] = mod32bits(state[1] + b);[0m
-2534 [34m 211[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-2537    | [33mOP_CONSTANT     [0m    8 '1'
-2539    | [33mOP_GET_PRIVATE  [0m    0
-2541    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2544    | [33mOP_CONSTANT     [0m    8 '1'
-2546    | [33mOP_SUBSCRIPT_GET[0m
-2547    | [33mOP_GET_GLOBAL   [0m   35 'b'
-2550    | [33mOP_ADD[0m
-2551    | [33mOP_CALL         [0m    1
-2553    | [33mOP_SUBSCRIPT_SET[0m
-2554    | [33mOP_POP[0m
+2557 [34m 215[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+2560    | [33mOP_CONSTANT     [0m    8 '1'
+2562    | [33mOP_GET_PRIVATE  [0m    0
+2564    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2567    | [33mOP_CONSTANT     [0m    8 '1'
+2569    | [33mOP_SUBSCRIPT_GET[0m
+2570    | [33mOP_GET_GLOBAL   [0m   36 'b'
+2573    | [33mOP_ADD[0m
+2574    | [33mOP_CALL         [0m    1
+2576    | [33mOP_SUBSCRIPT_SET[0m
+2577    | [33mOP_POP[0m
 [31m        state[2] = mod32bits(state[2] + c);[0m
-2555 [34m 212[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-2558    | [33mOP_CONSTANT     [0m   14 '2'
-2560    | [33mOP_GET_PRIVATE  [0m    0
-2562    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2565    | [33mOP_CONSTANT     [0m   14 '2'
-2567    | [33mOP_SUBSCRIPT_GET[0m
-2568    | [33mOP_GET_GLOBAL   [0m   36 'c'
-2571    | [33mOP_ADD[0m
-2572    | [33mOP_CALL         [0m    1
-2574    | [33mOP_SUBSCRIPT_SET[0m
-2575    | [33mOP_POP[0m
+2578 [34m 216[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+2581    | [33mOP_CONSTANT     [0m   14 '2'
+2583    | [33mOP_GET_PRIVATE  [0m    0
+2585    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2588    | [33mOP_CONSTANT     [0m   14 '2'
+2590    | [33mOP_SUBSCRIPT_GET[0m
+2591    | [33mOP_GET_GLOBAL   [0m   37 'c'
+2594    | [33mOP_ADD[0m
+2595    | [33mOP_CALL         [0m    1
+2597    | [33mOP_SUBSCRIPT_SET[0m
+2598    | [33mOP_POP[0m
 [31m        state[3] = mod32bits(state[3] + d);[0m
-2576 [34m 213[0m [33mOP_GET_GLOBAL   [0m   27 'state'
-2579    | [33mOP_CONSTANT     [0m   16 '3'
-2581    | [33mOP_GET_PRIVATE  [0m    0
-2583    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2586    | [33mOP_CONSTANT     [0m   16 '3'
-2588    | [33mOP_SUBSCRIPT_GET[0m
-2589    | [33mOP_GET_GLOBAL   [0m   37 'd'
-2592    | [33mOP_ADD[0m
-2593    | [33mOP_CALL         [0m    1
-2595    | [33mOP_SUBSCRIPT_SET[0m
-2596    | [33mOP_POP[0m
-2597    | [33mOP_JUMP_BACK    [0m 2597 -> 424
+2599 [34m 217[0m [33mOP_GET_GLOBAL   [0m   28 'state'
+2602    | [33mOP_CONSTANT     [0m   16 '3'
+2604    | [33mOP_GET_PRIVATE  [0m    0
+2606    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2609    | [33mOP_CONSTANT     [0m   16 '3'
+2611    | [33mOP_SUBSCRIPT_GET[0m
+2612    | [33mOP_GET_GLOBAL   [0m   38 'd'
+2615    | [33mOP_ADD[0m
+2616    | [33mOP_CALL         [0m    1
+2618    | [33mOP_SUBSCRIPT_SET[0m
+2619    | [33mOP_POP[0m
+2620    | [33mOP_JUMP_BACK    [0m 2620 -> 447
 [31m        for (i = j = 0; j < 16; j += 4) {[0m
-2600 [34m 216[0m [33mOP_CONSTANT     [0m   11 '0'
-2602    | [33mOP_SET_GLOBAL   [0m   32 'j'
-2605    | [33mOP_SET_GLOBAL   [0m    9 'i'
-2608    | [33mOP_GET_GLOBAL   [0m   32 'j'
-2611    | [33mOP_CONSTANT     [0m   21 '16'
-2613    | [33mOP_LESS[0m
-2614    | [33mOP_JUMP_IF_FALSE[0m 2614 -> 2735
-2617    | [33mOP_JUMP         [0m 2617 -> 2633
-2620    | [33mOP_GET_GLOBAL   [0m   32 'j'
-2623    | [33mOP_CONSTANT     [0m   10 '4'
-2625    | [33mOP_ADD[0m
-2626    | [33mOP_SET_GLOBAL   [0m   32 'j'
-2629    | [33mOP_POP[0m
-2630    | [33mOP_JUMP_BACK    [0m 2630 -> 2608
+2623 [34m 220[0m [33mOP_CONSTANT     [0m   11 '0'
+2625    | [33mOP_SET_GLOBAL   [0m   33 'j'
+2628    | [33mOP_SET_GLOBAL   [0m    9 'i'
+2631    | [33mOP_GET_GLOBAL   [0m   33 'j'
+2634    | [33mOP_CONSTANT     [0m   21 '16'
+2636    | [33mOP_LESS[0m
+2637    | [33mOP_JUMP_IF_FALSE[0m 2637 -> 2758
+2640    | [33mOP_JUMP         [0m 2640 -> 2656
+2643    | [33mOP_GET_GLOBAL   [0m   33 'j'
+2646    | [33mOP_CONSTANT     [0m   10 '4'
+2648    | [33mOP_ADD[0m
+2649    | [33mOP_SET_GLOBAL   [0m   33 'j'
+2652    | [33mOP_POP[0m
+2653    | [33mOP_JUMP_BACK    [0m 2653 -> 2631
 [31m        digest[j + 0] = (state[i] & 0xff);[0m
-2633 [34m 217[0m [33mOP_GET_GLOBAL   [0m  127 'digest'
-2636    | [33mOP_GET_GLOBAL   [0m   32 'j'
-2639    | [33mOP_CONSTANT     [0m   11 '0'
-2641    | [33mOP_ADD[0m
-2642    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2645    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2648    | [33mOP_SUBSCRIPT_GET[0m
-2649    | [33mOP_CONSTANT     [0m  128 '255'
-2651    | [33mOP_BAND[0m
-2652    | [33mOP_SUBSCRIPT_SET[0m
-2653    | [33mOP_POP[0m
+2656 [34m 221[0m [33mOP_GET_GLOBAL   [0m  128 'digest'
+2659    | [33mOP_GET_GLOBAL   [0m   33 'j'
+2662    | [33mOP_CONSTANT     [0m   11 '0'
+2664    | [33mOP_ADD[0m
+2665    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2668    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2671    | [33mOP_SUBSCRIPT_GET[0m
+2672    | [33mOP_CONSTANT     [0m  129 '255'
+2674    | [33mOP_BAND[0m
+2675    | [33mOP_SUBSCRIPT_SET[0m
+2676    | [33mOP_POP[0m
 [31m        digest[j + 1] = ((state[i] >> 8) & 0xff);[0m
-2654 [34m 218[0m [33mOP_GET_GLOBAL   [0m  127 'digest'
-2657    | [33mOP_GET_GLOBAL   [0m   32 'j'
-2660    | [33mOP_CONSTANT     [0m    8 '1'
-2662    | [33mOP_ADD[0m
-2663    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2666    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2669    | [33mOP_SUBSCRIPT_GET[0m
-2670    | [33mOP_CONSTANT     [0m   18 '8'
-2672    | [33mOP_RSHIFT[0m
-2673    | [33mOP_CONSTANT     [0m  128 '255'
-2675    | [33mOP_BAND[0m
-2676    | [33mOP_SUBSCRIPT_SET[0m
-2677    | [33mOP_POP[0m
+2677 [34m 222[0m [33mOP_GET_GLOBAL   [0m  128 'digest'
+2680    | [33mOP_GET_GLOBAL   [0m   33 'j'
+2683    | [33mOP_CONSTANT     [0m    8 '1'
+2685    | [33mOP_ADD[0m
+2686    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2689    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2692    | [33mOP_SUBSCRIPT_GET[0m
+2693    | [33mOP_CONSTANT     [0m   18 '8'
+2695    | [33mOP_RSHIFT[0m
+2696    | [33mOP_CONSTANT     [0m  129 '255'
+2698    | [33mOP_BAND[0m
+2699    | [33mOP_SUBSCRIPT_SET[0m
+2700    | [33mOP_POP[0m
 [31m        digest[j + 2] = ((state[i] >> 16) & 0xff);[0m
-2678 [34m 219[0m [33mOP_GET_GLOBAL   [0m  127 'digest'
-2681    | [33mOP_GET_GLOBAL   [0m   32 'j'
-2684    | [33mOP_CONSTANT     [0m   14 '2'
-2686    | [33mOP_ADD[0m
-2687    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2690    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2693    | [33mOP_SUBSCRIPT_GET[0m
-2694    | [33mOP_CONSTANT     [0m   21 '16'
-2696    | [33mOP_RSHIFT[0m
-2697    | [33mOP_CONSTANT     [0m  128 '255'
-2699    | [33mOP_BAND[0m
-2700    | [33mOP_SUBSCRIPT_SET[0m
-2701    | [33mOP_POP[0m
+2701 [34m 223[0m [33mOP_GET_GLOBAL   [0m  128 'digest'
+2704    | [33mOP_GET_GLOBAL   [0m   33 'j'
+2707    | [33mOP_CONSTANT     [0m   14 '2'
+2709    | [33mOP_ADD[0m
+2710    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2713    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2716    | [33mOP_SUBSCRIPT_GET[0m
+2717    | [33mOP_CONSTANT     [0m   21 '16'
+2719    | [33mOP_RSHIFT[0m
+2720    | [33mOP_CONSTANT     [0m  129 '255'
+2722    | [33mOP_BAND[0m
+2723    | [33mOP_SUBSCRIPT_SET[0m
+2724    | [33mOP_POP[0m
 [31m        digest[j + 3] = ((state[i++] >> 24) & 0xff);[0m
-2702 [34m 220[0m [33mOP_GET_GLOBAL   [0m  127 'digest'
-2705    | [33mOP_GET_GLOBAL   [0m   32 'j'
-2708    | [33mOP_CONSTANT     [0m   16 '3'
-2710    | [33mOP_ADD[0m
-2711    | [33mOP_GET_GLOBAL   [0m   27 'state'
-2714    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2717    | [33mOP_CONSTANT     [0m    8 '1'
-2719    | [33mOP_ADD[0m
-2720    | [33mOP_SET_GLOBAL   [0m    9 'i'
-2723    | [33mOP_SUBSCRIPT_GET[0m
-2724    | [33mOP_CONSTANT     [0m  129 '24'
-2726    | [33mOP_RSHIFT[0m
-2727    | [33mOP_CONSTANT     [0m  128 '255'
-2729    | [33mOP_BAND[0m
-2730    | [33mOP_SUBSCRIPT_SET[0m
-2731    | [33mOP_POP[0m
-2732    | [33mOP_JUMP_BACK    [0m 2732 -> 2620
+2725 [34m 224[0m [33mOP_GET_GLOBAL   [0m  128 'digest'
+2728    | [33mOP_GET_GLOBAL   [0m   33 'j'
+2731    | [33mOP_CONSTANT     [0m   16 '3'
+2733    | [33mOP_ADD[0m
+2734    | [33mOP_GET_GLOBAL   [0m   28 'state'
+2737    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2740    | [33mOP_CONSTANT     [0m    8 '1'
+2742    | [33mOP_ADD[0m
+2743    | [33mOP_SET_GLOBAL   [0m    9 'i'
+2746    | [33mOP_SUBSCRIPT_GET[0m
+2747    | [33mOP_CONSTANT     [0m  130 '24'
+2749    | [33mOP_RSHIFT[0m
+2750    | [33mOP_CONSTANT     [0m  129 '255'
+2752    | [33mOP_BAND[0m
+2753    | [33mOP_SUBSCRIPT_SET[0m
+2754    | [33mOP_POP[0m
+2755    | [33mOP_JUMP_BACK    [0m 2755 -> 2643
 [31m        for (i = 0; i < 16; i++)[0m
-2735 [34m 222[0m [33mOP_CONSTANT     [0m   11 '0'
-2737    | [33mOP_SET_GLOBAL   [0m    9 'i'
-2740    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2743    | [33mOP_CONSTANT     [0m   21 '16'
-2745    | [33mOP_LESS[0m
-2746    | [33mOP_JUMP_IF_FALSE[0m 2746 -> 2789
-2749    | [33mOP_JUMP         [0m 2749 -> 2765
-2752    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2755    | [33mOP_CONSTANT     [0m    8 '1'
-2757    | [33mOP_ADD[0m
-2758    | [33mOP_SET_GLOBAL   [0m    9 'i'
-2761    | [33mOP_POP[0m
-2762    | [33mOP_JUMP_BACK    [0m 2762 -> 2740
+2758 [34m 226[0m [33mOP_CONSTANT     [0m   11 '0'
+2760    | [33mOP_SET_GLOBAL   [0m    9 'i'
+2763    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2766    | [33mOP_CONSTANT     [0m   21 '16'
+2768    | [33mOP_LESS[0m
+2769    | [33mOP_JUMP_IF_FALSE[0m 2769 -> 2812
+2772    | [33mOP_JUMP         [0m 2772 -> 2788
+2775    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2778    | [33mOP_CONSTANT     [0m    8 '1'
+2780    | [33mOP_ADD[0m
+2781    | [33mOP_SET_GLOBAL   [0m    9 'i'
+2784    | [33mOP_POP[0m
+2785    | [33mOP_JUMP_BACK    [0m 2785 -> 2763
 [31m        ret = sprintf("%s%02x", ret, digest[i]);[0m
-2765 [34m 223[0m [33mOP_GET_GLOBAL   [0m  130 'sprintf'
-2768    | [33mOP_CONSTANT     [0m  131 '%s%02x'
-2770    | [33mOP_GET_GLOBAL   [0m  132 'ret'
-2773    | [33mOP_GET_GLOBAL   [0m  127 'digest'
-2776    | [33mOP_GET_GLOBAL   [0m    9 'i'
-2779    | [33mOP_SUBSCRIPT_GET[0m
-2780    | [33mOP_CALL         [0m    3
-2782    | [33mOP_SET_GLOBAL   [0m  132 'ret'
-2785    | [33mOP_POP[0m
-2786    | [33mOP_JUMP_BACK    [0m 2786 -> 2752
+2788 [34m 227[0m [33mOP_GET_GLOBAL   [0m  131 'sprintf'
+2791    | [33mOP_CONSTANT     [0m  132 '%s%02x'
+2793    | [33mOP_GET_GLOBAL   [0m  133 'ret'
+2796    | [33mOP_GET_GLOBAL   [0m  128 'digest'
+2799    | [33mOP_GET_GLOBAL   [0m    9 'i'
+2802    | [33mOP_SUBSCRIPT_GET[0m
+2803    | [33mOP_CALL         [0m    3
+2805    | [33mOP_SET_GLOBAL   [0m  133 'ret'
+2808    | [33mOP_POP[0m
+2809    | [33mOP_JUMP_BACK    [0m 2809 -> 2775
 [31m        return ret;[0m
-2789 [34m 224[0m [33mOP_GET_GLOBAL   [0m  132 'ret'
-2792    | [33mOP_RETURN[0m
-2793    | [33mOP_POP[0m
-2794    | [33mOP_NULL[0m
-2795    | [33mOP_RETURN[0m
+2812 [34m 228[0m [33mOP_GET_GLOBAL   [0m  133 'ret'
+2815    | [33mOP_RETURN[0m
+2816    | [33mOP_POP[0m
+2817    | [33mOP_NULL[0m
+2818    | [33mOP_RETURN[0m
 == md5 ==
 [31m        S11 =  7;[0m
 0000 [34m   3[0m [33mOP_CONSTANT     [0m    0 '7'
@@ -1718,79 +1727,79 @@ Total:          2.311ms
 0143    | [33mOP_SET_PRIVATE  [0m    9
 0145    | [33mOP_POP[0m
 [31m        return ret;[0m
-0146 [34m 224[0m [33mOP_CONSTANT     [0m   42 'function md5'
+0146 [34m 228[0m [33mOP_CONSTANT     [0m   42 'function md5'
 0148    | [33mOP_SET_PRIVATE  [0m   10
 0150    | [33mOP_POP[0m
 [31m        if(console && console.log)[0m
-0151 [34m 228[0m [33mOP_GET_GLOBAL   [0m   43 'console'
+0151 [34m 232[0m [33mOP_GET_GLOBAL   [0m   43 'console'
 0154    | [33mOP_AND          [0m  154 -> 163
 0157    | [33mOP_GET_GLOBAL   [0m   43 'console'
 0160    | [33mOP_CONSTANT     [0m   44 'log'
 0162    | [33mOP_GET_FIELD[0m
 0163    | [33mOP_JUMP_IF_FALSE[0m  163 -> 179
 [31m        printf = console.log[0m
-0166 [34m 230[0m [33mOP_GET_GLOBAL   [0m   43 'console'
+0166 [34m 234[0m [33mOP_GET_GLOBAL   [0m   43 'console'
 0169    | [33mOP_CONSTANT     [0m   44 'log'
 0171    | [33mOP_GET_FIELD[0m
 0172    | [33mOP_SET_GLOBAL   [0m   45 'printf'
 0175    | [33mOP_POP[0m
 0176    | [33mOP_JUMP         [0m  176 -> 179
 [31m        demo = [[0m
-0179 [34m 233[0m [33mOP_ARRAY[0m
+0179 [34m 237[0m [33mOP_ARRAY[0m
 [31m        ["message digest", "f96b697d7cb7938d525a2f31aaf161d0"],[0m
-0180 [34m 234[0m [33mOP_ARRAY[0m
+0180 [34m 238[0m [33mOP_ARRAY[0m
 0181    | [33mOP_CONSTANT     [0m   46 'message digest'
 0183    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0184    | [33mOP_CONSTANT     [0m   47 'f96b697d7cb7938d525a2f31aaf161d0'
 0186    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0187    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        ["", "d41d8cd98f00b204e9800998ecf8427e"],[0m
-0188 [34m 235[0m [33mOP_ARRAY[0m
+0188 [34m 239[0m [33mOP_ARRAY[0m
 0189    | [33mOP_CONSTANT     [0m   48 ''
 0191    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0192    | [33mOP_CONSTANT     [0m   49 'd41d8cd98f00b204e9800998ecf8427e'
 0194    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0195    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        ["a", "0cc175b9c0f1b6a831c399e269772661"],[0m
-0196 [34m 236[0m [33mOP_ARRAY[0m
+0196 [34m 240[0m [33mOP_ARRAY[0m
 0197    | [33mOP_CONSTANT     [0m   50 'a'
 0199    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0200    | [33mOP_CONSTANT     [0m   51 '0cc175b9c0f1b6a831c399e269772661'
 0202    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0203    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        ["abc", "900150983cd24fb0d6963f7d28e17f72"],[0m
-0204 [34m 237[0m [33mOP_ARRAY[0m
+0204 [34m 241[0m [33mOP_ARRAY[0m
 0205    | [33mOP_CONSTANT     [0m   52 'abc'
 0207    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0208    | [33mOP_CONSTANT     [0m   53 '900150983cd24fb0d6963f7d28e17f72'
 0210    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0211    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        ["abcdefghijklmnopqrstuvwxyz", "c3fcd3d76192e4007dfb496cca67e13b"],[0m
-0212 [34m 238[0m [33mOP_ARRAY[0m
+0212 [34m 242[0m [33mOP_ARRAY[0m
 0213    | [33mOP_CONSTANT     [0m   54 'abcdefghijklmnopqrstuvwxyz'
 0215    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0216    | [33mOP_CONSTANT     [0m   55 'c3fcd3d76192e4007dfb496cca67e13b'
 0218    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0219    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        ["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", "d174ab98d277d9f5a5611c2c9f419d9f"],[0m
-0220 [34m 239[0m [33mOP_ARRAY[0m
+0220 [34m 243[0m [33mOP_ARRAY[0m
 0221    | [33mOP_CONSTANT     [0m   56 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 0223    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0224    | [33mOP_CONSTANT     [0m   57 'd174ab98d277d9f5a5611c2c9f419d9f'
 0226    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0227    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        ["12345678901234567890123456789012345678901234567890123456789012345678901234567890", "57edf4a22be3c955ac49da2e2107b67a"][0m
-0228 [34m 240[0m [33mOP_ARRAY[0m
+0228 [34m 244[0m [33mOP_ARRAY[0m
 0229    | [33mOP_CONSTANT     [0m   58 '12345678901234567890123456789012345678901234567890123456789012345678901234567890'
 0231    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0232    | [33mOP_CONSTANT     [0m   59 '57edf4a22be3c955ac49da2e2107b67a'
 0234    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 0235    | [33mOP_PUSH_ARRAY_ELEMENT[0m
 [31m        [0m
-0236 [34m 242[0m [33mOP_SET_GLOBAL   [0m   60 'demo'
+0236 [34m 246[0m [33mOP_SET_GLOBAL   [0m   60 'demo'
 0239    | [33mOP_POP[0m
 [31m        for(idx=0; idx<demo.length; idx++)[0m
-0240 [34m 243[0m [33mOP_CONSTANT     [0m   61 '0'
+0240 [34m 247[0m [33mOP_CONSTANT     [0m   61 '0'
 0242    | [33mOP_SET_GLOBAL   [0m   62 'idx'
 0245    | [33mOP_GET_GLOBAL   [0m   62 'idx'
 0248    | [33mOP_GET_GLOBAL   [0m   60 'demo'
@@ -1806,36 +1815,35 @@ Total:          2.311ms
 0270    | [33mOP_POP[0m
 0271    | [33mOP_JUMP_BACK    [0m  271 -> 245
 [31m        itm = demo[idx][0m
-0274 [34m 245[0m [33mOP_GET_GLOBAL   [0m   60 'demo'
+0274 [34m 249[0m [33mOP_GET_GLOBAL   [0m   60 'demo'
 0277    | [33mOP_GET_GLOBAL   [0m   62 'idx'
 0280    | [33mOP_SUBSCRIPT_GET[0m
 0281    | [33mOP_SET_GLOBAL   [0m   65 'itm'
 0284    | [33mOP_POP[0m
 [31m        k = itm[0][0m
-0285 [34m 246[0m [33mOP_GET_GLOBAL   [0m   65 'itm'
+0285 [34m 250[0m [33mOP_GET_GLOBAL   [0m   65 'itm'
 0288    | [33mOP_CONSTANT     [0m   61 '0'
 0290    | [33mOP_SUBSCRIPT_GET[0m
 0291    | [33mOP_SET_GLOBAL   [0m   66 'k'
 0294    | [33mOP_POP[0m
 [31m        v = itm[1][0m
-0295 [34m 247[0m [33mOP_GET_GLOBAL   [0m   65 'itm'
+0295 [34m 251[0m [33mOP_GET_GLOBAL   [0m   65 'itm'
 0298    | [33mOP_CONSTANT     [0m   64 '1'
 0300    | [33mOP_SUBSCRIPT_GET[0m
 0301    | [33mOP_SET_GLOBAL   [0m   67 'v'
 0304    | [33mOP_POP[0m
 [31m        ma = md5(k)[0m
-0305 [34m 248[0m [33mOP_GET_PRIVATE  [0m   10
+0305 [34m 252[0m [33mOP_GET_PRIVATE  [0m   10
 0307    | [33mOP_GET_GLOBAL   [0m   66 'k'
 0310    | [33mOP_CALL         [0m    1
 0312    | [33mOP_SET_GLOBAL   [0m   68 'ma'
 0315    | [33mOP_POP[0m
 [31m        m = ma[0m
-0316 [34m 249[0m [33mOP_GET_GLOBAL   [0m   68 'ma'
-0319 gc: freed residual 174 bytes
-   | [33mOP_SET_GLOBAL   [0m   69 'm'
+0316 [34m 253[0m [33mOP_GET_GLOBAL   [0m   68 'ma'
+0319    | [33mOP_SET_GLOBAL   [0m   69 'm'
 0322    | [33mOP_POP[0m
 [31m        printf("-- ma(%s) = (%d) %s\n", k, 0, ma)[0m
-0323 [34m 250[0m [33mOP_GET_GLOBAL   [0m   45 'printf'
+0323 [34m 254[0m [33mOP_GET_GLOBAL   [0m   45 'printf'
 0326    | [33mOP_CONSTANT     [0m   70 '-- ma(%s) = (%d) %s
 '
 0328    | [33mOP_GET_GLOBAL   [0m   66 'k'
@@ -1844,21 +1852,21 @@ Total:          2.311ms
 0336    | [33mOP_CALL         [0m    4
 0338    | [33mOP_POP[0m
 [31m        okstr = "FAIL"[0m
-0339 [34m 251[0m [33mOP_CONSTANT     [0m   71 'FAIL'
+0339 [34m 255[0m [33mOP_CONSTANT     [0m   71 'FAIL'
 0341    | [33mOP_SET_GLOBAL   [0m   72 'okstr'
 0344    | [33mOP_POP[0m
 [31m        if(m == v)[0m
-0345 [34m 252[0m [33mOP_GET_GLOBAL   [0m   69 'm'
+0345 [34m 256[0m [33mOP_GET_GLOBAL   [0m   69 'm'
 0348    | [33mOP_GET_GLOBAL   [0m   67 'v'
 0351    | [33mOP_EQUAL[0m
 0352    | [33mOP_JUMP_IF_FALSE[0m  352 -> 364
 [31m        okstr = "OK  "[0m
-0355 [34m 254[0m [33mOP_CONSTANT     [0m   73 'OK  '
+0355 [34m 258[0m [33mOP_CONSTANT     [0m   73 'OK  '
 0357    | [33mOP_SET_GLOBAL   [0m   72 'okstr'
 0360    | [33mOP_POP[0m
 0361    | [33mOP_JUMP         [0m  361 -> 364
 [31m        printf("%s: \"%s\" => %s\n", okstr, k, m)[0m
-0364 [34m 256[0m [33mOP_GET_GLOBAL   [0m   45 'printf'
+0364 [34m 260[0m [33mOP_GET_GLOBAL   [0m   45 'printf'
 0367    | [33mOP_CONSTANT     [0m   74 '%s: "%s" => %s
 '
 0369    | [33mOP_GET_GLOBAL   [0m   72 'okstr'

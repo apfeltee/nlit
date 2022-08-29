@@ -1,17 +1,5 @@
 
 
-if(console && console.log)
-{
-    println = console.log
-    eval("function println(...args){ console.log(...args) }")
-    eval("function dec2hex(n){if(n<0){n=(0xFFFFFFFF + n + 1);};return n.toString(16);}")
-}
-else
-{
-    eval("dec2hex = (n)=>{ return \"%x\".format(n) }")
-}
-
-
 var S11 =  7
 var S12 = 12
 var S13 = 17
@@ -93,7 +81,6 @@ function II(a, b, c, d, x, s, ac)
 }
 
 
-
 // our md5 implementation
 function md5(input)
 {
@@ -105,15 +92,14 @@ function md5(input)
     var lo
     var words = []
     var chars = []
-    var bytes = []
     for(i=0;i<input.length; i++)
     {
         chars.push(input[i])
-        bytes.push(input.charCodeAt(i))
     }
-    //println("chars=", chars.length)
-    var nbytes = bytes.length
-    //println("bytes(", bytes.length, ")=", bytes)
+    println("chars=", chars.length)
+    var nbytes = chars.length
+    var bytes = input.bytes
+    println("bytes(", bytes.length, ")=", bytes)
     // convert the array of bytes into an array of 32-bits words.
     // NOTE: words is 0-indexed.
     for (i = 1; i <= nbytes; i += 4)
@@ -138,18 +124,18 @@ function md5(input)
     // Step 1. Append Padding Bits
     if(nbytes % 4 == 0)
     {
-        words.push(0x80)
-        nwords++
+        words.push(0x80);
+        nwords++;
     }
     else
     {
-        words[nwords - 1] = (words[nwords - 1] | (0x80 << (nbytes % 4) * 8))
+        words[nwords - 1] = (words[nwords - 1] | (0x80 << (nbytes % 4) * 8));
     }
     // "fill" the remaining bytes with 0 until we're just shy two words of
     // having 16-Word Blocks.
     while ((nwords % 16) != 14)
     {
-        nwords++;
+        nwords++
     }
     // Step 2. Append Length
     hi = ((nbytes * 8) >> 32)
@@ -160,7 +146,7 @@ function md5(input)
     nwords++
     // Step 3. Initialize MD Buffer
     var x = Array(128, 0)
-    var state = [0, 0, 0, 0, 0]
+    var state = Array(60, 0)
     state[0] = 0x67452301
     state[1] = 0xefcdab89
     state[2] = 0x98badcfe
@@ -171,7 +157,7 @@ function md5(input)
     for (i = 0; i < nwords; i += 16)
     {
         // Copy block i into x.
-        for (j = 0; j < 16; j++)
+        for (var j = 0; j < 16; j++)
         {
             var v = 0
             if((i + j) < words.length)
@@ -261,15 +247,14 @@ function md5(input)
         state[2] = mod32bits(state[2] + c)
         state[3] = mod32bits(state[3] + d)
     }
-    println("state(", state.length, ")=", state)
     var digest = Array(17, 0)
     for (i = j = 0; j < 16; j += 4)
     {
         var a1 = (state[i] & 0xff)
         var a2 = ((state[i] >> 8) & 0xff)
         var a3 = ((state[i] >> 16) & 0xff)
-        var a4 = ((state[i+1] >> 24) & 0xff)
-        i++
+        var a4 = ((state[i++] >> 24) & 0xff)
+        println($"a1={a1}, a2={a2}, a3={a3}, a4={a4}")
         digest[j + 0] = a1
         digest[j + 1] = a2
         digest[j + 2] = a3
@@ -280,14 +265,18 @@ function md5(input)
     for (i = 0; i < 16; i++)
     {
         //ret = sprintf("%s%02x", ret, digest[i]);
-        //ret += "%x".format(digest[i])
-        ret += dec2hex( digest[i] )
+        ret += "%x".format(digest[i])
     }
     return ret
 }
 
 
-var demo = [
+if(console && console.log)
+{
+    printf = console.log
+}
+
+const demo = [
   ["message digest", "f96b697d7cb7938d525a2f31aaf161d0"],
   ["", "d41d8cd98f00b204e9800998ecf8427e"],
   ["a", "0cc175b9c0f1b6a831c399e269772661"],
@@ -300,17 +289,19 @@ var demo = [
 for(var idx=0; idx<demo.length; idx++)
 {
     var itm = demo[idx]
+    println("itm=", itm[1])
     var k = itm[0]
     var v = itm[1]
     var ma = md5(k)
     //ma = "blah"
     var m = ma
-    //println("-- (", k, ") [", v, "] = (", ma.length, ") ", ma)
+    println("v (", v.class, ") = ", v)
+    println("-- (", k, ") [", v, "] = (", ma.length, ") ", ma)
     var okstr = "FAIL"
-    if(m == v)
+    //if(m == v)
     {
         okstr = "OK  "
     }
-    println(okstr, ": \"",k, "\" => ", m, "")
+    println(okstr, ": \"",k, "\" => ", m, "\n", okstr, k)
 
 }

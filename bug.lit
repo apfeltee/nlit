@@ -1,13 +1,9 @@
 
-if(1)
+class printf
 {
-    class printf
+    function constructor(fmt, ...)
     {
-        function constructor(fmt, ...)
-        {
-            println(fmt.format(...))
-        }
+        println(fmt.format(...));
     }
 }
-printf("hello, %s!", "world")
-
+printf("hello, %s!", "world");
