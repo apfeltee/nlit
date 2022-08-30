@@ -173,7 +173,7 @@
     (lit::Object::asObject(value)->type)
 
 
-#define INTERPRET_RUNTIME_FAIL ((lit::Result){ LITRESULT_INVALID, lit::Object::NullVal })
+#define INTERPRET_RUNTIME_FAIL (lit::Result{ LITRESULT_INVALID, lit::Object::NullVal })
 
 #define LIT_GET_FIELD(id) lit::Object::as<lit::Instance>(instance)->fields.getField(vm->m_state, id)
 #define LIT_GET_MAP_FIELD(id) lit::Object::as<lit::Instance>(instance).fields.getField(vm->m_state, id))
@@ -1743,23 +1743,29 @@ namespace lit
             */
             static String* format(State* state, const char* format, ...)
             {
+                String* rt;
+                va_list va;
+                va_start(va, format);
+                rt = String::vformat(state, format, va);
+                va_end(va);
+                return rt;
+            }
+
+            static String* vformat(State* state, const char* format, va_list arg_list)
+            {
                 char ch;
                 size_t length;
                 size_t total_length;
                 bool was_allowed;
                 const char* c;
                 const char* strval;
-                va_list arg_list;
                 Value val;
                 String* string;
                 String* result;
                 was_allowed = stateGetGCAllowed(state);
                 stateSetGCAllowed(state, false);
-                va_start(arg_list, format);
                 total_length = strlen(format);
-                va_end(arg_list);
                 result = String::allocEmpty(state, total_length + 1);
-                va_start(arg_list, format);
                 for(c = format; *c != '\0'; c++)
                 {
                     switch(*c)
@@ -1828,7 +1834,6 @@ namespace lit
                             break;
                     }
                 }
-                va_end(arg_list);
                 result->m_hash = String::makeHash(*(result->m_chars));
                 String::statePutInterned(state, result);
                 stateSetGCAllowed(state, was_allowed);
@@ -1856,16 +1861,28 @@ namespace lit
         public:
             inline const char* data() const
             {
+                if(!m_chars)
+                {
+                    return nullptr;
+                }
                 return m_chars->data();
             }
 
             inline size_t size() const
             {
+                if(!m_chars)
+                {
+                    return 0;
+                }
                 return m_chars->size();
             }
 
             inline size_t length() const
             {
+                if(!m_chars)
+                {
+                    return 0;
+                }
                 return m_chars->size();
             }
 
@@ -2071,7 +2088,7 @@ namespace lit
                 init(this->m_state);
             }
 
-            void write_chunk(uint8_t byte, uint16_t line)
+            void putChunk(uint8_t byte, uint16_t line)
             {
                 if(this->m_capacity < this->m_count + 1)
                 {
@@ -2158,13 +2175,13 @@ namespace lit
 
             void emit_byte(uint8_t byte)
             {
-                write_chunk(byte, 1);
+                putChunk(byte, 1);
             }
 
             void emit_bytes(uint8_t a, uint8_t b)
             {
-                write_chunk(a, 1);
-                write_chunk(b, 1);
+                putChunk(a, 1);
+                putChunk(b, 1);
             }
 
             void emit_short(uint16_t value)
@@ -2994,27 +3011,37 @@ namespace lit
             };
 
         public:
-            static size_t write_uint8_t(FILE* file, uint8_t byte)
+            static size_t write_string(FILE* file, const char* data, size_t len)
+            {
+                return fwrite(data, sizeof(char), len, file);
+            }
+
+            static size_t write_string(FILE* file, std::string_view sv)
+            {
+                return write_string(file, sv.data(), sv.size());
+            }
+
+            static size_t binwrite_uint8_t(FILE* file, uint8_t byte)
             {
                 return fwrite(&byte, sizeof(uint8_t), 1, file);
             }
 
-            static size_t write_uint16_t(FILE* file, uint16_t byte)
+            static size_t binwrite_uint16_t(FILE* file, uint16_t byte)
             {
                 return fwrite(&byte, sizeof(uint16_t), 1, file);
             }
 
-            static size_t write_uint32_t(FILE* file, uint32_t byte)
+            static size_t binwrite_uint32_t(FILE* file, uint32_t byte)
             {
                 return fwrite(&byte, sizeof(uint32_t), 1, file);
             }
 
-            static size_t write_double(FILE* file, double byte)
+            static size_t binwrite_double(FILE* file, double byte)
             {
                 return fwrite(&byte, sizeof(double), 1, file);
             }
 
-            static size_t write_string(FILE* file, String* string)
+            static size_t binwrite_string(FILE* file, String* string)
             {
                 uint16_t i;
                 uint16_t c;
@@ -3024,12 +3051,12 @@ namespace lit
                 auto ch = string->data();
                 for(i = 0; i < c; i++)
                 {
-                    write_uint8_t(file, (uint8_t)ch[i] ^ LIT_STRING_KEY);
+                    binwrite_uint8_t(file, (uint8_t)ch[i] ^ LIT_STRING_KEY);
                 }
                 return (rt + i);
             }
 
-            static uint8_t read_uint8_t(FILE* file)
+            static uint8_t binread_uint8_t(FILE* file)
             {
                 size_t rt;
                 (void)rt;
@@ -3038,7 +3065,7 @@ namespace lit
                 return btmp;
             }
 
-            static uint16_t read_uint16_t(FILE* file)
+            static uint16_t binread_uint16_t(FILE* file)
             {
                 size_t rt;
                 (void)rt;
@@ -3047,7 +3074,7 @@ namespace lit
                 return stmp;
             }
 
-            static uint32_t read_uint32_t(FILE* file)
+            static uint32_t binread_uint32_t(FILE* file)
             {
                 size_t rt;
                 (void)rt;
@@ -3056,7 +3083,7 @@ namespace lit
                 return itmp;
             }
 
-            static double read_double(FILE* file)
+            static double binread_double(FILE* file)
             {
                 size_t rt;
                 (void)rt;
@@ -3065,7 +3092,7 @@ namespace lit
                 return dtmp;
             }
 
-            static String* read_string(State* state, FILE* file)
+            static String* binread_string(State* state, FILE* file)
             {
                 size_t rt;
                 uint16_t i;
@@ -3080,7 +3107,7 @@ namespace lit
                 line = (char*)malloc(length + 1);
                 for(i = 0; i < length; i++)
                 {
-                    line[i] = (char)read_uint8_t(file) ^ LIT_STRING_KEY;
+                    line[i] = (char)binread_uint8_t(file) ^ LIT_STRING_KEY;
                 }
                 return String::take(state, line, length);
             }
@@ -3386,8 +3413,8 @@ namespace lit
                 klass->super = nullptr;
                 klass->methods.init(state);
                 klass->static_fields.init(state);
-                //klass->bindMethod("toString", defaultfn_tostring);
-                //klass->setStaticMethod("toString", defaultfn_tostring);
+                klass->bindMethod("toString", defaultfn_tostring);
+                klass->setStaticMethod("toString", defaultfn_tostring);
                 return klass;
             }
 
@@ -6476,7 +6503,7 @@ namespace lit
                         // Egor-fail proofing
                         line = m_lastline;
                     }
-                    m_chunk->write_chunk(byte, line);
+                    m_chunk->putChunk(byte, line);
                     m_lastline = line;
                 }
 
@@ -6487,8 +6514,8 @@ namespace lit
                         // Egor-fail proofing
                         line = m_lastline;
                     }
-                    m_chunk->write_chunk(a, line);
-                    m_chunk->write_chunk(b, line);
+                    m_chunk->putChunk(a, line);
+                    m_chunk->putChunk(b, line);
                     m_lastline = line;
                 }
 
@@ -8890,11 +8917,11 @@ namespace lit
             static void storeFunction(FILE* file, Function* function)
             {
                 storeChunk(file, &function->chunk);
-                FileIO::write_string(file, function->name);
-                FileIO::write_uint8_t(file, function->arg_count);
-                FileIO::write_uint16_t(file, function->upvalue_count);
-                FileIO::write_uint8_t(file, (uint8_t)function->vararg);
-                FileIO::write_uint16_t(file, (uint16_t)function->max_slots);
+                FileIO::binwrite_string(file, function->name);
+                FileIO::binwrite_uint8_t(file, function->arg_count);
+                FileIO::binwrite_uint16_t(file, function->upvalue_count);
+                FileIO::binwrite_uint8_t(file, (uint8_t)function->vararg);
+                FileIO::binwrite_uint16_t(file, (uint16_t)function->max_slots);
             }
 
             static Function* loadFunction(State* state, FileIO::EmulatedFile* file, Module* module)
@@ -8913,37 +8940,37 @@ namespace lit
             {
                 size_t i;
                 size_t c;
-                FileIO::write_uint32_t(file, chunk->m_count);
+                FileIO::binwrite_uint32_t(file, chunk->m_count);
                 for(i = 0; i < chunk->m_count; i++)
                 {
-                    FileIO::write_uint8_t(file, chunk->m_code[i]);
+                    FileIO::binwrite_uint8_t(file, chunk->m_code[i]);
                 }
                 if(chunk->has_line_info)
                 {
                     c = chunk->line_count * 2 + 2;
-                    FileIO::write_uint32_t(file, c);
+                    FileIO::binwrite_uint32_t(file, c);
                     for(i = 0; i < c; i++)
                     {
-                        FileIO::write_uint16_t(file, chunk->lines[i]);
+                        FileIO::binwrite_uint16_t(file, chunk->lines[i]);
                     }
                 }
                 else
                 {
-                    FileIO::write_uint32_t(file, 0);
+                    FileIO::binwrite_uint32_t(file, 0);
                 }
-                FileIO::write_uint32_t(file, chunk->constants.m_count);
+                FileIO::binwrite_uint32_t(file, chunk->constants.m_count);
                 for(i = 0; i < chunk->constants.m_count; i++)
                 {
                     Value constant = chunk->constants.m_values[i];
                     if(Object::isObject(constant))
                     {
                         Object::Type type = Object::asObject(constant)->type;
-                        FileIO::write_uint8_t(file, (uint8_t)(type) + 1);
+                        FileIO::binwrite_uint8_t(file, (uint8_t)(type) + 1);
                         switch(type)
                         {
                             case Object::Type::String:
                                 {
-                                    FileIO::write_string(file, Object::as<String>(constant));
+                                    FileIO::binwrite_string(file, Object::as<String>(constant));
                                 }
                                 break;
                             case Object::Type::Function:
@@ -8960,8 +8987,8 @@ namespace lit
                     }
                     else
                     {
-                        FileIO::write_uint8_t(file, 0);
-                        FileIO::write_double(file, Object::toNumber(constant));
+                        FileIO::binwrite_uint8_t(file, 0);
+                        FileIO::binwrite_double(file, Object::toNumber(constant));
                     }
                 }
             }
@@ -9037,9 +9064,9 @@ namespace lit
                 bool disabled;
                 Table* privates;
                 disabled = AST::Optimizer::is_enabled(LITOPTSTATE_PRIVATE_NAMES);
-                FileIO::write_string(file, module->name);
-                FileIO::write_uint16_t(file, module->private_count);
-                FileIO::write_uint8_t(file, (uint8_t)disabled);
+                FileIO::binwrite_string(file, module->name);
+                FileIO::binwrite_uint16_t(file, module->private_count);
+                FileIO::binwrite_uint8_t(file, (uint8_t)disabled);
                 if(!disabled)
                 {
                     privates = &module->private_names->m_values;
@@ -9047,8 +9074,8 @@ namespace lit
                     {
                         if(privates->at(i)->key != nullptr)
                         {
-                            FileIO::write_string(file, privates->at(i)->key);
-                            FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i)->value));
+                            FileIO::binwrite_string(file, privates->at(i)->key);
+                            FileIO::binwrite_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i)->value));
                         }
                     }
                 }
@@ -9153,7 +9180,7 @@ namespace lit
     Result lit_dump_file(State* state, const char* file);
     bool lit_compile_and_save_files(State* state, char* files[], size_t num_files, const char* output_file);
 
-    void lit_printf(State* state, const char* message, ...);
+
 
     void lit_trace_vm_stack(VM* vm, Writer* wr);
 
@@ -10303,11 +10330,15 @@ namespace lit
                 case Object::Type::NativeFunction:
                     {
                         vm_pushgc(this->m_state, false)
-                        result = Object::as<NativeFunction>(callee)->function(this, arg_count, this->fiber->stack_top - arg_count);
-                        this->fiber->stack_top -= arg_count + 1;
-                        this->push(result);
-                        vm_popgc(this->m_state);
-                        return false;
+                        auto fn = Object::as<NativeFunction>(callee);
+                        if(fn != nullptr)
+                        {
+                            result = fn->function(this, arg_count, this->fiber->stack_top - arg_count);
+                            this->fiber->stack_top -= arg_count + 1;
+                            this->push(result);
+                            vm_popgc(this->m_state);
+                            return false;
+                        }
                     }
                     break;
                 case Object::Type::NativePrimitive:
@@ -10764,7 +10795,7 @@ namespace lit
             chunk->m_count = 0;
             chunk->constants.m_count = 0;
             function->max_slots = 3;
-            chunk->write_chunk(OP_INVOKE, 1);
+            chunk->putChunk(OP_INVOKE, 1);
             chunk->emit_byte(0);
             chunk->emit_short(chunk->add_constant(String::internValue(state, "toString")));
             chunk->emit_byte(OP_RETURN);
@@ -11213,16 +11244,9 @@ namespace lit
         return INTERPRET_RUNTIME_FAIL;    
     }
 
-
     /**
     * impls
     */
-
-
-
-
-
-
 
     void lit_add_definition(State* state, const char* name)
     {
@@ -12101,14 +12125,14 @@ namespace lit
             state->raiseError(COMPILE_ERROR, "failed to open file '%s' for writing", output_file);
             return false;
         }
-        FileIO::write_uint16_t(file, LIT_BYTECODE_MAGIC_NUMBER);
-        FileIO::write_uint8_t(file, LIT_BYTECODE_VERSION);
-        FileIO::write_uint16_t(file, num_files);
+        FileIO::binwrite_uint16_t(file, LIT_BYTECODE_MAGIC_NUMBER);
+        FileIO::binwrite_uint8_t(file, LIT_BYTECODE_VERSION);
+        FileIO::binwrite_uint16_t(file, num_files);
         for(i = 0; i < num_files; i++)
         {
             BinaryData::storeModule(compiled_modules[i], file);
         }
-        FileIO::write_uint16_t(file, LIT_BYTECODE_END_NUMBER);
+        FileIO::binwrite_uint16_t(file, LIT_BYTECODE_END_NUMBER);
         LIT_FREE(state, Module, compiled_modules);
         fclose(file);
         return true;
@@ -12137,32 +12161,12 @@ namespace lit
         else
         {
             lit_disassemble_module(state, module, source);
-            result = (Result){ LITRESULT_OK, Object::NullVal };
+            result = Result{ LITRESULT_OK, Object::NullVal };
         }
         free((void*)source);
         free((void*)patched_file_name);
         return result;
     }
-
-
-
-    void lit_printf(State* state, const char* message, ...)
-    {
-        size_t buffer_size;
-        char* buffer;
-        va_list args;
-        va_start(args, message);
-        va_list args_copy;
-        va_copy(args_copy, args);
-        buffer_size = vsnprintf(nullptr, 0, message, args_copy) + 1;
-        va_end(args_copy);
-        buffer = (char*)malloc(buffer_size+1);
-        vsnprintf(buffer, buffer_size, message, args);
-        va_end(args);
-        state->print_fn(state, buffer);
-        free(buffer);
-    }
-
 
     void lit_trace_vm_stack(VM* vm, Writer* wr)
     {
@@ -12871,9 +12875,20 @@ namespace lit
 
     static Value objfn_class_tostring(VM* vm, Value instance, size_t argc, Value* argv)
     {
+        const char* name;
+        Class* selfclass;
+        name = "(unnamed)";
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "[class $]", Object::as<Class>(instance)->name->data())->asValue();
+        if(Object::isClass(instance))
+        {
+            selfclass = Object::as<Class>(instance);
+            if(selfclass && selfclass->name)
+            {
+                name = selfclass->name->data();
+            }
+        }
+        return String::format(vm->m_state, "[class $]", name)->asValue();
     }
 
     static Value objfn_class_iterator(VM* vm, Value instance, size_t argc, Value* argv)
@@ -13532,7 +13547,7 @@ namespace lit
         for(i = 0; i < argc; i++)
         {
             sv = Object::toString(vm->m_state, argv[i]);
-            written += fwrite(sv->data(), sizeof(char), sv->length(), stdout);
+            written += FileIO::write_string(stdout, sv->data(), sv->length());
         }
         return Object::toValue(written);
     }
@@ -13540,16 +13555,20 @@ namespace lit
     static Value cfn_println(VM* vm, size_t argc, Value* argv)
     {
         size_t i;
+        size_t wr;
+        String* stringified;
+        wr = 0;
         if(argc == 0)
         {
-            return Object::NullVal;
+            return Object::toValue(wr);
         }
         for(i = 0; i < argc; i++)
         {
-            lit_printf(vm->m_state, "%s", Object::toString(vm->m_state, argv[i])->data());
+            stringified = Object::toString(vm->m_state, argv[i]);
+            wr += FileIO::write_string(stdout, stringified->data(), stringified->size());
         }
-        lit_printf(vm->m_state, "\n");
-        return Object::NullVal;
+        wr += FileIO::write_string(stdout, "\n");
+        return Object::toValue(wr);
     }
 
     static Value objfn_string_format(VM* vm, Value instance, size_t argc, Value* argv);
@@ -13564,7 +13583,8 @@ namespace lit
         vres = objfn_string_format(vm, firstarg, argc-1, argv+1);
         res = Object::as<String>(vres);
         fwdargs[0] = res->asValue();
-        return cfn_print(vm, 1, fwdargs);
+        lit_runtime_error_exiting(vm, "printf() is currently broken");
+        return Object::NullVal;
     }
 
     static bool cfn_eval(VM* vm, size_t argc, Value* argv)
@@ -14077,7 +14097,7 @@ namespace lit
         uint8_t rt;
         uint8_t byte;
         byte = (uint8_t)lit_check_number(vm, argv, argc, 0);
-        rt = FileIO::write_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, byte);
+        rt = FileIO::binwrite_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, byte);
         return Object::toValue(rt);
     }
 
@@ -14086,7 +14106,7 @@ namespace lit
         uint16_t rt;
         uint16_t shrt;
         shrt = (uint16_t)lit_check_number(vm, argv, argc, 0);
-        rt = FileIO::write_uint16_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, shrt);
+        rt = FileIO::binwrite_uint16_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, shrt);
         return Object::toValue(rt);
     }
 
@@ -14095,7 +14115,7 @@ namespace lit
         uint32_t rt;
         float num;
         num = (float)lit_check_number(vm, argv, argc, 0);
-        rt = FileIO::write_uint32_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, num);
+        rt = FileIO::binwrite_uint32_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, num);
         return Object::toValue(rt);
     }
 
@@ -14104,7 +14124,7 @@ namespace lit
         bool value;
         uint8_t rt;
         value = lit_check_bool(vm, argv, argc, 0);
-        rt = FileIO::write_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, (uint8_t)value ? '1' : '0');
+        rt = FileIO::binwrite_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle, (uint8_t)value ? '1' : '0');
         return Object::toValue(rt);
     }
 
@@ -14118,7 +14138,7 @@ namespace lit
         }
         string = Object::as<String>(argv[0]);
         data = (FileData*)LIT_EXTRACT_DATA(vm, instance);
-        FileIO::write_string(data->handle, string);
+        FileIO::binwrite_string(data->handle, string);
         return Object::NullVal;
     }
 
@@ -14214,7 +14234,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return Object::toValue(FileIO::read_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle));
+        return Object::toValue(FileIO::binread_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle));
     }
 
     static Value objmethod_file_readshort(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14223,7 +14243,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return Object::toValue(FileIO::read_uint16_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle));
+        return Object::toValue(FileIO::binread_uint16_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle));
     }
 
     static Value objmethod_file_readnumber(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14232,7 +14252,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return Object::toValue(FileIO::read_uint32_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle));
+        return Object::toValue(FileIO::binread_uint32_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle));
     }
 
     static Value objmethod_file_readbool(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14241,7 +14261,7 @@ namespace lit
         (void)instance;
         (void)argc;
         (void)argv;
-        return Object::fromBool((char)FileIO::read_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle) == '1');
+        return Object::fromBool((char)FileIO::binread_uint8_t(((FileData*)LIT_EXTRACT_DATA(vm, instance))->handle) == '1');
     }
 
     static Value objmethod_file_readstring(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14251,7 +14271,7 @@ namespace lit
         (void)argc;
         (void)argv;
         FileData* data = (FileData*)LIT_EXTRACT_DATA(vm, instance);
-        String* string = FileIO::read_string(vm->m_state, data->handle);
+        String* string = FileIO::binread_string(vm->m_state, data->handle);
 
         return string == nullptr ? Object::NullVal : string->asValue();
     }
@@ -14641,7 +14661,7 @@ namespace lit
         size_t value_amount;
         size_t olength;
         size_t buffer_index;
-        char* buffer;
+        String* buffer;
         State* state;
         Map* map;
         Table* values;
@@ -14674,31 +14694,34 @@ namespace lit
         do
         {
             entry = values->m_inner.m_values[index++];
-            if(entry->key != nullptr)
+            if(entry)
             {
-                // Special hidden key
-                field = has_wrapper ? map->m_indexfn(vm, map, entry->key, nullptr) : entry->value;
-                // This check is required to prevent infinite loops when playing with Module.privates and such
-                strobval = (Object::isMap(field) && Object::as<Map>(field)->m_indexfn != nullptr) ? String::intern(state, "map") : Object::toString(state, field);
-                state->pushRoot((Object*)strobval);
-                values_converted[i] = strobval;
-                keys[i] = entry->key;
-                olength += (
-                    entry->key->length() + 3 + strobval->length() +
-                    #ifdef SINGLE_LINE_MAPS
-                        (i == value_amount - 1 ? 1 : 2)
-                    #else
-                        (i == value_amount - 1 ? 2 : 3)
-                    #endif
-                );
-                i++;
+                if(entry->key != nullptr)
+                {
+                    // Special hidden key
+                    field = has_wrapper ? map->m_indexfn(vm, map, entry->key, nullptr) : entry->value;
+                    // This check is required to prevent infinite loops when playing with Module.privates and such
+                    strobval = (Object::isMap(field) && Object::as<Map>(field)->m_indexfn != nullptr) ? String::intern(state, "map") : Object::toString(state, field);
+                    state->pushRoot((Object*)strobval);
+                    values_converted[i] = strobval;
+                    keys[i] = entry->key;
+                    olength += (
+                        entry->key->length() + 3 + strobval->length() +
+                        #ifdef SINGLE_LINE_MAPS
+                            (i == value_amount - 1 ? 1 : 2)
+                        #else
+                            (i == value_amount - 1 ? 2 : 3)
+                        #endif
+                    );
+                }
             }
+            i++;
         } while(i < value_amount);
-        buffer = LIT_ALLOCATE(vm->m_state, char, olength+1);
+        buffer = String::allocEmpty(vm->m_state, olength+1);
         #ifdef SINGLE_LINE_MAPS
-        memcpy(buffer, "{ ", 2);
+        buffer->append("{ ");
         #else
-        memcpy(buffer, "{\n", 2);
+        buffer->append("{\n");
         #endif
         buffer_index = 2;
         for(i = 0; i < value_amount; i++)
@@ -14706,21 +14729,21 @@ namespace lit
             key = keys[i];
             value = values_converted[i];
             #ifndef SINGLE_LINE_MAPS
-            buffer[buffer_index++] = '\t';
+            buffer->append('\t');
             #endif
-            memcpy(&buffer[buffer_index], key->data(), key->length());
+            buffer->append(key->data(), key->length());
             buffer_index += key->length();
-            memcpy(&buffer[buffer_index], " = ", 3);
+            buffer->append(" = ", 3);
             buffer_index += 3;
-            memcpy(&buffer[buffer_index], value->data(), value->length());
+            buffer->append(value->data(), value->length());
             buffer_index += value->length();
             /*
             if(has_more && i == value_amount - 1)
             {
                 #ifdef SINGLE_LINE_MAPS
-                memcpy(&buffer[buffer_index], ", ... }", 7);
+                memcpy(&buffer->append(", ... }");
                 #else
-                memcpy(&buffer[buffer_index], ",\n\t...\n}", 8);
+                buffer->append(",\n\t...\n}");
                 #endif
                 buffer_index += 8;
             }
@@ -14728,18 +14751,17 @@ namespace lit
             */
             {
                 #ifdef SINGLE_LINE_MAPS
-                memcpy(&buffer[buffer_index], (i == value_amount - 1) ? " }" : ", ", 2);
+                buffer->append((i == value_amount - 1) ? " }" : ", ");
                 #else
-                memcpy(&buffer[buffer_index], (i == value_amount - 1) ? "\n}" : ",\n", 2);
+                buffer->append((i == value_amount - 1) ? "\n}" : ",\n");
                 #endif
                 buffer_index += 2;
             }
             state->popRoot();
         }
-        buffer[olength] = '\0';
         LIT_FREE(vm->m_state, String*, keys);
         LIT_FREE(vm->m_state, String*, values_converted);
-        return String::take(vm->m_state, buffer, olength)->asValue();
+        return buffer->asValue();
     }
 
     static Value objfn_map_length(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15366,12 +15388,18 @@ namespace lit
         return map->asValue();
     }
 
+    static Value objfn_kernel_tostring(VM* vm, Value instance, size_t argc, Value* argv)
+    {
+        return String::intern(vm->m_state, "[kernel]")->asValue();
+    }
+
     void lit_open_kernel_library(State* state)
     {
         fprintf(stderr, "++ lit_open_kernel_libary()\n");
         Class* klass = Class::make(state, "Kernel");
         state->kernelvalue_class = klass;
         {
+            klass->setStaticMethod("toString", objfn_kernel_tostring);
             //klass->setGetter("__map", objfn_kernel_tomap);
             klass->setStaticGetter("__map", objfn_kernel_tomap);
             klass->setGetter("__methods", objfn_kernel_getmethods);

@@ -86,14 +86,14 @@
 
     #define vm_returnerror() \
         vm_popgc(this); \
-        return (Result){ LITRESULT_RUNTIME_ERROR, Object::NullVal };
+        return Result{ LITRESULT_RUNTIME_ERROR, Object::NullVal };
 
     #define vm_recoverstate(fiber, frame, ip, current_chunk, slots, privates, upvalues) \
         vm_writeframe(frame, ip); \
         fiber = vm->fiber; \
         if(fiber == nullptr) \
         { \
-            return (Result){ LITRESULT_OK, vm_pop(fiber) }; \
+            return Result{ LITRESULT_OK, vm_pop(fiber) }; \
         } \
         if(fiber->abort) \
         { \
@@ -406,7 +406,7 @@
                         frame->return_to_c = false;
                         fiber->module->return_value = result;
                         fiber->stack_top = frame->slots;
-                        return (Result){ LITRESULT_OK, result };
+                        return Result{ LITRESULT_OK, result };
                     }
                     if(fiber->frame_count == 0)
                     {
@@ -415,7 +415,7 @@
                         {
                             vm_drop(fiber);
                             this->allow_gc = was_allowed;
-                            return (Result){ LITRESULT_OK, result };
+                            return Result{ LITRESULT_OK, result };
                         }
                         arg_count = fiber->arg_count;
                         parent = fiber->parent;
