@@ -231,7 +231,7 @@
                                Object::valueName(a), Object::valueName(b)); \
         } \
         vm_drop(fiber); \
-        *(fiber->stack_top - 1) = (Object::toValue(uint64_t(Object::toNumber(a)) op uint64_t(Object::toNumber(b))));
+        *(fiber->stack_top - 1) = (Object::toValue(int64_t(Object::toNumber(a)) op int64_t(Object::toNumber(b))));
 
     #define vm_invokeoperation(ignoring) \
         uint8_t arg_count = vm_readbyte(ip); \
@@ -530,7 +530,7 @@
                         vm_rterror("Operand must be a number");
                     }
                     auto num = Object::toNumber(vm_pop(fiber));
-                    tmpval = Object::toValue(~uint64_t(num));
+                    tmpval = Object::toValue(~int64_t(num));
                     vm_push(fiber, tmpval);
                     continue;
                 }

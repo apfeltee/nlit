@@ -724,36 +724,40 @@ namespace lit
                 m_state = state;
             }
 
-            inline constexpr size_t capacity() const
+            inline size_t capacity() const
             {
                 return m_capacity;
             }
 
-            inline constexpr size_t size() const
+            inline size_t size() const
             {
                 return m_count;
             }
 
-            inline constexpr ElementT& at(size_t idx)
+            inline ElementT& at(size_t idx)
             {
                 return m_values[idx];
             }
 
-            inline constexpr void set(size_t idx, const ElementT& val)
+            inline ElementT& at(size_t idx) const
+            {
+                return m_values[idx];
+            }
+
+            inline void set(size_t idx, const ElementT& val)
             {
                 m_values[idx] = val;
             }
 
             inline void push(const ElementT& value)
             {
-                size_t attempts;
                 size_t oldcap;
-                attempts = 0;
-                if(m_capacity < (m_count + 1))
+                //if(m_capacity < (m_count + 1))
+                if((m_count + 1) > m_capacity)
                 {
                     oldcap = m_capacity;
                     //fprintf(stderr, "<%p> push(): m_capacity=%d, m_count=%d: now growing ...\n", this, m_capacity, m_count);
-                    m_capacity = LIT_GROW_CAPACITY(oldcap);
+                    m_capacity = LIT_GROW_CAPACITY(oldcap) + 2;
                     if((m_count + 1) > m_capacity)
                     {
                         m_capacity = LIT_GROW_CAPACITY(m_capacity + 1) * m_capacity;
@@ -765,6 +769,7 @@ namespace lit
                         raiseError("GenericArray: FAILED to grow array!");
                     }
                 }
+                //fprintf(stderr, "PCGenericArray: <%p> set at %d\n", this, m_count);
                 m_values[m_count] = value;
                 m_count++;
             }
@@ -1329,12 +1334,12 @@ namespace lit
                 this->m_actualarray.push(val);
             }
 
-            inline constexpr size_t size()
+            inline size_t size()
             {
                 return m_actualarray.m_count;
             }
 
-            inline constexpr Value at(size_t idx)
+            inline Value at(size_t idx)
             {
                 return m_actualarray.at(idx);
             }
@@ -2319,7 +2324,7 @@ namespace lit
             String* name;
     };
 
-    /*
+    
     class Table
     {
         public:
@@ -2329,7 +2334,7 @@ namespace lit
                 String* key = nullptr;
 
                 // the associated value
-                Value value;
+                Value value = Object::NullVal;
             };
 
         public:
@@ -2356,9 +2361,13 @@ namespace lit
                 setFunctionValue<NativeMethod>(dest, sv, fn);
             }
 
+        private:
+            static void vmMarkObject(VM* vm, Object* obj);
+            static void vmMarkValue(VM* vm, Value val);
+
         public:
             State* m_state = nullptr;
-            PCGenericArray<Entry> m_inner;
+            PCGenericArray<Entry*> m_inner;
 
         public:
             void init(State* state)
@@ -2369,10 +2378,31 @@ namespace lit
 
             void release()
             {
+                size_t i;
+                Entry* ent;
+                for(i=0; i<size(); i++)
+                {
+                    ent = m_inner.m_values[i];
+                    delete ent;
+                    m_inner.m_values[i] = nullptr;
+                }
                 m_inner.release();
             }
 
-            void markForGC(VM* vm);
+            void markForGC(VM* vm)
+            {
+                size_t i;
+                Table::Entry* entry;
+                for(i = 0; i <= this->m_inner.m_capacity; i++)
+                {
+                    entry = this->m_inner.m_values[i];
+                    if(entry != nullptr)
+                    {
+                        vmMarkObject(vm, (Object*)entry->key);
+                        vmMarkValue(vm, entry->value);
+                    }
+                }
+            }
 
             inline size_t capacity() const
             {
@@ -2384,7 +2414,12 @@ namespace lit
                 return m_inner.size();
             }
 
-            inline constexpr Entry& at(size_t i)
+            inline Entry* at(size_t i)
+            {
+                return m_inner.at(i);
+            }
+
+            inline Entry* at(size_t i) const
             {
                 return m_inner.at(i);
             }
@@ -2411,14 +2446,21 @@ namespace lit
                 {
                     for(i=0; i<m_inner.size(); i++)
                     {
-                        if(m_inner.at(i).key->m_chars == key->m_chars)
+                        if(m_inner.at(i) != nullptr)
                         {
-                            m_inner.at(i).value = value;
-                            return false;
+                            if(m_inner.at(i)->key != nullptr)
+                            {
+                                if((m_inner.at(i)->key->m_chars == key->m_chars))
+                                {
+                                    m_inner.at(i)->value = value;
+                                    return false;
+                                }
+                            }
                         }
                     }
                 }
-                m_inner.push({key, value});
+                m_inner.push(new Entry{key, value});
+                return true;
             }
 
             inline bool set(std::string_view sv, Value value)
@@ -2431,24 +2473,23 @@ namespace lit
                 size_t i;
                 for(i=0; i<m_inner.size(); i++)
                 {
-                    if(m_inner.at(i).key->m_chars == key->m_chars)
+                    if((m_inner.at(i)->key->m_chars == key->m_chars) && (m_inner.at(i)->key->m_hash == key->m_hash))
                     {
-                        *value = m_inner.at(i).value;
+                        *value = m_inner.at(i)->value;
                         return true;
                     }
                 }
                 return false;
             }
 
-
             bool remove(String* key)
             {
                 size_t i;
                 for(i=0; i<m_inner.size(); i++)
                 {
-                    if(m_inner.at(i).key && (m_inner.at(i).key->m_chars == key->m_chars))
+                    if(m_inner.at(i)->key && ((m_inner.at(i)->key->m_chars == key->m_chars) && (m_inner.at(i)->key->m_hash == key->m_hash)))
                     {
-                        m_inner.at(i).key = nullptr;
+                        m_inner.at(i)->key = nullptr;
                         return true;
                     }
                 }
@@ -2462,9 +2503,9 @@ namespace lit
                 {
                     for(i=0; i<m_inner.size(); i++)
                     {
-                        if(m_inner.at(i).key && (*(m_inner.at(i).key->m_chars) == std::string_view(str, length)))
+                        if(m_inner.at(i)->key && (*(m_inner.at(i)->key->m_chars) == std::string_view(str, length)))
                         {
-                            return m_inner.at(i).key;
+                            return m_inner.at(i)->key;
                         }
                     }
                 }
@@ -2473,17 +2514,25 @@ namespace lit
 
             void addAll(Table* from)
             {
+                return addAll(*from);
+            }
+
+            void addAll(const Table& from)
+            {
+                //fprintf(stderr, "addAll: from=%p (%d)\n", &from, from.size());
                 size_t i;
-                Entry* entry;
-                for(i = 0; i <= from->size(); i++)
+                if(from.size() > 0)
                 {
-                    entry = &from->at(i);
-                    if(entry != nullptr)
+                    for(i = 0; i < from.size(); i++)
                     {
-                        if(entry->key != nullptr)
+                        const auto* entry = from.at(i);
+                        if(entry != nullptr)
                         {
-                            fprintf(stderr, "Table::addAll: %s\n", entry->key->data());
-                            set(entry->key, entry->value);
+                            if(entry->key != nullptr)
+                            {
+                                //fprintf(stderr, "Table::addAll: %s\n", entry->key->data());
+                                set(entry->key, entry->value);
+                            }
                         }
                     }
                 }
@@ -2495,7 +2544,7 @@ namespace lit
                 Entry* entry;
                 for(i = 0; i <= this->m_inner.m_capacity; i++)
                 {
-                    entry = &this->m_inner.m_values[i];
+                    entry = this->m_inner.m_values[i];
                     if(entry->key != nullptr && !entry->key->marked)
                     {
                         this->remove(entry->key);
@@ -2516,12 +2565,11 @@ namespace lit
                 number++;
                 for(; number < int64_t(this->m_inner.m_capacity); number++)
                 {
-                    if(this->m_inner.m_values[number].key != nullptr)
+                    if(this->m_inner.m_values[number]->key != nullptr)
                     {
                         return number;
                     }
                 }
-
                 return -1;
             }
 
@@ -2531,19 +2579,20 @@ namespace lit
                 {
                     return Object::NullVal;
                 }
-                return this->m_inner.m_values[index].key->asValue();
+                return this->m_inner.m_values[index]->key->asValue();
             }
     };
-    */
+
+    /*
     class Table
     {
         public:
             struct Entry
             {
-                /* the key of this entry. can be nullptr! */
+                // the key of this entry. can be nullptr!
                 String* key;
 
-                /* the associated value */
+                // the associated value
                 Value value;
             };
 
@@ -2634,6 +2683,10 @@ namespace lit
                 table->m_inner.m_values = entries;
             }
 
+        private:
+            static void vmMarkObject(VM* vm, Object* obj);
+            static void vmMarkValue(VM* vm, Value val);
+
         public:
             State* m_state = nullptr;
             PCGenericArray<Entry> m_inner;
@@ -2650,7 +2703,20 @@ namespace lit
                 m_inner.release();
             }
 
-            void markForGC(VM* vm);
+            void markForGC(VM* vm)
+            {
+                size_t i;
+                Table::Entry* entry;
+                for(i = 0; i <= this->m_inner.m_capacity; i++)
+                {
+                    entry = &this->m_inner.m_values[i];
+                    if(entry != nullptr)
+                    {
+                        vmMarkObject(vm, (Object*)entry->key);
+                        vmMarkValue(vm, entry->value);
+                    }
+                }
+            }
 
             inline size_t capacity() const
             {
@@ -2662,7 +2728,7 @@ namespace lit
                 return m_inner.size();
             }
 
-            inline constexpr Entry& at(size_t i)
+            inline Entry& at(size_t i)
             {
                 return m_inner.at(i);
             }
@@ -2846,7 +2912,7 @@ namespace lit
                 return this->m_inner.m_values[index].key->asValue();
             }
     };
-
+    */
 
     struct Local
     {
@@ -3054,7 +3120,7 @@ namespace lit
                 return m_values.size();
             }
 
-            inline constexpr Table::Entry& at(size_t i)
+            inline Table::Entry* at(size_t i)
             {
                 return m_values.at(i);
             }
@@ -3285,7 +3351,7 @@ namespace lit
                 const char* fmtpat;
                 (void)argc;
                 (void)argv;
-                fmtpat = "<class ";
+                fmtpat = "[class ";
                 name = String::intern(Object::asState(vm), "?unknown?");
                 // this assumes toString() wasn't overriden
                 if(!Object::isNull(instance))
@@ -3297,7 +3363,7 @@ namespace lit
                     else
                     {
                         selfklass = Object::as<Class>(instance);
-                        fmtpat = "<instance ";
+                        fmtpat = "[instance ";
                     }
                     name = selfklass->name;
                 }
@@ -3305,7 +3371,7 @@ namespace lit
                 rt = String::make(Object::asState(vm));
                 rt->append(fmtpat);
                 rt->append(name);
-                rt->append(">");
+                rt->append("]");
                 return rt->asValue();
             }
 
@@ -3320,8 +3386,8 @@ namespace lit
                 klass->super = nullptr;
                 klass->methods.init(state);
                 klass->static_fields.init(state);
-                klass->bindMethod("toString", defaultfn_tostring);
-                klass->setStaticMethod("toString", defaultfn_tostring);
+                //klass->bindMethod("toString", defaultfn_tostring);
+                //klass->setStaticMethod("toString", defaultfn_tostring);
                 return klass;
             }
 
@@ -3333,9 +3399,9 @@ namespace lit
 
         public:
             /* the name of this class */
-            String* name;
+            String* name = nullptr;
             /* the constructor object */
-            Object* init_method;
+            Object* init_method = nullptr;
             /* runtime methods */
             Table methods;
             /* static fields, which include functions, and variables */
@@ -3344,20 +3410,30 @@ namespace lit
             * the parent class - the topmost is always Class, followed by Object.
             * that is, eg for String: String <- Object <- Class
             */
-            Class* super;
+            Class* super = nullptr;
 
         public:
 
         public:
             void inheritFrom(Class* superclass)
             {
-                this->super = superclass;
-                if(this->init_method == nullptr)
+                if(superclass != nullptr)
                 {
-                    this->init_method = superclass->init_method;
+                    //fprintf(stderr, "Class(%s)::inheritFrom(%s)\n", name->data(), superclass->name->data());
+                    this->super = superclass;
+                    if(this->init_method == nullptr)
+                    {
+                        this->init_method = superclass->init_method;
+                    }
+                    if(superclass->methods.size() > 0)
+                    {
+                        this->methods.addAll(superclass->methods);
+                    }
+                    if(superclass->static_fields.size() > 0)
+                    {
+                        this->static_fields.addAll(superclass->static_fields);
+                    }
                 }
-                this->methods.addAll(&superclass->methods); \
-                this->static_fields.addAll(&superclass->static_fields);
             }
 
             void bindConstructor(NativeMethod::FuncType method)
@@ -3367,7 +3443,6 @@ namespace lit
                 this->init_method = (Object*)m;
                 this->methods.set(nm, m->asValue());
             }
-
 
             void setField(const char* name, Value val)
             {
@@ -5671,27 +5746,27 @@ namespace lit
                             break;
                         case LITTOK_LESS_LESS:
                             {
-                                optc_do_bitwise_op(<<, uint64_t);
+                                optc_do_bitwise_op(<<, int64_t);
                             }
                             break;
                         case LITTOK_GREATER_GREATER:
                             {
-                                optc_do_bitwise_op(>>, uint64_t);
+                                optc_do_bitwise_op(>>, int64_t);
                             }
                             break;
                         case LITTOK_BAR:
                             {
-                                optc_do_bitwise_op(|, uint64_t);
+                                optc_do_bitwise_op(|, int64_t);
                             }
                             break;
                         case LITTOK_AMPERSAND:
                             {
-                                optc_do_bitwise_op(&, uint64_t);
+                                optc_do_bitwise_op(&, int64_t);
                             }
                             break;
                         case LITTOK_CARET:
                             {
-                                optc_do_bitwise_op(^, uint64_t);
+                                optc_do_bitwise_op(^, int64_t);
                             }
                             break;
                         case LITTOK_SHARP:
@@ -7298,7 +7373,7 @@ namespace lit
                         case Expression::Type::Lambda:
                             {
                                 auto expr = (ExprLambda*)expression;
-                                auto name = String::format(this->m_state, "<lambda @:@>", m_module->name->asValue(),
+                                auto name = String::format(this->m_state, "[lambda @:@]", m_module->name->asValue(),
                                                                               String::stringNumberToString(this->m_state, expression->line));
                                 Compiler compiler;
                                 init_compiler(&compiler, LITFUNC_REGULAR);
@@ -8090,18 +8165,18 @@ namespace lit
             // class class
             // Mental note:
             // When adding another class here, DO NOT forget to mark it in lit_mem.c or it will be GC-ed
-            Class* kernelvalue_class;
-            Class* classvalue_class;
-            Class* objectvalue_class;
-            Class* numbervalue_class;
-            Class* stringvalue_class;
-            Class* boolvalue_class;
-            Class* functionvalue_class;
-            Class* fibervalue_class;
-            Class* modulevalue_class;
-            Class* arrayvalue_class;
-            Class* mapvalue_class;
-            Class* rangevalue_class;
+            Class* kernelvalue_class = nullptr;
+            Class* classvalue_class = nullptr;
+            Class* objectvalue_class = nullptr;
+            Class* numbervalue_class = nullptr;
+            Class* stringvalue_class = nullptr;
+            Class* boolvalue_class = nullptr;
+            Class* functionvalue_class = nullptr;
+            Class* fibervalue_class = nullptr;
+            Class* modulevalue_class = nullptr;
+            Class* arrayvalue_class = nullptr;
+            Class* mapvalue_class = nullptr;
+            Class* rangevalue_class = nullptr;
             Module* last_module;
 
         public:
@@ -8970,10 +9045,10 @@ namespace lit
                     privates = &module->private_names->m_values;
                     for(i = 0; i < module->private_count; i++)
                     {
-                        if(privates->at(i).key != nullptr)
+                        if(privates->at(i)->key != nullptr)
                         {
-                            FileIO::write_string(file, privates->at(i).key);
-                            FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i).value));
+                            FileIO::write_string(file, privates->at(i)->key);
+                            FileIO::write_uint16_t(file, (uint16_t)Object::toNumber(privates->at(i)->value));
                         }
                     }
                 }
@@ -10630,9 +10705,9 @@ namespace lit
         }
         if(name == nullptr)
         {
-            return String::format(vm->m_state, "<function #>", *((double*)Object::asObject(instance)));
+            return String::format(vm->m_state, "[function #]", *((double*)Object::asObject(instance)));
         }
-        return String::format(vm->m_state, "<function @>", name->asValue());
+        return String::format(vm->m_state, "[function $]", name->data());
     }
 
     String* Object::toString(State* state, Value valobj)
@@ -10753,7 +10828,7 @@ namespace lit
         {
             for(i = 0; i < (size_t)map->size(); i++)
             {
-                entry = &map->at(i);
+                entry = map->at(i);
                 if(entry->key != nullptr)
                 {
                     if(had_before)
@@ -10874,11 +10949,11 @@ namespace lit
                         }
                         printf("%s instance", Object::as<Instance>(value)->klass->name->data());
                         */
-                        wr->format("<instance '%s' ", Object::as<Instance>(value)->klass->name->data());
+                        wr->format("[instance '%s' ", Object::as<Instance>(value)->klass->name->data());
                         map = Object::as<Map>(value);
                         size = map->size();
                         printMap(state, wr, map, size);
-                        wr->put(">");
+                        wr->put("]");
                     }
                     break;
                 case Object::Type::BoundMethod:
@@ -10951,21 +11026,7 @@ namespace lit
         }
     }
 
-    // impl::table 
-    void Table::markForGC(VM* vm)
-    {
-        size_t i;
-        Table::Entry* entry;
-        for(i = 0; i <= this->m_inner.m_capacity; i++)
-        {
-            entry = &this->m_inner.m_values[i];
-            if(entry != nullptr)
-            {
-                vm->markObject((Object*)entry->key);
-                vm->markValue(entry->value);
-            }
-        }
-    }
+
 
     Module* Module::getModule(State* state, String* name)
     {
@@ -11020,6 +11081,17 @@ namespace lit
         closure->upvalues = upvalues;
         closure->upvalue_count = function->upvalue_count;
         return closure;
+    }
+
+    //impl::table
+    void Table::vmMarkObject(VM* vm, Object* obj)
+    {
+        vm->markObject(obj);
+    }
+
+    void Table::vmMarkValue(VM* vm, Value val)
+    {
+        vm->markValue(val);
     }
 
     // impl::class
@@ -12762,6 +12834,7 @@ namespace lit
 
     void lit_open_array_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_array_libary()\n");
         Class* klass = Class::make(state, "Array");
         state->arrayvalue_class = klass;
         {
@@ -12800,7 +12873,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "<class $>", Object::as<Class>(instance)->name->data())->asValue();
+        return String::format(vm->m_state, "[class $]", Object::as<Class>(instance)->name->data())->asValue();
     }
 
     static Value objfn_class_iterator(VM* vm, Value instance, size_t argc, Value* argv)
@@ -12934,6 +13007,7 @@ namespace lit
 
     void lit_open_class_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_class_libary()\n");
         Class* klass = Class::make(state, "Class");
         state->classvalue_class = klass;
         {
@@ -13560,6 +13634,7 @@ namespace lit
 
     void lit_open_core_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_core_libary()\n");
         /*
         * the order here is important: class must be declared first, and object second,
         * since object derives class, and everything else derives object.
@@ -13737,12 +13812,13 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "<fiber @>", instance)->asValue();
+        return String::format(vm->m_state, "[fiber @]", instance)->asValue();
 
     }
 
     void lit_open_fiber_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_fiber_libary()\n");
         Class* klass = Class::make(state, "Fiber");
         state->fibervalue_class = klass;
         {
@@ -14062,7 +14138,7 @@ namespace lit
         {
             path = "stdio";
         }
-        return String::format(vm->m_state, "<file @ ($)>", Object::as<Instance>(instance), data->path)->asValue();
+        return String::format(vm->m_state, "[file @ ($)]", Object::as<Instance>(instance), data->path)->asValue();
     }
 
     static Value objmethod_file_readall(VM* vm, Value instance, size_t argc, Value* argv)
@@ -14334,6 +14410,7 @@ namespace lit
 
     void lit_open_file_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_file_libary()\n");
         {
             Class* klass = Class::make(state, "File");
             {
@@ -14399,6 +14476,7 @@ namespace lit
 
     void lit_open_function_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_function_libary()\n");
         Class* klass = Class::make(state, "Function");
         state->functionvalue_class = klass; 
         {
@@ -14446,6 +14524,7 @@ namespace lit
 
     void lit_open_gc_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_gc_libary()\n");
         Class* klass = Class::make(state, "GC");
         {
             klass->setStaticGetter("memoryUsed", objfn_gc_memory_used);
@@ -14547,7 +14626,7 @@ namespace lit
         Map* map;
         state = vm->m_state;
         map = Map::make(state);
-        Object::as<Map>(instance)->m_values.addAll(&map->m_values);
+        Object::as<Map>(instance)->m_values.addAll(map->m_values);
         return map->asValue();
     }
 
@@ -14594,7 +14673,7 @@ namespace lit
         index = 0;
         do
         {
-            entry = &values->m_inner.m_values[index++];
+            entry = values->m_inner.m_values[index++];
             if(entry->key != nullptr)
             {
                 // Special hidden key
@@ -14673,6 +14752,7 @@ namespace lit
 
     void lit_open_map_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_map_libary()\n");
         Class* klass = Class::make(state, "Map");
         state->mapvalue_class = klass;
         {
@@ -15001,11 +15081,11 @@ namespace lit
 
                 for(size_t i = 0; i < m_capacity; i++)
                 {
-                    if(map->at(i).key != nullptr)
+                    if(map->at(i)->key != nullptr)
                     {
                         if(index == target)
                         {
-                            return map->m_values.m_inner.m_values[i].value;
+                            return map->m_values.m_inner.m_values[i]->value;
                         }
 
                         index++;
@@ -15027,6 +15107,7 @@ namespace lit
 
     void lit_open_math_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_math_libary()\n");
         {
             Class* klass = Class::make(state, "Math");
             {
@@ -15149,7 +15230,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "<module @>", Object::as<Module>(instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "[module @]", Object::as<Module>(instance)->name->asValue())->asValue();
     }
 
     static Value objfn_module_name(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15162,6 +15243,7 @@ namespace lit
 
     void lit_open_module_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_module_libary()\n");
         Class* klass = Class::make(state, "Module");
         state->modulevalue_class = klass;
         {
@@ -15194,14 +15276,33 @@ namespace lit
     {
         size_t i;
         Map* m;
-        Class* self;
-        self = Object::as<Class>(instance);
-        m = Map::make(vm->m_state);
-        for(i=0; i<self->methods.size(); i++)
+        String* key;
+        Class* selfclass;
+        selfclass = nullptr;
+        if(Object::isClass(instance))
         {
-            if(self->methods.at(i).key != nullptr)
+            selfclass = Object::as<Class>(instance);
+        }
+        else if(Object::isInstance(instance))
+        {
+            selfclass = Object::as<Instance>(instance)->klass;
+        }
+        else
+        {
+            selfclass = Class::getClassFor(vm->m_state, instance);
+        }
+        if(selfclass == nullptr)
+        {
+            lit_runtime_error_exiting(vm, "__methods: cannot find classof object");
+            return Object::NullVal;
+        }
+        m = Map::make(vm->m_state);
+        for(i=0; i<selfclass->methods.size(); i++)
+        {
+            key = selfclass->methods.at(i)->key;
+            if(key != nullptr)
             {
-                m->set(self->methods.at(i).key, self->methods.at(i).value);
+                m->set(key, selfclass->methods.at(i)->value);
             }
         }
         return m->asValue();
@@ -15216,10 +15317,10 @@ namespace lit
         (void)includenullkeys;
         for(i=0; i<fromtbl->size(); i++)
         {
-            key = fromtbl->at(i).key;
+            key = fromtbl->at(i)->key;
             if(key != nullptr)
             {
-                val = fromtbl->at(i).value;
+                val = fromtbl->at(i)->value;
                 destmap->set(key, val);
             }
         }
@@ -15267,7 +15368,9 @@ namespace lit
 
     void lit_open_kernel_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_kernel_libary()\n");
         Class* klass = Class::make(state, "Kernel");
+        state->kernelvalue_class = klass;
         {
             //klass->setGetter("__map", objfn_kernel_tomap);
             klass->setStaticGetter("__map", objfn_kernel_tomap);
@@ -15278,7 +15381,6 @@ namespace lit
             //klass->setStaticGetter("__fields", objfn_kernel_getfields);
             #endif
         }
-        state->kernelvalue_class = klass;
         state->setGlobal(klass->name, klass->asValue());
     }
 
@@ -15307,7 +15409,7 @@ namespace lit
     {
         (void)argc;
         (void)argv;
-        return String::format(vm->m_state, "<instance @>", Class::getClassFor(vm->m_state, instance)->name->asValue())->asValue();
+        return String::format(vm->m_state, "[instance @]", Class::getClassFor(vm->m_state, instance)->name->asValue())->asValue();
     }
 
 
@@ -15378,6 +15480,7 @@ namespace lit
 
     void lit_open_object_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_object_libary()\n");
         Class* klass = Class::make(state, "Object");
         {
             klass->inheritFrom(state->classvalue_class);
@@ -15428,7 +15531,7 @@ namespace lit
         (void)argv;
         Range* range;
         range = Object::as<Range>(instance);
-        return String::format(vm->m_state, "<range (#, #)>", range->from, range->to)->asValue();
+        return String::format(vm->m_state, "[range (#, #)]", range->from, range->to)->asValue();
     }
 
     static Value objfn_range_from(VM* vm, Value instance, size_t argc, Value* argv)
@@ -15475,6 +15578,7 @@ namespace lit
 
     void lit_open_range_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_range_libary()\n");
         Class* klass = Class::make(state, "Range");
         state->rangevalue_class = klass;
         {
@@ -15609,8 +15713,6 @@ namespace lit
     static Value objfn_string_splice(VM* vm, String* string, int64_t from, int64_t to)
     {
         size_t length;
-        size_t actualto;
-        size_t actualfrom;
         length = string->utfLength();
         if(from < 0)
         {
@@ -16230,6 +16332,7 @@ namespace lit
 
     void lit_open_string_library(State* state)
     {
+        fprintf(stderr, "++ lit_open_string_libary()\n");
         Class* klass = Class::make(state, "String");        
         klass->inheritFrom(state->objectvalue_class);
         klass->bindConstructor(util_invalid_constructor);

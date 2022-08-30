@@ -67,5 +67,6 @@ function run()
         print("\n")
     }
 }
+println("run")
 run()
 
