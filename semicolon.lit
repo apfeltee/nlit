@@ -9,7 +9,7 @@ function do_sub(x, y)
     return x - y;
 }
 
-function do_mul(int x, int y)
+function do_mul(x, y)
 {
     int t = x * y;
     return (t + 8192 / 2) / 8192;
@@ -66,7 +66,7 @@ function run()
                 print('-');
             }
         }
-        print('\n');
+        print("\n");
     }
 }
 run()

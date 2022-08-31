@@ -1,20 +1,12 @@
 
-s = "foo"
-if(s == "foo")
+function thing(a, b, c)
 {
-    println("string cmp works?")
-}
-else
-{
-    println("or does it?")
+    println("from dicks: this=", [this, a, b, c])
+
 }
 
-switch(s)
-{
-    case "foo":
-        println("case works?")
-        break
-    default:
-        println("... or not?\n")
-        break
-}
+String["dicks"] = thing
+
+s = "foo"
+println(s.__methods)
+s.dicks()

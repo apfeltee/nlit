@@ -411,15 +411,15 @@
                     if(fiber->frame_count == 0)
                     {
                         fiber->module->return_value = result;
-                        if(fiber->parent == nullptr)
+                        if(fiber->m_parent == nullptr)
                         {
                             vm_drop(fiber);
                             this->allow_gc = was_allowed;
                             return Result{ LITRESULT_OK, result };
                         }
                         arg_count = fiber->arg_count;
-                        parent = fiber->parent;
-                        fiber->parent = nullptr;
+                        parent = fiber->m_parent;
+                        fiber->m_parent = nullptr;
                         vm->fiber = fiber = parent;
                         vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                         vm_traceframe(fiber);

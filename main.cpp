@@ -108,11 +108,6 @@
 #define LIT_STRING_KEY 48
 
 
-
-#define TAG_NULL 1u
-#define TAG_FALSE 2u
-#define TAG_TRUE 3u
-
 #define LIT_EXIT_CODE_ARGUMENT_ERROR 1
 #define LIT_EXIT_CODE_MEM_LEAK 2
 #define LIT_EXIT_CODE_RUNTIME_ERROR 70
@@ -153,7 +148,6 @@
 /* not yet implemented: name of the destructor, if defined */
 #define LIT_NAME_DESTRUCTOR "destructor"
 
-
 #define LIT_GROW_CAPACITY(capacity) \
     (((capacity) < 8) ? (8) : ((capacity) * 2))
 
@@ -173,7 +167,6 @@
     (lit::Object::asObject(value)->type)
 
 
-#define INTERPRET_RUNTIME_FAIL (lit::Result{ LITRESULT_INVALID, lit::Object::NullVal })
 
 #define LIT_GET_FIELD(id) lit::Object::as<lit::Instance>(instance)->fields.getField(vm->m_state, id)
 #define LIT_GET_MAP_FIELD(id) lit::Object::as<lit::Instance>(instance).fields.getField(vm->m_state, id))
@@ -202,7 +195,7 @@
     }
 
 
-#define PUSH(value) (*fiber->stack_top++ = value)
+
 
 #define RETURN_OK(r) return Result{ LITRESULT_OK, r };
 
@@ -987,12 +980,12 @@ namespace lit
             static constexpr uint64_t SIGN_BIT = ((uint64_t)1 << 63u);
             static constexpr uint64_t QNAN_BIT = ((uint64_t)0x7ffc000000000000u);
 
+            static constexpr Value TAG_NULL = 1u;
+            static constexpr Value TAG_FALSE = 2u;
+            static constexpr Value TAG_TRUE = 3u;
             static constexpr Value FalseVal = ((Value)(uint64_t)(Object::QNAN_BIT | TAG_FALSE));
-
             static constexpr Value TrueVal = ((Value)(uint64_t)(Object::QNAN_BIT | TAG_TRUE));
-
             static constexpr Value NullVal = ((Value)(uint64_t)(Object::QNAN_BIT | TAG_NULL));
-
 
         public:
             static Object* make(State* state, size_t size, Object::Type type);
@@ -2520,9 +2513,15 @@ namespace lit
                 {
                     for(i=0; i<m_inner.size(); i++)
                     {
-                        if(m_inner.at(i)->key && (*(m_inner.at(i)->key->m_chars) == std::string_view(str, length)))
+                        if(m_inner.at(i)->key)
                         {
-                            return m_inner.at(i)->key;
+                            if(*(m_inner.at(i)->key->m_chars) == std::string_view(str, length))
+                            {
+                                if(m_inner.at(i)->key->m_hash == hs)
+                                {
+                                    return m_inner.at(i)->key;
+                                }
+                            }
                         }
                     }
                 }
@@ -3267,7 +3266,7 @@ namespace lit
                 fiber->stack_top = fiber->stack;
                 fiber->frames = frames;
                 fiber->frame_capacity = LIT_INITIAL_CALL_FRAMES;
-                fiber->parent = nullptr;
+                fiber->m_parent = nullptr;
                 fiber->frame_count = 1;
                 fiber->arg_count = 0;
                 fiber->module = module;
@@ -3318,7 +3317,7 @@ namespace lit
             static bool ensureFiber(VM* vm, Fiber* fiber);
 
         public:
-            Fiber* parent = nullptr;
+            Fiber* m_parent = nullptr;
             Value* stack = nullptr;
             Value* stack_top = nullptr;
             size_t stack_capacity = 0;
@@ -3362,6 +3361,10 @@ namespace lit
                 }
             }
 
+            void push(Value val)
+            {
+                *this->stack_top++ = val;
+            }
     };
 
     class Class: public Object
@@ -4703,7 +4706,7 @@ namespace lit
                     }
                 }
 
-                Token scan_string(bool interpolation)
+                Token scan_string(char stype, bool interpolation)
                 {
                     char c;
                     char newc;
@@ -4719,7 +4722,7 @@ namespace lit
                     while(true)
                     {
                         c = advance();
-                        if(c == '\"')
+                        if(c == stype)
                         {
                             break;
                         }
@@ -4748,99 +4751,108 @@ namespace lit
                                 break;
                             case '\\':
                                 {
-                                    switch(advance())
+                                    if(stype == '\'')
                                     {
-                                        case '\"':
-                                            {
-                                                bytes.push('\"');
-                                            }
-                                            break;
-                                        case '\\':
-                                            {
-                                                bytes.push('\\');
-                                            }
-                                            break;
-                                        case '0':
-                                            {
-                                                bytes.push('\0');
-                                            }
-                                            break;
-                                        case '{':
-                                            {
-                                                bytes.push('{');
-                                            }
-                                            break;
-                                        case 'a':
-                                            {
-                                                bytes.push('\a');
-                                            }
-                                            break;
-                                        case 'b':
-                                            {
-                                                bytes.push('\b');
-                                            }
-                                            break;
-                                        case 'f':
-                                            {
-                                                bytes.push('\f');
-                                            }
-                                            break;
-                                        case 'n':
-                                            {
-                                                bytes.push('\n');
-                                            }
-                                            break;
-                                        case 'r':
-                                            {
-                                                bytes.push('\r');
-                                            }
-                                            break;
-                                        case 't':
-                                            {
-                                                bytes.push('\t');
-                                            }
-                                            break;
-                                        case 'v':
-                                            {
-                                                bytes.push('\v');
-                                            }
-                                            break;
-                                        case 'e':
-                                            {
-                                                bytes.push(27);
-                                            }
-                                            break;
-                                        default:
-                                            {
-                                                return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, m_currsrc[-1]);
-
-                                                fprintf(stderr, "m_currsrc[-1] = '%c', c = '%c'\n", m_currsrc[-1], c);
-                                                if(isdigit(m_currsrc[-1]))
+                                        nextc = advance();
+                                        bytes.push('\\');
+                                        bytes.push(nextc);
+                                    }
+                                    else
+                                    {
+                                        switch(advance())
+                                        {
+                                            case '\"':
                                                 {
-                                                    newc = m_currsrc[-1] - '0';
-                                                    octval = 0;
-                                                    octval |= (newc * 8);
-                                                    while(true)
-                                                    {
-                                                        nextc = peek();
-                                                        fprintf(stderr, "nextc = '%c'\n", nextc);
-                                                        if(!isdigit(nextc))
-                                                        {
-                                                            break;
-                                                        }
-                                                        newc = advance();
-                                                        fprintf(stderr, "newc = '%c'\n", nextc);
-                                                        octval = octval << 3;
-                                                        octval |= ((newc - '0') * 8);
-                                                    }
-                                                    bytes.push(octval);
+                                                    bytes.push('\"');
                                                 }
-                                                else
+                                                break;
+                                            case '\\':
+                                                {
+                                                    bytes.push('\\');
+                                                }
+                                                break;
+                                            case '0':
+                                                {
+                                                    bytes.push('\0');
+                                                }
+                                                break;
+                                            case '{':
+                                                {
+                                                    bytes.push('{');
+                                                }
+                                                break;
+                                            case 'a':
+                                                {
+                                                    bytes.push('\a');
+                                                }
+                                                break;
+                                            case 'b':
+                                                {
+                                                    bytes.push('\b');
+                                                }
+                                                break;
+                                            case 'f':
+                                                {
+                                                    bytes.push('\f');
+                                                }
+                                                break;
+                                            case 'n':
+                                                {
+                                                    bytes.push('\n');
+                                                }
+                                                break;
+                                            case 'r':
+                                                {
+                                                    bytes.push('\r');
+                                                }
+                                                break;
+                                            case 't':
+                                                {
+                                                    bytes.push('\t');
+                                                }
+                                                break;
+                                            case 'v':
+                                                {
+                                                    bytes.push('\v');
+                                                }
+                                                break;
+                                            case 'e':
+                                                {
+                                                    bytes.push(27);
+                                                }
+                                                break;
+                                            default:
                                                 {
                                                     return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, m_currsrc[-1]);
+
+                                                    fprintf(stderr, "m_currsrc[-1] = '%c', c = '%c'\n", m_currsrc[-1], c);
+                                                    if(isdigit(m_currsrc[-1]))
+                                                    {
+                                                        newc = m_currsrc[-1] - '0';
+                                                        octval = 0;
+                                                        octval |= (newc * 8);
+                                                        while(true)
+                                                        {
+                                                            nextc = peek();
+                                                            fprintf(stderr, "nextc = '%c'\n", nextc);
+                                                            if(!isdigit(nextc))
+                                                            {
+                                                                break;
+                                                            }
+                                                            newc = advance();
+                                                            fprintf(stderr, "newc = '%c'\n", nextc);
+                                                            octval = octval << 3;
+                                                            octval |= ((newc - '0') * 8);
+                                                        }
+                                                        bytes.push(octval);
+                                                    }
+                                                    else
+                                                    {
+                                                        return make_error_token(Error::LITERROR_INVALID_ESCAPE_CHAR, m_currsrc[-1]);
+                                                    }
                                                 }
-                                            }
-                                            break;
+                                                break;
+                                        }
                                     }
                                 }
                                 break;
@@ -5162,7 +5174,7 @@ namespace lit
                                 if(m_numbraces > 0 && --m_braces[m_numbraces - 1] == 0)
                                 {
                                     m_numbraces--;
-                                    return scan_string(true);
+                                    return scan_string('"', true);
                                 }
                                 return make_token(LITTOK_RIGHT_BRACE);
                             }
@@ -5229,10 +5241,11 @@ namespace lit
                             {
                                 return make_error_token(Error::LITERROR_CHAR_EXPECTATION_UNMET, '\"', '$', peek());
                             }
-                            return scan_string(true);
+                            return scan_string('"', true);
                         }
                         case '"':
-                            return scan_string(false);
+                        case '\'':
+                            return scan_string(c, false);
                     }
                     return make_error_token(Error::LITERROR_UNEXPECTED_CHAR, c);
                 }
@@ -8431,7 +8444,7 @@ namespace lit
                 source = this->readSource(path.data(), &srclen, &patchedpath);
                 if(source == nullptr)
                 {
-                    return INTERPRET_RUNTIME_FAIL;
+                    return Result{LITRESULT_INVALID, Object::NullVal};
                 }
                 result = this->interpretSource(patchedpath, source, srclen);
                 free((void*)source);
@@ -8745,7 +8758,7 @@ namespace lit
                             }
                             this->markValue(fiber->error);
                             this->markObject((Object*)fiber->module);
-                            this->markObject((Object*)fiber->parent);
+                            this->markObject((Object*)fiber->m_parent);
                         }
                         break;
                     case Object::Type::Module:
@@ -10035,10 +10048,10 @@ namespace lit
         fiber->ensure_stack(callee->max_slots + (int)(fiber->stack_top - fiber->stack));
         frame = &fiber->frames[fiber->frame_count++];
         frame->slots = fiber->stack_top;
-        PUSH(callee->asValue());
+        fiber->push(callee->asValue());
         for(i = 0; i < argc; i++)
         {
-            PUSH(argv[i]);
+            fiber->push(argv[i]);
         }
         function_arg_count = callee->arg_count;
         if(argc != function_arg_count)
@@ -10049,11 +10062,11 @@ namespace lit
                 amount = (int)function_arg_count - argc - (vararg ? 1 : 0);
                 for(i = 0; i < (size_t)amount; i++)
                 {
-                    PUSH(Object::NullVal);
+                    fiber->push(Object::NullVal);
                 }
                 if(vararg)
                 {
-                    PUSH(Array::make(vm->m_state)->asValue());
+                    fiber->push(Array::make(vm->m_state)->asValue());
                 }
             }
             else if(callee->vararg)
@@ -10166,12 +10179,12 @@ namespace lit
             }
             fiber->ensure_stack(3 + argc + (int)(fiber->stack_top - fiber->stack));
             slot = fiber->stack_top;
-            PUSH(instance);
+            fiber->push(instance);
             if(type != Object::Type::Class)
             {
                 for(i = 0; i < argc; i++)
                 {
-                    PUSH(argv[i]);
+                    fiber->push(argv[i]);
                 }
             }
             switch(type)
@@ -10808,8 +10821,8 @@ namespace lit
         frame->slots = fiber->stack_top;
         frame->result_ignored = false;
         frame->return_to_c = true;
-        PUSH(function->asValue());
-        PUSH(valobj);
+        fiber->push(function->asValue());
+        fiber->push(valobj);
         result = state->execFiber(fiber);
         if(result.type != LITRESULT_OK)
         {
@@ -11241,7 +11254,7 @@ namespace lit
         {
             return state->call(mthval, argv, argc);
         }
-        return INTERPRET_RUNTIME_FAIL;    
+        return Result{LITRESULT_INVALID, Object::NullVal};    
     }
 
     /**
@@ -12150,13 +12163,13 @@ namespace lit
         source = state->readSource(file, &length, &patched_file_name);
         if(source == nullptr)
         {
-            return INTERPRET_RUNTIME_FAIL;
+            return Result{LITRESULT_INVALID, Object::NullVal};
         }
         module_name = String::copy(state, patched_file_name, strlen(patched_file_name));
         module = state->compileModule(module_name, source, length);
         if(module == nullptr)
         {
-            result = INTERPRET_RUNTIME_FAIL;
+            result = Result{LITRESULT_INVALID, Object::NullVal};
         }
         else
         {
@@ -12217,21 +12230,21 @@ namespace lit
             fiber->error = error;
             if(fiber->catcher)
             {
-                vm->fiber = fiber->parent;
+                vm->fiber = fiber->m_parent;
                 vm->fiber->stack_top -= fiber->arg_count;
                 vm->fiber->stack_top[-1] = error;
                 return true;
             }
-            caller = fiber->parent;
-            fiber->parent = nullptr;
+            caller = fiber->m_parent;
+            fiber->m_parent = nullptr;
             fiber = caller;
         }
         fiber = vm->fiber;
         fiber->abort = true;
         fiber->error = error;
-        if(fiber->parent != nullptr)
+        if(fiber->m_parent != nullptr)
         {
-            fiber->parent->abort = true;
+            fiber->m_parent->abort = true;
         }
         // Maan, formatting c strings is hard...
         count = (int)fiber->frame_count - 1;
@@ -12423,7 +12436,7 @@ namespace lit
 
     static Value objfn_array_subscript(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        int index;
+        int64_t index;
         Array* self;
         Range* range;
         PCGenericArray<Value>* values;
@@ -12460,7 +12473,7 @@ namespace lit
             index = fmax(0, values->m_count + index);
         }
         //if(values->m_capacity <= (size_t)index)
-        if(index >= values->size())
+        if(index >= int64_t(values->size()))
         {
             lit_runtime_error_exiting(vm, "array index %d out of bounds", index);
             return Object::NullVal;
@@ -12760,7 +12773,6 @@ namespace lit
         PCGenericArray<Value>* values;
         Value val;
         State* state;
-        String* rt;
         String* part;
         String* stringified;
         String** values_converted;
@@ -12962,7 +12974,9 @@ namespace lit
 
     static Value objfn_class_subscript(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        Class* klass;    
+        Class* klass;
+        String* name;
+        Value setval;
         Value value;
         (void)argc;
         klass = Object::as<Class>(instance);
@@ -12972,9 +12986,18 @@ namespace lit
             {
                 lit_runtime_error_exiting(vm, "class index must be a string");
             }
-
-            klass->static_fields.set(Object::as<String>(argv[0]), argv[1]);
-            return argv[1];
+            name = Object::as<String>(argv[0]);
+            setval = argv[1];
+            if(Object::isFunction(setval) || Object::isClosure(setval))
+            {
+                fprintf(stderr, "setting method ...\n");
+                klass->methods.set(name, setval);
+            }
+            else
+            {
+                klass->static_fields.set(name, setval);
+            }
+            return setval;
         }
         if(!Object::isString(argv[0]))
         {
@@ -13156,7 +13179,7 @@ namespace lit
         {
             lit_runtime_error_exiting(vm, "Fiber already finished executing");
         }
-        fiber->parent = vm->fiber;
+        fiber->m_parent = vm->fiber;
         fiber->catcher = catcher;
         vm->fiber = fiber;
         frame = &fiber->frames[fiber->frame_count - 1];
@@ -13246,7 +13269,7 @@ namespace lit
         Fiber::CallFrame* frame;
         function = module->main_function;
         fiber = Fiber::make(vm->m_state, module, function);
-        fiber->parent = vm->fiber;
+        fiber->m_parent = vm->fiber;
         vm->fiber = fiber;
         frame = &fiber->frames[fiber->frame_count - 1];
         if(frame->ip == frame->function->chunk.m_code)
@@ -13577,12 +13600,12 @@ namespace lit
     {
         Value vres;
         Value firstarg;
-        Value fwdargs[3]={Object::NullVal};
         String* res;
+        (void)res;
         firstarg = argv[0];
         vres = objfn_string_format(vm, firstarg, argc-1, argv+1);
         res = Object::as<String>(vres);
-        fwdargs[0] = res->asValue();
+        
         lit_runtime_error_exiting(vm, "printf() is currently broken");
         return Object::NullVal;
     }
@@ -13729,7 +13752,7 @@ namespace lit
         Module* module = vm->fiber->module;
         Fiber* fiber = Fiber::make(vm->m_state, module, function);
 
-        fiber->parent = vm->fiber;
+        fiber->m_parent = vm->fiber;
 
         return fiber->asValue();
     }
@@ -13780,7 +13803,7 @@ namespace lit
     static bool objfn_fiber_yield(VM* vm, Value instance, size_t argc, Value* argv)
     {
         (void)instance;
-        if(vm->fiber->parent == nullptr)
+        if(vm->fiber->m_parent == nullptr)
         {
             lit_handle_runtime_error(vm, argc == 0 ? String::intern(vm->m_state, "Fiber was yielded") :
             Object::toString(vm->m_state, argv[0]));
@@ -13789,7 +13812,7 @@ namespace lit
 
         Fiber* fiber = vm->fiber;
 
-        vm->fiber = vm->fiber->parent;
+        vm->fiber = vm->fiber->m_parent;
         vm->fiber->stack_top -= fiber->arg_count;
         vm->fiber->stack_top[-1] = argc == 0 ? Object::NullVal : Object::toString(vm->m_state, argv[0])->asValue();
 
@@ -13801,7 +13824,7 @@ namespace lit
     static bool objfn_fiber_yeet(VM* vm, Value instance, size_t argc, Value* argv)
     {
         (void)instance;
-        if(vm->fiber->parent == nullptr)
+        if(vm->fiber->m_parent == nullptr)
         {
             lit_handle_runtime_error(vm, argc == 0 ? String::intern(vm->m_state, "Fiber was yeeted") :
             Object::toString(vm->m_state, argv[0]));
@@ -13810,7 +13833,7 @@ namespace lit
 
         Fiber* fiber = vm->fiber;
 
-        vm->fiber = vm->fiber->parent;
+        vm->fiber = vm->fiber->m_parent;
         vm->fiber->stack_top -= fiber->arg_count;
         vm->fiber->stack_top[-1] = argc == 0 ? Object::NullVal : Object::toString(vm->m_state, argv[0])->asValue();
 
@@ -15300,6 +15323,8 @@ namespace lit
         Map* m;
         String* key;
         Class* selfclass;
+        (void)argc;
+        (void)argv;
         selfclass = nullptr;
         if(Object::isClass(instance))
         {
@@ -15315,7 +15340,7 @@ namespace lit
         }
         if(selfclass == nullptr)
         {
-            lit_runtime_error_exiting(vm, "__methods: cannot find classof object");
+            lit_runtime_error_exiting(vm, "__methods: cannot find class of object");
             return Object::NullVal;
         }
         m = Map::make(vm->m_state);
@@ -15357,39 +15382,60 @@ namespace lit
         Map* mclass;
         Map* mclstatics;
         Map* mclmethods;
+        Class* klass;
         Instance* inst;
+        klass = nullptr;
+        minst = nullptr;
+        inst = nullptr;
         mclass = nullptr;
-        if(!Object::isInstance(instance))
-        {
-            lit_runtime_error_exiting(vm, "toMap() can only be used on instances");
-            return Object::NullVal;
-        }
-        inst = Object::as<Instance>(instance);
         map = Map::make(vm->m_state);
+        if(Object::isInstance(instance))
+        {
+            inst = Object::as<Instance>(instance);
+        }
+        if(inst != nullptr)
+        {
+            klass = inst->klass;
+        }
+        if(klass == nullptr)
+        {
+            klass = Class::getClassFor(vm->m_state, instance);
+        }
+        if(inst != nullptr)
         {
             minst = Map::make(vm->m_state);
             fillmap(vm->m_state, minst, &(inst->fields), true);
         }
+        if(klass != nullptr)
         {
             mclass = Map::make(vm->m_state);
             {
                 mclstatics = Map::make(vm->m_state);
-                fillmap(vm->m_state, mclstatics, &(inst->klass->static_fields), false);
+                fillmap(vm->m_state, mclstatics, &(klass->static_fields), false);
             }
             {
                 mclmethods = Map::make(vm->m_state);
-                fillmap(vm->m_state, mclmethods, &(inst->klass->methods), false);
+                fillmap(vm->m_state, mclmethods, &(klass->methods), false);
             }
             mclass->set(String::intern(vm->m_state, "statics"), mclstatics->asValue());
             mclass->set(String::intern(vm->m_state, "methods"), mclmethods->asValue());
         }
-        map->set(String::intern(vm->m_state, "instance"), minst->asValue());
-        map->set(String::intern(vm->m_state, "class"), mclass->asValue());
+        if(minst != nullptr)
+        {
+            map->set(String::intern(vm->m_state, "instance"), minst->asValue());
+        }
+        if(mclass != nullptr)
+        {
+            map->set(String::intern(vm->m_state, "class"), mclass->asValue());
+        }
         return map->asValue();
     }
 
     static Value objfn_kernel_tostring(VM* vm, Value instance, size_t argc, Value* argv)
     {
+        (void)instance;
+        (void)argc;
+        (void)argv;
         return String::intern(vm->m_state, "[kernel]")->asValue();
     }
 
@@ -15400,10 +15446,10 @@ namespace lit
         state->kernelvalue_class = klass;
         {
             klass->setStaticMethod("toString", objfn_kernel_tostring);
-            //klass->setGetter("__map", objfn_kernel_tomap);
+            klass->setGetter("__map", objfn_kernel_tomap);
             klass->setStaticGetter("__map", objfn_kernel_tomap);
             klass->setGetter("__methods", objfn_kernel_getmethods);
-            //klass->setStaticGetter("__methods", objfn_kernel_getmethods);
+            klass->setStaticGetter("__methods", objfn_kernel_getmethods);
             #if 0
             klass->setGetter("__fields", objfn_kernel_getfields);
             //klass->setStaticGetter("__fields", objfn_kernel_getfields);
@@ -15852,7 +15898,6 @@ namespace lit
         int byte;
         size_t i;
         String* self;
-        String* other;
         (void)argc;
         self = Object::as<String>(instance);
         for(i=0; i<argc; i++)
@@ -15957,7 +16002,6 @@ namespace lit
 
     static Value objfn_string_bytes(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        int iv;
         size_t i;
         Array* arr;
         String* selfstr;
@@ -15975,7 +16019,6 @@ namespace lit
 
     static Value objfn_string_byteat(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        char ch;
         size_t pos;
         size_t maxlen;
         String* self;
@@ -15991,7 +16034,6 @@ namespace lit
 
     static Value objfn_string_split(VM* vm, Value instance, size_t argc, Value* argv)
     {
-        double result;
         (void)vm;
         (void)argc;
         (void)argv;
@@ -16208,6 +16250,7 @@ namespace lit
     bool check_fmt_arg(VM* vm, String* buf, size_t ai, size_t argc, Value* argv, const char* fmttext)
     {
         (void)argv;
+        (void)buf;
         if(ai <= argc)
         {
             return true;
@@ -16229,7 +16272,6 @@ namespace lit
         size_t selflen;
         bool was_allowed;
         String* selfstr;
-        Value rtv;
         //char* buf;
         String* buf;
         (void)pch;
