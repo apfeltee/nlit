@@ -1,4 +1,10 @@
 
+#include "lit.h"
+
+namespace lit
+{
+
+
     //#define LIT_TRACE_EXECUTION
 
     /*
@@ -37,16 +43,16 @@
         state->allow_gc = was_allowed;
 
     #define vm_push(fiber, value) \
-        (*fiber->stack_top++ = value)
+        (*fiber->m_stacktop++ = value)
 
     #define vm_pop(fiber) \
-        (*(--fiber->stack_top))
+        (*(--fiber->m_stacktop))
 
     #define vm_drop(fiber) \
-        (fiber->stack_top--)
+        (fiber->m_stacktop--)
 
     #define vm_dropn(fiber, amount) \
-        (fiber->stack_top -= amount)
+        (fiber->m_stacktop -= amount)
 
     #define vm_readbyte(ip) \
         (*ip++)
@@ -55,10 +61,10 @@
         (ip += 2u, (uint16_t)((ip[-2] << 8u) | ip[-1]))
 
     #define vm_readconstant(current_chunk) \
-        (current_chunk->constants.m_values[vm_readbyte(ip)])
+        (current_chunk->m_constants.m_values[vm_readbyte(ip)])
 
     #define vm_readconstantlong(current_chunk, ip) \
-        (current_chunk->constants.m_values[vm_readshort(ip)])
+        (current_chunk->m_constants.m_values[vm_readshort(ip)])
 
     #define vm_readstring(current_chunk) \
         Object::as<String>(vm_readconstant(current_chunk))
@@ -69,16 +75,16 @@
 
     static inline Value vm_peek(Fiber* fiber, short distance)
     {
-        return fiber->stack_top[(-1) - distance];
+        return fiber->m_stacktop[(-1) - distance];
     }
 
     #define vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues) \
-        frame = &fiber->frames[fiber->frame_count - 1]; \
+        frame = &fiber->m_allframes[fiber->m_framecount - 1]; \
         current_chunk = &frame->function->chunk; \
         ip = frame->ip; \
         slots = frame->slots; \
-        fiber->module = frame->function->module; \
-        privates = fiber->module->privates; \
+        fiber->m_module = frame->function->module; \
+        privates = fiber->m_module->privates; \
         upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
 
     #define vm_writeframe(frame, ip) \
@@ -95,7 +101,7 @@
         { \
             return Result{ LITRESULT_OK, vm_pop(fiber) }; \
         } \
-        if(fiber->abort) \
+        if(fiber->m_isaborting) \
         { \
             vm_returnerror(); \
         } \
@@ -144,7 +150,7 @@
                 } \
                 else \
                 { \
-                    fiber->stack_top[-1] = callee; \
+                    fiber->m_stacktop[-1] = callee; \
                 } \
             } \
             else \
@@ -191,14 +197,14 @@
                 } \
             } \
             vm_drop(fiber); \
-            *(fiber->stack_top - 1) = (type(Object::toNumber(a) op Object::toNumber(b))); \
+            *(fiber->m_stacktop - 1) = (type(Object::toNumber(a) op Object::toNumber(b))); \
             continue; \
         } \
         if(Object::isNull(a)) \
         { \
         /* vm_rterrorvarg("Attempt to use op %s on a null value", op_string); */ \
             vm_drop(fiber); \
-            *(fiber->stack_top - 1) = Object::TrueVal; \
+            *(fiber->m_stacktop - 1) = Object::TrueVal; \
         } \
         else \
         { \
@@ -217,7 +223,7 @@
                                Object::valueName(a), Object::valueName(b)); \
         } \
         vm_drop(fiber); \
-        *(fiber->stack_top - 1) = (Object::toValue(Object::toNumber(a) op Object::toNumber(b)));
+        *(fiber->m_stacktop - 1) = (Object::toValue(Object::toNumber(a) op Object::toNumber(b)));
 
     /*
     * for operators that require fixed numbers
@@ -231,7 +237,7 @@
                                Object::valueName(a), Object::valueName(b)); \
         } \
         vm_drop(fiber); \
-        *(fiber->stack_top - 1) = (Object::toValue(int64_t(Object::toNumber(a)) op int64_t(Object::toNumber(b))));
+        *(fiber->m_stacktop - 1) = (Object::toValue(int64_t(Object::toNumber(a)) op int64_t(Object::toNumber(b))));
 
     #define vm_invokeoperation(ignoring) \
         uint8_t arg_count = vm_readbyte(ip); \
@@ -253,7 +259,7 @@
             Value value; \
             if(instance->fields.get(method_name, &value)) \
             { \
-                fiber->stack_top[-arg_count - 1] = value; \
+                fiber->m_stacktop[-arg_count - 1] = value; \
                 vm_callvalue(method_name->data(), value, arg_count); \
                 vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues); \
                 continue; \
@@ -270,13 +276,106 @@
             vm_invoke_from_class_advanced(type, method_name, arg_count, true, methods, ignoring, receiver); \
         }
 
+    void State::setVMGlobal(String* name, Value val)
+    {
+        this->vm->globals->m_values.set(name, val);
+    }
+
+    bool State::getVMGlobal(String* name, Value* dest)
+    {
+        return this->vm->globals->m_values.get(name, dest);
+    }
+
     static void reset_stack(VM* vm)
     {
         if(vm->fiber != nullptr)
         {
-            vm->fiber->stack_top = vm->fiber->stack;
+            vm->fiber->m_stacktop = vm->fiber->m_stackdata;
         }
     }
+
+    bool lit_handle_runtime_error(VM* vm, String* error_string)
+    {
+        int i;
+        int count;
+        size_t length;
+        char* start;
+        char* buffer;
+        const char* name;
+        Fiber::CallFrame* frame;
+        Function* function;
+        Chunk* chunk;
+        Value error;
+        Fiber* fiber;
+        Fiber* caller;
+        error = error_string->asValue();
+        fiber = vm->fiber;
+        while(fiber != nullptr)
+        {
+            fiber->m_error = error;
+            if(fiber->m_havecatcher)
+            {
+                vm->fiber = fiber->m_parent;
+                vm->fiber->m_stacktop -= fiber->m_argcount;
+                vm->fiber->m_stacktop[-1] = error;
+                return true;
+            }
+            caller = fiber->m_parent;
+            fiber->m_parent = nullptr;
+            fiber = caller;
+        }
+        fiber = vm->fiber;
+        fiber->m_isaborting = true;
+        fiber->m_error = error;
+        if(fiber->m_parent != nullptr)
+        {
+            fiber->m_parent->m_isaborting = true;
+        }
+        // Maan, formatting c strings is hard...
+        count = (int)fiber->m_framecount - 1;
+        length = snprintf(nullptr, 0, "%s%s\n", COLOR_RED, error_string->data());
+        for(i = count; i >= 0; i--)
+        {
+            frame = &fiber->m_allframes[i];
+            function = frame->function;
+            chunk = &function->chunk;
+            name = function->name == nullptr ? "unknown" : function->name->data();
+
+            if(chunk->m_haslineinfo)
+            {
+                length += snprintf(nullptr, 0, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->m_code - 1), name);
+            }
+            else
+            {
+                length += snprintf(nullptr, 0, "\tin %s()\n", name);
+            }
+        }
+        length += snprintf(nullptr, 0, "%s", COLOR_RESET);
+        buffer = (char*)malloc(length + 1);
+        buffer[length] = '\0';
+        start = buffer + sprintf(buffer, "%s%s\n", COLOR_RED, error_string->data());
+        for(i = count; i >= 0; i--)
+        {
+            frame = &fiber->m_allframes[i];
+            function = frame->function;
+            chunk = &function->chunk;
+            name = function->name == nullptr ? "unknown" : function->name->data();
+            if(chunk->m_haslineinfo)
+            {
+                start += sprintf(start, "[line %d] in %s()\n", (int)chunk->get_line(frame->ip - chunk->m_code - 1), name);
+            }
+            else
+            {
+                start += sprintf(start, "\tin %s()\n", name);
+            }
+        }
+        start += sprintf(start, "%s", COLOR_RESET);
+        vm->m_state->raiseError(RUNTIME_ERROR, buffer);
+        free(buffer);
+        reset_stack(vm);
+        return false;
+    }
+
 
     Result State::execFiber(Fiber* fiber)
     {
@@ -329,13 +428,13 @@
         vm = this->vm;
         vm_pushgc(this, true);
         vm->fiber = fiber;
-        fiber->abort = false;
-        frame = &fiber->frames[fiber->frame_count - 1];
+        fiber->m_isaborting = false;
+        frame = &fiber->m_allframes[fiber->m_framecount - 1];
         current_chunk = &frame->function->chunk;
-        fiber->module = frame->function->module;
+        fiber->m_module = frame->function->module;
         ip = frame->ip;
         slots = frame->slots;
-        privates = fiber->module->privates;
+        privates = fiber->m_module->privates;
         upvalues = frame->closure == nullptr ? nullptr : frame->closure->upvalues;
 
         // Has to be inside of the function in order for goto to work
@@ -358,10 +457,10 @@
     #endif
 
     #ifdef LIT_CHECK_STACK_SIZE
-            if((fiber->stack_top - frame->slots) > fiber->stack_capacity)
+            if((fiber->m_stacktop - frame->slots) > fiber->m_stackcapacity)
             {
-                vm_rterrorvarg("Fiber stack is not large enough (%i > %i)", (int)(fiber->stack_top - frame->slots),
-                                   fiber->stack_capacity);
+                vm_rterrorvarg("Fiber stack is not large enough (%i > %i)", (int)(fiber->m_stacktop - frame->slots),
+                                   fiber->m_stackcapacity);
             }
     #endif
 
@@ -400,37 +499,37 @@
                     result = vm_pop(fiber);
                     vm->closeUpvalues(slots);
                     vm_writeframe(frame, ip);
-                    fiber->frame_count--;
+                    fiber->m_framecount--;
                     if(frame->return_to_c)
                     {
                         frame->return_to_c = false;
-                        fiber->module->return_value = result;
-                        fiber->stack_top = frame->slots;
+                        fiber->m_module->return_value = result;
+                        fiber->m_stacktop = frame->slots;
                         return Result{ LITRESULT_OK, result };
                     }
-                    if(fiber->frame_count == 0)
+                    if(fiber->m_framecount == 0)
                     {
-                        fiber->module->return_value = result;
+                        fiber->m_module->return_value = result;
                         if(fiber->m_parent == nullptr)
                         {
                             vm_drop(fiber);
                             this->allow_gc = was_allowed;
                             return Result{ LITRESULT_OK, result };
                         }
-                        arg_count = fiber->arg_count;
+                        arg_count = fiber->m_argcount;
                         parent = fiber->m_parent;
                         fiber->m_parent = nullptr;
                         vm->fiber = fiber = parent;
                         vm_readframe(fiber, frame, current_chunk, ip, slots, privates, upvalues);
                         vm_traceframe(fiber);
-                        fiber->stack_top -= arg_count;
-                        fiber->stack_top[-1] = result;
+                        fiber->m_stacktop -= arg_count;
+                        fiber->m_stacktop[-1] = result;
                         continue;
                     }
-                    fiber->stack_top = frame->slots;
+                    fiber->m_stacktop = frame->slots;
                     if(frame->result_ignored)
                     {
-                        fiber->stack_top++;
+                        fiber->m_stacktop++;
                         frame->result_ignored = false;
                     }
                     else
@@ -557,7 +656,7 @@
                     if(Object::isNumber(a) && Object::isNumber(b))
                     {
                         vm_drop(fiber);
-                        *(fiber->stack_top - 1) = (Object::toValue(pow(Object::toNumber(a), Object::toNumber(b))));
+                        *(fiber->m_stacktop - 1) = (Object::toValue(pow(Object::toNumber(a), Object::toNumber(b))));
                         continue;
                     }
                     vm_invokemethod("POWER", a, "**", 1);
@@ -575,7 +674,7 @@
                     if(Object::isNumber(a) && Object::isNumber(b))
                     {
                         vm_drop(fiber);
-                        *(fiber->stack_top - 1) = (Object::toValue(floor(Object::toNumber(a) / Object::toNumber(b))));
+                        *(fiber->m_stacktop - 1) = (Object::toValue(floor(Object::toNumber(a) / Object::toNumber(b))));
 
                         continue;
                     }
@@ -590,7 +689,7 @@
                     if(Object::isNumber(a) && Object::isNumber(b))
                     {
                         vm_drop(fiber);
-                        *(fiber->stack_top - 1) = Object::toValue(fmod(Object::toNumber(a), Object::toNumber(b)));
+                        *(fiber->m_stacktop - 1) = Object::toValue(fmod(Object::toNumber(a), Object::toNumber(b)));
                         continue;
                     }
                     vm_invokemethod("MOD", a, "%", 1);
@@ -848,7 +947,7 @@
                 }
                 op_case(CLOSE_UPVALUE)
                 {
-                    vm->closeUpvalues(fiber->stack_top - 1);
+                    vm->closeUpvalues(fiber->m_stacktop - 1);
                     vm_drop(fiber);
                     continue;
                 }
@@ -968,7 +1067,7 @@
                         }
                     }
                     vm_drop(fiber);// Pop field name
-                    fiber->stack_top[-1] = getval;
+                    fiber->m_stacktop[-1] = getval;
                     continue;
                 }
                 op_case(SET_FIELD)
@@ -1008,7 +1107,7 @@
                             klassobj->static_fields.set(field_name, value);
                         }
                         vm_dropn(fiber, 2);// Pop field name and the value
-                        fiber->stack_top[-1] = value;
+                        fiber->m_stacktop[-1] = value;
                     }
                     else if(Object::isInstance(instval))
                     {
@@ -1037,7 +1136,7 @@
                             instobj->fields.set(field_name, value);
                         }
                         vm_dropn(fiber, 2);// Pop field name and the value
-                        fiber->stack_top[-1] = value;
+                        fiber->m_stacktop[-1] = value;
                     }
                     else
                     {
@@ -1235,7 +1334,7 @@
                         continue;
                     }
                     values = &Object::as<Array>(slot)->m_actualarray;
-                    fiber->ensure_stack(values->m_count + frame->function->max_slots + (int)(fiber->stack_top - fiber->stack));
+                    fiber->ensure_stack(values->m_count + frame->function->max_slots + (int)(fiber->m_stacktop - fiber->m_stackdata));
                     for(i = 0; i < values->m_count; i++)
                     {
                         vm_push(fiber, values->m_values[i]);
@@ -1297,7 +1396,7 @@
                         vm_rterror("You can only reference fields of real instances");
                     }
                     vm_drop(fiber);// Pop field name
-                    fiber->stack_top[-1] = Reference::make(this, pval)->asValue();
+                    fiber->m_stacktop[-1] = Reference::make(this, pval)->asValue();
                     continue;
                 }
                 op_case(SET_REFERENCE)
@@ -1321,3 +1420,193 @@
         vm_returnerror();
     }
 
+    bool VM::callValue(std::string_view name, Value callee, uint8_t arg_count)
+    {
+        size_t i;
+        bool bres;
+        NativeMethod* mthobj;
+        Fiber* fiber;
+        Closure* closure;
+        BoundMethod* bound_method;
+        Value mthval;
+        Value result;
+        Instance* instance;
+        Class* klass;
+        (void)fiber;
+        if(Object::isObject(callee))
+        {
+            if(m_state->set_native_exit_jump())
+            {
+                return true;
+            }
+            switch(Object::asObject(callee)->type)
+            {
+                case Object::Type::Function:
+                    {
+                        return this->dispatchCall(Object::as<Function>(callee), nullptr, arg_count);
+                    }
+                    break;
+                case Object::Type::Closure:
+                    {
+                        closure = Object::as<Closure>(callee);
+                        return this->dispatchCall(closure->function, closure, arg_count);
+                    }
+                    break;
+                case Object::Type::NativeFunction:
+                    {
+                        vm_pushgc(m_state, false)
+                        auto fn = Object::as<NativeFunction>(callee);
+                        if(fn != nullptr)
+                        {
+                            result = fn->function(this, arg_count, this->fiber->m_stacktop - arg_count);
+                            this->fiber->m_stacktop -= arg_count + 1;
+                            this->push(result);
+                            vm_popgc(m_state);
+                            return false;
+                        }
+                    }
+                    break;
+                case Object::Type::NativePrimitive:
+                    {
+                        vm_pushgc(m_state, false)
+                        fiber = this->fiber;
+                        bres = Object::as<NativePrimFunction>(callee)->function(this, arg_count, fiber->m_stacktop - arg_count);
+                        if(bres)
+                        {
+                            fiber->m_stacktop -= arg_count;
+                        }
+                        vm_popgc(m_state);
+                        return bres;
+                    }
+                    break;
+                case Object::Type::NativeMethod:
+                    {
+                        vm_pushgc(m_state, false);
+                        mthobj = Object::as<NativeMethod>(callee);
+                        fiber = this->fiber;
+                        result = mthobj->method(this, *(this->fiber->m_stacktop - arg_count - 1), arg_count, this->fiber->m_stacktop - arg_count);
+                        this->fiber->m_stacktop -= arg_count + 1;
+                        //if(!Object::isNull(result))
+                        {
+                            if(!this->fiber->m_isaborting)
+                            {
+                                this->push(result);
+                            }
+                        }
+                        vm_popgc(m_state);
+                        return false;
+                    }
+                    break;
+                case Object::Type::PrimitiveMethod:
+                    {
+                        vm_pushgc(m_state, false);
+                        fiber = this->fiber;
+                        bres = Object::as<PrimitiveMethod>(callee)->method(this, *(fiber->m_stacktop - arg_count - 1), arg_count, fiber->m_stacktop - arg_count);
+                        if(bres)
+                        {
+                            fiber->m_stacktop -= arg_count;
+                        }
+                        vm_popgc(m_state);
+                        return bres;
+                    }
+                    break;
+                case Object::Type::Class:
+                    {
+                        klass = Object::as<Class>(callee);
+                        instance = Instance::make(m_state, klass);
+                        this->fiber->m_stacktop[-arg_count - 1] = instance->asValue();
+                        if(klass->init_method != nullptr)
+                        {
+                            return this->callValue(LIT_NAME_CONSTRUCTOR, klass->init_method->asValue(), arg_count);
+                        }
+                        // Remove the arguments, so that they don't mess up the stack
+                        // (default constructor has no arguments)
+                        for(i = 0; i < arg_count; i++)
+                        {
+                            this->pop();
+                        }
+                        return false;
+                    }
+                    break;
+                case Object::Type::BoundMethod:
+                    {
+                        bound_method = Object::as<BoundMethod>(callee);
+                        mthval = bound_method->method;
+                        if(Object::isNativeMethod(mthval))
+                        {
+                            vm_pushgc(m_state, false);
+                            result = Object::as<NativeMethod>(mthval)->method(this, bound_method->receiver, arg_count, this->fiber->m_stacktop - arg_count);
+                            this->fiber->m_stacktop -= arg_count + 1;
+                            this->push(result);
+                            vm_popgc(m_state);
+                            return false;
+                        }
+                        else if(Object::isPrimitiveMethod(mthval))
+                        {
+                            fiber = this->fiber;
+                            vm_pushgc(m_state, false);
+                            if(Object::as<PrimitiveMethod>(mthval)->method(this, bound_method->receiver, arg_count, fiber->m_stacktop - arg_count))
+                            {
+                                fiber->m_stacktop -= arg_count;
+                                return true;
+                            }
+                            vm_popgc(m_state);
+                            return false;
+                        }
+                        else
+                        {
+                            this->fiber->m_stacktop[-arg_count - 1] = bound_method->receiver;
+                            return this->dispatchCall(Object::as<Function>(mthval), nullptr, arg_count);
+                        }
+                    }
+                    break;
+                default:
+                    {
+                    }
+                    break;
+
+            }
+        }
+        if(Object::isNull(callee))
+        {
+            lit_runtime_error(this, "Attempt to call a null value '%s'", name.data());
+        }
+        else
+        {
+            lit_runtime_error(this, "Can only call functions and classes, got %s", Object::valueName(callee));
+        }
+        return true;
+    }
+
+
+
+
+    #undef vm_rterrorvarg
+    #undef vm_rterror
+    #undef vm_invokemethod
+    #undef vm_invoke_from_class
+    #undef vm_invoke_from_class_advanced
+    #undef vm_dropn
+    #undef vm_push
+    #undef vm_drop
+    #undef vm_pop
+    #undef vm_callvalue
+    #undef vm_recoverstate
+    #undef vm_writeframe
+    #undef vm_readframe
+    #undef vm_bitwiseop
+    #undef vm_binaryop
+    #undef vm_readconstantlong
+    #undef vm_readconstant
+    #undef op_case
+    #undef vm_readstring
+    #undef vm_readshort
+    #undef vm_readbyte
+    #undef vm_returnerror
+
+
+
+    #undef vm_pushgc
+    #undef vm_popgc
+    #undef LIT_TRACE_FRAME
+}

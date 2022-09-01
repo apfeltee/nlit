@@ -1,1 +1,3 @@
-print("Hello, world!") // Expected: Hello, world!
+
+print("hello" + " world\n")
+
