@@ -16,20 +16,60 @@ namespace lit
         m_inner.release();
     }
 
+    void Table::removeWhite()
+    {
+        size_t i;
+        Entry* entry;
+        if(m_inner.m_values != nullptr)
+        {
+            if(m_inner.m_count > 0)
+            {
+                for(i = 0; i < m_inner.m_count; i++)
+                {
+                    entry = m_inner.m_values[i];
+                    if(entry != nullptr)
+                    {
+                        if(entry->key != nullptr && !entry->key->marked)
+                        {
+                            this->remove(entry->key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void Table::vmMarkObject(VM* vm, Object* obj)
+    {
+        vm->markObject(obj);
+    }
+
+    void Table::vmMarkValue(VM* vm, Value val)
+    {
+        vm->markValue(val);
+    }
+
     void Table::markForGC(VM* vm)
     {
         size_t i;
         Table::Entry* entry;
-        for(i = 0; i <= m_inner.m_capacity; i++)
+        if(m_inner.m_values != nullptr)
         {
-            entry = m_inner.m_values[i];
-            if(entry != nullptr)
+            if(m_inner.m_count > 0)
             {
-                vmMarkObject(vm, (Object*)entry->key);
-                vmMarkValue(vm, entry->value);
+                for(i = 0; i < m_inner.m_count; i++)
+                {
+                    entry = m_inner.m_values[i];
+                    if(entry != nullptr)
+                    {
+                        vmMarkObject(vm, (Object*)entry->key);
+                        vmMarkValue(vm, entry->value);
+                    }
+                }
             }
         }
     }
+
 
     bool Table::set(String* key, Value value)
     {
@@ -125,31 +165,6 @@ namespace lit
             }
         }
     }
-
-    void Table::removeWhite()
-    {
-        size_t i;
-        Entry* entry;
-        for(i = 0; i <= m_inner.m_capacity; i++)
-        {
-            entry = m_inner.m_values[i];
-            if(entry->key != nullptr && !entry->key->marked)
-            {
-                this->remove(entry->key);
-            }
-        }
-    }
-
-    void Table::vmMarkObject(VM* vm, Object* obj)
-    {
-        vm->markObject(obj);
-    }
-
-    void Table::vmMarkValue(VM* vm, Value val)
-    {
-        vm->markValue(val);
-    }
-
 
     int64_t Table::iterator(int64_t number) const
     {

@@ -5,10 +5,6 @@
 
 namespace lit
 {
-
-    // typimpls 
-
-
     void Memory::setBytesAllocated(State* state, int64_t toadd)
     {
         state->bytes_allocated += toadd;

@@ -937,13 +937,19 @@ namespace lit
             /* turn the given value to a number */
             static inline double toNumber(Value value)
             {
-                return *((double*)&value);
+                double* tmp;
+                tmp = reinterpret_cast<double*>(&value);
+                //return *((double*)&value);
+                return *tmp;
             }
 
             /* turn a number into a value*/
             static inline Value toValue(double num)
             {
-                return *((Value*)&num);
+                Value* tmp;
+                tmp = reinterpret_cast<Value*>(&num);
+                //return *((Value*)&num);
+                return *tmp;
             }
 
             /* is this value falsey? */

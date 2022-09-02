@@ -87,6 +87,7 @@ function md5cycle(x, k)
     return x;
 }
 
+// this is what `a >>> b` does ...
 function unshiftright(a, b)
 {
     if (b >= 32 || b < -32)
@@ -128,7 +129,7 @@ function cmn(q, a, b, x, s, t)
 function ff(a, b, c, d, x, s, t)
 {
     var r = cmn((b & c) | ((~b) & d), a, b, x, s, t);
-    println("ff(", [a, b, c, d, x, s, t].join(","), ")=", r);
+    //println("ff(", [a, b, c, d, x, s, t].join(","), ")=", r);
     return r;
 }
 
@@ -139,7 +140,7 @@ function gg(a, b, c, d, x, s, t)
 
 function hh(a, b, c, d, x, s, t)
 {
-    return cmn(b ^ c ^ d, a, b, x, s, t);
+    return cmn((b ^ c) ^ d, a, b, x, s, t);
 }
 
 function ii(a, b, c, d, x, s, t)
@@ -194,9 +195,8 @@ function md51(s)
  */
 function md5blk(s)
 {
-    /* I figured global was faster.   */
-    var md5blks = [];
     var i;
+    var md5blks = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     for (i = 0; i < 64; i += 4)
     {
         md5blks[i >> 2] = (s.charCodeAt(i) + (s.charCodeAt(i + 1) << 8) + (s.charCodeAt(i + 2) << 16) + (s.charCodeAt(i + 3) << 24));
