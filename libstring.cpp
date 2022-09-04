@@ -1271,7 +1271,7 @@ namespace lit
                 klass->bindMethod("split", objfn_string_split);
             }
             /*
-            * javascript shit (does what [] does)
+            * javascript shit (does what byteAt does)
             */
             {
                 klass->bindMethod("charCodeAt", objfn_string_byteat);

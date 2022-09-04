@@ -483,7 +483,7 @@ namespace lit
                             }
                         } while(parser->match(LITTOK_COMMA));
                     }
-                    #if 1
+                    #if 0
                     if(!had_arrow)
                     {
                         parser->consume(LITTOK_RIGHT_PAREN, "')' after lambda parameters");

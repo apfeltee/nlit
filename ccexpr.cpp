@@ -347,6 +347,267 @@ namespace lit
             }
         }
 
+        ExprLiteral* ExprLiteral::make(State* state, size_t line, Value value)
+        {
+            auto rt = Expression::make<ExprLiteral>(state, line, Expression::Type::Literal);
+            rt->value = value;
+            return rt;
+        }
+
+        ExprBinary* ExprBinary::make(State* state, size_t line, Expression* left, Expression* right, TokenType op)
+        {
+            auto expression = Expression::make<ExprBinary>(state, line, Expression::Type::Binary);
+            expression->left = left;
+            expression->right = right;
+            expression->op = op;
+            expression->ignore_left = false;
+            return expression;
+        }
+
+        ExprUnary* ExprUnary::make(State* state, size_t line, Expression* right, TokenType op)
+        {
+            auto expression = Expression::make<ExprUnary>(state, line, Expression::Type::Unary);
+            expression->right = right;
+            expression->op = op;
+            return expression;
+        }
+
+        ExprVar* ExprVar::make(State* state, size_t line, const char* name, size_t length)
+        {
+            auto expression = Expression::make<ExprVar>(state, line, Expression::Type::Variable);
+            expression->name = name;
+            expression->length = length;
+            return expression;
+        }
+
+        ExprAssign* ExprAssign::make(State* state, size_t line, Expression* to, Expression* value)
+        {
+            auto expression = Expression::make<ExprAssign>(state, line, Expression::Type::Assign);
+            expression->to = to;
+            expression->value = value;
+            return expression;
+        }
+
+        ExprCall* ExprCall::make(State* state, size_t line, Expression* callee)
+        {
+            auto expression = Expression::make<ExprCall>(state, line, Expression::Type::Call);
+            expression->callee = callee;
+            expression->objexpr = nullptr;
+            expression->args.init(state);
+            return expression;
+        }
+
+        ExprIndexGet* ExprIndexGet::make(State* state, size_t line, Expression* where, const char* name, size_t length, bool questionable, bool ignore_result)
+        {
+            auto expression = Expression::make<ExprIndexGet>(state, line, Expression::Type::Get);
+            expression->where = where;
+            expression->name = name;
+            expression->length = length;
+            expression->ignore_emit = false;
+            expression->jump = questionable ? 0 : -1;
+            expression->ignore_result = ignore_result;
+            return expression;
+        }
+
+        ExprIndexSet* ExprIndexSet::make(State* state, size_t line, Expression* where, const char* name, size_t length, Expression* value)
+        {
+            auto expression = Expression::make<ExprIndexSet>(state, line, Expression::Type::Set);
+            expression->where = where;
+            expression->name = name;
+            expression->length = length;
+            expression->value = value;
+            return expression;
+        }
+
+        ExprLambda* ExprLambda::make(State* state, size_t line)
+        {
+            auto expression = Expression::make<ExprLambda>(state, line, Expression::Type::Lambda);
+            expression->body = nullptr;
+            expression->parameters.init(state);
+            return expression;
+        }
+
+        ExprArray* ExprArray::make(State* state, size_t line)
+        {
+            auto expression = Expression::make<ExprArray>(state, line, Expression::Type::Array);
+            expression->values.init(state);
+            return expression;
+        }
+
+        ExprObject* ExprObject::make(State* state, size_t line)
+        {
+            auto expression = Expression::make<ExprObject>(state, line, Expression::Type::Object);
+            expression->keys.init(state);
+            expression->values.init(state);
+            return expression;
+        }
+
+        ExprSubscript* ExprSubscript::make(State* state, size_t line, Expression* array, Expression* index)
+        {
+            auto expression = Expression::make<ExprSubscript>(state, line, Expression::Type::Subscript);
+            expression->array = array;
+            expression->index = index;
+            return expression;
+        }
+
+        ExprSuper* ExprSuper::make(State* state, size_t line, String* method, bool ignore_result)
+        {
+            auto expression = Expression::make<ExprSuper>(state, line, Expression::Type::Super);
+            expression->method = method;
+            expression->ignore_emit = false;
+            expression->ignore_result = ignore_result;
+            return expression;
+        }
+
+        ExprRange* ExprRange::make(State* state, size_t line, Expression* from, Expression* to)
+        {
+            auto expression = Expression::make<ExprRange>(state, line, Expression::Type::Range);
+            expression->from = from;
+            expression->to = to;
+            return expression;
+        }
+
+        ExprIfClause* ExprIfClause::make(State* state, size_t line, Expression* condition, Expression* if_branch, Expression* else_branch)
+        {
+            auto expression = Expression::make<ExprIfClause>(state, line, Expression::Type::IfClause);
+            expression->condition = condition;
+            expression->if_branch = if_branch;
+            expression->else_branch = else_branch;
+            return expression;
+        }
+
+        ExprInterpolation* ExprInterpolation::make(State* state, size_t line)
+        {
+            auto expression = Expression::make<ExprInterpolation>(state, line, Expression::Type::Interpolation);
+            expression->expressions.init(state);
+            return expression;
+        }
+
+        ExprReference* ExprReference::make(State* state, size_t line, Expression* to)
+        {
+            auto expr = Expression::make<ExprReference>(state, line, Expression::Type::Reference);
+            expr->to = to;
+            return expr;
+        }
+
+        ExprStatement* ExprStatement::make(State* state, size_t line, Expression* expression)
+        {
+            auto statement = Expression::make<ExprStatement>(state, line, Expression::Type::Expression);
+            statement->expression = expression;
+            statement->pop = true;
+            return statement;
+        }
+
+        StmtBlock* StmtBlock::make(State* state, size_t line)
+        {
+            auto statement = Expression::make<StmtBlock>(state, line, Expression::Type::Block);
+            statement->statements.init(state);
+            return statement;
+        }
+
+        StmtVar* StmtVar::make(State* state, size_t line, const char* name, size_t length, Expression* exprinit, bool constant)
+        {
+            auto statement = Expression::make<StmtVar>(state, line, Expression::Type::VarDecl);
+            statement->name = name;
+            statement->length = length;
+            statement->valexpr = exprinit;
+            statement->constant = constant;
+            return statement;
+        }
+
+        StmtIfClause* StmtIfClause::make(State* state,
+                                                size_t line,
+                                                Expression* condition,
+                                                Expression* if_branch,
+                                                Expression* else_branch,
+                                                Expression::List* elseif_conditions,
+                                                Expression::List* elseif_branches)
+        {
+            auto statement = Expression::make<StmtIfClause>(state, line, Expression::Type::IfClause);
+            statement->condition = condition;
+            statement->if_branch = if_branch;
+            statement->else_branch = else_branch;
+            statement->elseif_conditions = elseif_conditions;
+            statement->elseif_branches = elseif_branches;
+            return statement;
+        }
+
+        StmtWhileLoop* StmtWhileLoop::make(State* state, size_t line, Expression* condition, Expression* body)
+        {
+            auto statement = Expression::make<StmtWhileLoop>(state, line, Expression::Type::WhileLoop);
+            statement->condition = condition;
+            statement->body = body;
+            return statement;
+        }
+
+        StmtForLoop* StmtForLoop::make(State* state,
+                                                  size_t line,
+                                                  Expression* exprinit,
+                                                  Expression* var,
+                                                  Expression* condition,
+                                                  Expression* increment,
+                                                  Expression* body,
+                                                  bool c_style)
+        {
+            auto statement = Expression::make<StmtForLoop>(state, line, Expression::Type::ForLoop);
+            statement->exprinit = exprinit;
+            statement->var = var;
+            statement->condition = condition;
+            statement->increment = increment;
+            statement->body = body;
+            statement->c_style = c_style;
+            return statement;
+        }
+
+        StmtContinue* StmtContinue::make(State* state, size_t line)
+        {
+            return Expression::make<StmtContinue>(state, line, Expression::Type::ContinueClause);
+        }
+
+        StmtBreak* StmtBreak::make(State* state, size_t line)
+        {
+            return Expression::make<StmtBreak>(state, line, Expression::Type::BreakClause);
+        }
+
+        StmtFunction* StmtFunction::make(State* state, size_t line, const char* name, size_t length)
+        {
+            auto function = Expression::make<StmtFunction>(state, line, Expression::Type::FunctionDecl);
+            function->name = name;
+            function->length = length;
+            function->body = nullptr;
+            function->parameters.init(state);
+            return function;
+        }
+
+        StmtMethod* StmtMethod::make(State* state, size_t line, String* name, bool is_static)
+        {
+            auto statement = Expression::make<StmtMethod>(state, line, Expression::Type::MethodDecl);
+            statement->name = name;
+            statement->body = nullptr;
+            statement->is_static = is_static;
+            statement->parameters.init(state);
+            return statement;
+        }
+
+        StmtClass* StmtClass::make(State* state, size_t line, String* name, String* parent)
+        {
+            auto statement = Expression::make<StmtClass>(state, line, Expression::Type::ClassDecl);
+            statement->name = name;
+            statement->parent = parent;
+            statement->fields.init(state);
+            return statement;
+        }
+
+        StmtField* StmtField::make(State* state, size_t line, String* name, Expression* getter, Expression* setter, bool is_static)
+        {
+            auto statement = Expression::make<StmtField>(state, line, Expression::Type::FieldDecl);
+            statement->name = name;
+            statement->getter = getter;
+            statement->setter = setter;
+            statement->is_static = is_static;
+            return statement;
+        }
+
     }
 }
 
