@@ -1,5 +1,5 @@
 
-#include "lit.h"
+#include "priv.h"
 
 namespace lit
 {

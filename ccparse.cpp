@@ -762,18 +762,40 @@ namespace lit
 
         Expression* Parser::parse_object(Parser* parser, bool can_assign)
         {
+            const char* name;
+            size_t nlen;
             (void)can_assign;
             auto objexpr = ExprObject::make(parser->m_state, parser->m_prevtoken.line);
             parser->ignore_new_lines();
             while(!parser->check(LITTOK_RIGHT_BRACE))
             {
                 parser->ignore_new_lines();
-                parser->consume(LITTOK_IDENTIFIER, "key string after '{'");
-                objexpr->keys.push(String::copy(parser->m_state, parser->m_prevtoken.start, parser->m_prevtoken.length)->asValue());
-                parser->ignore_new_lines();
-                parser->consume(LITTOK_EQUAL, "'=' after key string");
-                parser->ignore_new_lines();
-                objexpr->values.push(parse_expression(parser));
+                name = nullptr;
+                nlen = 0;
+                if(parser->check(LITTOK_IDENTIFIER))
+                {
+                    parser->consume(LITTOK_IDENTIFIER, "variable name");
+                    name = parser->m_prevtoken.start;
+                    nlen = parser->m_prevtoken.length;
+                }
+                else if(parser->check(LITTOK_STRING))
+                {
+                    parser->consume(LITTOK_STRING, "variable string");
+                    name = parser->m_prevtoken.start+1;
+                    nlen = parser->m_prevtoken.length-2;
+                }
+                else
+                {
+                    parser->raiseError(Error::LITERROR_INVALID_ASSIGMENT_TARGET, "expect identifier or string");
+                }
+                if(name != nullptr)
+                {
+                    objexpr->keys.push(String::copy(parser->m_state, name, nlen)->asValue());
+                    parser->ignore_new_lines();
+                    parser->consume(LITTOK_COLON, "':' after key string");
+                    parser->ignore_new_lines();
+                    objexpr->values.push(parse_expression(parser));
+                }
                 if(!parser->match(LITTOK_COMMA))
                 {
                     break;

@@ -1,0 +1,3 @@
+
+m = {foo: "bar", "some stuff with things":"derp"}
+println(m)

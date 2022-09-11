@@ -4,5 +4,5 @@ a.push("dicks", a, 72)
 println("a = ", a)
 println("joined = ", a.join("|"))
 
-m = { foo = "bar"}
+m = { "foo": "bar"}
 print("m = ", m["foo"].toString(), "\n")

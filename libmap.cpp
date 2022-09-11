@@ -373,7 +373,7 @@ namespace lit
                 #endif
                 buffer->append(key->data(), key->length());
                 buffer_index += key->length();
-                buffer->append(" = ", 3);
+                buffer->append(": ");
                 buffer_index += 3;
                 buffer->append(value->data(), value->length());
                 buffer_index += value->length();

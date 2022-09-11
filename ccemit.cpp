@@ -1,3 +1,4 @@
+
 #include "lit.h"
 #include "priv.h"
 
@@ -6,7 +7,7 @@ namespace lit
     namespace AST
     {
         static const int8_t stack_effects[] = {
-            #define OPCODE(_, effect) effect,
+            #define OPCODE(b, effect) effect,
             #include "opcode.inc"
             #undef OPCODE
         };

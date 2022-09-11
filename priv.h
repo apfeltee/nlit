@@ -1,9 +1,222 @@
 
-
+#pragma once
 #include "lit.h"
+
+#define LIT_LONGEST_OP_NAME 13
+
+#define LIT_OPCODE_SIZE 0x3f
+#define LIT_A_ARG_SIZE 0xff
+#define LIT_B_ARG_SIZE 0x1ff
+#define LIT_C_ARG_SIZE 0x1ff
+#define LIT_BX_ARG_SIZE 0x3ffff // 18 bits max
+#define LIT_SBX_ARG_SIZE 0x1ffff // 17 bits max
+
+#define LIT_A_ARG_POSITION 6
+#define LIT_B_ARG_POSITION 14
+#define LIT_C_ARG_POSITION 23
+#define LIT_BX_ARG_POSITION 14
+#define LIT_SBX_ARG_POSITION 15
+#define LIT_SBX_FLAG_POSITION 14
+
+/*
+ * Instruction can follow one of the three formats:
+ *
+ * ABC  opcode:6 bits (starting from bit 0), A:8 bits, B:9 bits, C:9 bits
+ * ABx  opcode:6 bits (starting from bit 0), A:8 bits, Bx:18 bits
+ * AsBx opcode:6 bits (starting from bit 0), A:8 bits, sBx:18 bits (signed)
+ */
+
+#define LIT_INSTRUCTION_OPCODE(instruction) (instruction & LIT_OPCODE_SIZE)
+#define LIT_INSTRUCTION_A(instruction) ((instruction >> LIT_A_ARG_POSITION) & LIT_A_ARG_SIZE)
+#define LIT_INSTRUCTION_B(instruction) ((instruction >> LIT_B_ARG_POSITION) & LIT_B_ARG_SIZE)
+#define LIT_INSTRUCTION_C(instruction) ((instruction >> LIT_C_ARG_POSITION) & LIT_C_ARG_SIZE)
+#define LIT_INSTRUCTION_BX(instruction) ((instruction >> LIT_BX_ARG_POSITION) & LIT_BX_ARG_SIZE)
+#define LIT_INSTRUCTION_SBX(instruction) (((instruction >> LIT_SBX_ARG_POSITION) & LIT_SBX_ARG_SIZE) \
+	* (((instruction >> LIT_SBX_FLAG_POSITION) & 0x1) == 1 ? -1 : 1))
+
+#define LIT_READ_ABC_INSTRUCTION(instruction) uint8_t a = LIT_INSTRUCTION_A(instruction); \
+	uint16_t b = LIT_INSTRUCTION_B(instruction); \
+	uint16_t c = LIT_INSTRUCTION_C(instruction);
+
+#define LIT_READ_BX_INSTRUCTION(instruction) uint8_t a = LIT_INSTRUCTION_A(instruction); \
+	uint32_t bx = LIT_INSTRUCTION_BX(instruction);
+
+#define LIT_READ_SBX_INSTRUCTION(instruction) uint8_t a = LIT_INSTRUCTION_A(instruction); \
+	int32_t sbx = LIT_INSTRUCTION_SBX(instruction);
+
+#define LIT_FORM_ABC_INSTRUCTION(opcode, a, b, c) (((opcode) & LIT_OPCODE_SIZE) \
+	| (((a) & LIT_A_ARG_SIZE) << LIT_A_ARG_POSITION) \
+	| (((b) & LIT_B_ARG_SIZE) << LIT_B_ARG_POSITION) \
+	| (((c) & LIT_C_ARG_SIZE) << LIT_C_ARG_POSITION))
+
+#define LIT_FORM_ABX_INSTRUCTION(opcode, a, bx) (((opcode) & LIT_OPCODE_SIZE) \
+	| (((a) & LIT_A_ARG_SIZE) << LIT_A_ARG_POSITION) \
+	| (((bx) & LIT_BX_ARG_SIZE) << LIT_BX_ARG_POSITION))
+
+#define LIT_FORM_ASBX_INSTRUCTION(opcode, a, sbx) (((opcode) & LIT_OPCODE_SIZE) \
+	| (((a) & LIT_A_ARG_SIZE) << LIT_A_ARG_POSITION) \
+	| ((abs((int) (sbx)) & LIT_SBX_ARG_SIZE) << LIT_SBX_ARG_POSITION)) \
+	| ((((sbx) < 0 ? 1 : 0) << LIT_SBX_FLAG_POSITION))
+
+
 
 namespace lit
 {
+    enum InstructionType
+    {
+        LIT_INSTRUCTION_ABC,
+        LIT_INSTRUCTION_ABX,
+        LIT_INSTRUCTION_ASBX,
+    };
+
+    enum OpCode
+    {
+        #define OPCODE(name, a) OP_##name,
+        #include "opcode.inc"
+        #undef OPCODE
+    };
+
+    enum TokenType
+    {
+        LITTOK_NEW_LINE,
+
+        // Single-character tokens.
+        LITTOK_LEFT_PAREN,
+        LITTOK_RIGHT_PAREN,
+        LITTOK_LEFT_BRACE,
+        LITTOK_RIGHT_BRACE,
+        LITTOK_LEFT_BRACKET,
+        LITTOK_RIGHT_BRACKET,
+        LITTOK_COMMA,
+        LITTOK_SEMICOLON,
+        LITTOK_COLON,
+
+        // One or two character tokens.
+        LITTOK_BAR_EQUAL,
+        LITTOK_BAR,
+        LITTOK_BAR_BAR,
+        LITTOK_AMPERSAND_EQUAL,
+        LITTOK_AMPERSAND,
+        LITTOK_AMPERSAND_AMPERSAND,
+        LITTOK_BANG,
+        LITTOK_BANG_EQUAL,
+        LITTOK_EQUAL,
+        LITTOK_EQUAL_EQUAL,
+        LITTOK_GREATER,
+        LITTOK_GREATER_EQUAL,
+        LITTOK_GREATER_GREATER,
+        LITTOK_LESS,
+        LITTOK_LESS_EQUAL,
+        LITTOK_LESS_LESS,
+        LITTOK_PLUS,
+        LITTOK_PLUS_EQUAL,
+        LITTOK_PLUS_PLUS,
+        LITTOK_MINUS,
+        LITTOK_MINUS_EQUAL,
+        LITTOK_MINUS_MINUS,
+        LITTOK_STAR,
+        LITTOK_STAR_EQUAL,
+        LITTOK_STAR_STAR,
+        LITTOK_SLASH,
+        LITTOK_SLASH_EQUAL,
+        LITTOK_QUESTION,
+        LITTOK_QUESTION_QUESTION,
+        LITTOK_PERCENT,
+        LITTOK_PERCENT_EQUAL,
+        LITTOK_ARROW,
+        LITTOK_SMALL_ARROW,
+        LITTOK_TILDE,
+        LITTOK_CARET,
+        LITTOK_CARET_EQUAL,
+        LITTOK_DOT,
+        LITTOK_DOT_DOT,
+        LITTOK_DOT_DOT_DOT,
+        LITTOK_SHARP,
+        LITTOK_SHARP_EQUAL,
+
+        // erals.
+        LITTOK_IDENTIFIER,
+        LITTOK_STRING,
+        LITTOK_INTERPOLATION,
+        LITTOK_NUMBER,
+
+        // Keywords.
+        LITTOK_CLASS,
+        LITTOK_ELSE,
+        LITTOK_FALSE,
+        LITTOK_FOR,
+        LITTOK_FUNCTION,
+        LITTOK_IF,
+        LITTOK_NULL,
+        LITTOK_RETURN,
+        LITTOK_SUPER,
+        LITTOK_THIS,
+        LITTOK_TRUE,
+        LITTOK_VAR,
+        LITTOK_WHILE,
+        LITTOK_CONTINUE,
+        LITTOK_BREAK,
+        LITTOK_NEW,
+        LITTOK_EXPORT,
+        LITTOK_IS,
+        LITTOK_STATIC,
+        LITTOK_OPERATOR,
+        LITTOK_GET,
+        LITTOK_SET,
+        LITTOK_IN,
+        LITTOK_CONST,
+        LITTOK_REF,
+
+        LITTOK_ERROR,
+        LITTOK_EOF
+    };
+
+    enum Precedence
+    {
+        LITPREC_NONE,
+        LITPREC_ASSIGNMENT,// =
+        LITPREC_OR,// ||
+        LITPREC_AND,// &&
+        LITPREC_BOR,// | ^
+        LITPREC_BAND,// &
+        LITPREC_SHIFT,// << >>
+        LITPREC_EQUALITY,// == !=
+        LITPREC_COMPARISON,// < > <= >=
+        LITPREC_COMPOUND,// += -= *= /= ++ --
+        LITPREC_TERM,// + -
+        LITPREC_FACTOR,// * /
+        LITPREC_IS,// is
+        LITPREC_RANGE,// ..
+        LITPREC_UNARY,// ! - ~
+        LITPREC_NULL,// ??
+        LITPREC_CALL,// . ()
+        LITPREC_PRIMARY
+    };
+
+    enum FunctionType
+    {
+        LITFUNC_REGULAR,
+        LITFUNC_SCRIPT,
+        LITFUNC_METHOD,
+        LITFUNC_STATIC_METHOD,
+        LITFUNC_CONSTRUCTOR
+    };
+
+
+    enum Optimization
+    {
+        LITOPTSTATE_CONSTANT_FOLDING,
+        LITOPTSTATE_LITERAL_FOLDING,
+        LITOPTSTATE_UNUSED_VAR,
+        LITOPTSTATE_UNREACHABLE_CODE,
+        LITOPTSTATE_EMPTY_BODY,
+        LITOPTSTATE_LINE_INFO,
+        LITOPTSTATE_PRIVATE_NAMES,
+        LITOPTSTATE_C_FOR,
+
+        LITOPTSTATE_TOTAL
+    };
+
     namespace AST
     {
         struct Token
