@@ -1087,6 +1087,49 @@ namespace lit
                         }
                     }
                     break;
+                case Expression::Type::FunctionDecl:
+                    {
+                        auto expr = (StmtFunction*)expression;
+                        auto name = String::format(m_state, "[lambda @:@]", m_module->name->asValue(),
+                                                                      String::stringNumberToString(m_state, expression->line));
+                        Compiler compiler;
+                        init_compiler(&compiler, LITFUNC_REGULAR);
+                        begin_scope();
+                        bool vararg = emit_parameters(&expr->parameters, expression->line);
+                        if(expr->body != nullptr)
+                        {
+                            bool single_expression = expr->body->type == Expression::Type::Expression;
+                            if(single_expression)
+                            {
+                                compiler.skip_return = true;
+                                ((ExprStatement*)expr->body)->pop = false;
+                            }
+                            emit_statement(expr->body);
+                            if(single_expression)
+                            {
+                                emit_op(m_lastline, OP_RETURN);
+                            }
+                        }
+                        end_scope(m_lastline);
+                        auto function = end_compiler(name);
+                        function->arg_count = expr->parameters.m_count;
+                        function->max_slots += function->arg_count;
+                        function->vararg = vararg;
+                        if(function->upvalue_count > 0)
+                        {
+                            emit_op(m_lastline, OP_CLOSURE);
+                            emit_short(m_lastline, addConstant(m_lastline, function->asValue()));
+                            for(size_t i = 0; i < function->upvalue_count; i++)
+                            {
+                                emit_bytes(m_lastline, compiler.upvalues[i].isLocal ? 1 : 0, compiler.upvalues[i].index);
+                            }
+                        }
+                        else
+                        {
+                            emit_constant(m_lastline, function->asValue());
+                        }
+                    }
+                    break;
                 case Expression::Type::Array:
                     {
                         auto expr = (ExprArray*)expression;

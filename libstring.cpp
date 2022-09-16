@@ -877,6 +877,29 @@ namespace lit
             return Object::toValue(self->at(pos));
         }
 
+        static Value objfn_string_indexof(VM* vm, Value instance, size_t argc, Value* argv)
+        {
+            char want;
+            const char* swant;
+            size_t pos;
+            size_t maxlen;
+            String* self;
+            self = Object::as<String>(instance);
+            swant = lit_check_string(vm, argv, argc, 0);
+            want = swant[0];
+            maxlen = self->size();
+            for(pos=0; pos<maxlen; pos++)
+            {
+                if(self->at(pos) == want)
+                {
+                    return Object::toValue(pos);
+                }
+            }
+            return Object::toValue(-1);
+
+        }
+
+
         static Value objfn_string_split(VM* vm, Value instance, size_t argc, Value* argv)
         {
             (void)vm;
@@ -1275,6 +1298,9 @@ namespace lit
             */
             {
                 klass->bindMethod("charCodeAt", objfn_string_byteat);
+            }
+            {
+                klass->bindMethod("indexOf", objfn_string_indexof);
             }
             /*
             * String.toUpper()

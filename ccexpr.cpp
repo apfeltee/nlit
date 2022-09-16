@@ -167,6 +167,14 @@ namespace lit
                         Memory::reallocate(state, expression, sizeof(ExprLambda), 0);
                     }
                     break;
+                case Expression::Type::FunctionDecl:
+                    {
+                        auto expr = (StmtFunction*)expression;
+                        Expression::releaseParameters(state, &expr->parameters);
+                        Expression::releaseStatement(state, expr->body);
+                        Memory::reallocate(state, expression, sizeof(ExprLambda), 0);                        
+                    }
+                    break;
                 case Expression::Type::Array:
                     {
                         Expression::releaseExpressionList(state, &((ExprArray*)expression)->values);

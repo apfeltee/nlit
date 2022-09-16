@@ -3,6 +3,8 @@
 ## i'm not trying to reimplement javascript, except for the bare necessities.
 
 - by default, variables are declared as globals. this is extremely terrible. 
+- modified 'function' syntax to be similar to js: so now one can treat anonymous functions as values.
+  HOWEVER this creates redundant code with lambdas (where parsing is broken anyway).
 
 - variadic function syntax is too ambigious: instead of '...' use splat technique a la python/ruby:
 

@@ -836,7 +836,7 @@ namespace lit
                 static Expression* parse_if(Parser* parser);
                 static Expression* parse_for(Parser* parser);
                 static Expression* parse_while(Parser* parser);
-                static Expression* parse_function(Parser* parser);
+                static Expression* parse_function(Parser* parser, bool canassign);
                 static Expression* parse_return(Parser* parser);
                 static Expression* parse_field(Parser* parser, String* name, bool is_static);
                 static Expression* parse_method(Parser* parser, bool is_static);

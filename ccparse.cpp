@@ -272,6 +272,7 @@ namespace lit
             Parser::rules[LITTOK_SUPER] = ParseRule{ parse_super, nullptr, LITPREC_NONE };
             Parser::rules[LITTOK_QUESTION] = ParseRule{ nullptr, parse_ternary_or_question, LITPREC_EQUALITY };
             Parser::rules[LITTOK_REF] = ParseRule{ parse_reference, nullptr, LITPREC_NONE };
+            Parser::rules[LITTOK_FUNCTION] = ParseRule{parse_function, nullptr, LITPREC_NONE};
             //Parser::rules[LITTOK_SEMICOLON] = ParseRule{nullptr, nullptr, LITPREC_NONE};
         }
 
@@ -1167,7 +1168,7 @@ namespace lit
             return (Expression*)StmtWhileLoop::make(parser->m_state, line, condition, body);
         }
 
-        Expression* Parser::parse_function(Parser* parser)
+        Expression* Parser::parse_function(Parser* parser, bool canassign)
         {
             size_t line;
             size_t function_length;
@@ -1182,10 +1183,15 @@ namespace lit
             {
                 parser->consume(LITTOK_FUNCTION, "'function' after 'export'");
             }
+            function_name = "anonymous";
+            function_length = strlen(function_name);
             line = parser->m_prevtoken.line;
-            parser->consume(LITTOK_IDENTIFIER, "function name");
-            function_name = parser->m_prevtoken.start;
-            function_length = parser->m_prevtoken.length;
+            if(parser->match(LITTOK_IDENTIFIER))
+            {
+                parser->consume(LITTOK_IDENTIFIER, "function name");
+                function_name = parser->m_prevtoken.start;
+                function_length = parser->m_prevtoken.length;
+            }
             if(parser->match(LITTOK_DOT))
             {
                 parser->consume(LITTOK_IDENTIFIER, "function name");
@@ -1451,7 +1457,7 @@ namespace lit
             }
             else if(parser->match(LITTOK_FUNCTION) || parser->match(LITTOK_EXPORT))
             {
-                return parse_function(parser);
+                return parse_function(parser, true);
             }
             else if(parser->match(LITTOK_RETURN))
             {
@@ -1466,7 +1472,11 @@ namespace lit
                 return parse_statement(parser);
             }
             expression = parse_expression(parser);
-            return expression == nullptr ? nullptr : (Expression*)ExprStatement::make(parser->m_state, parser->m_prevtoken.line, expression);
+            if(expression == nullptr)
+            {
+                return nullptr;
+            }
+            return (Expression*)ExprStatement::make(parser->m_state, parser->m_prevtoken.line, expression);
         }
 
         Expression* Parser::parse_declaration(Parser* parser)
