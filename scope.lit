@@ -1,0 +1,8 @@
+
+function blah()
+{
+    foo = "bar"
+}
+
+blah()
+println($"foo={foo}")

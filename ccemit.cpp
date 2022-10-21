@@ -849,7 +849,8 @@ namespace lit
                                     index = resolve_private(e->name, e->length, expr->to->line);
                                     if(index == -1)
                                     {
-                                        emit_op(expression->line, OP_SET_GLOBAL);
+                                        //emit_op(expression->line, OP_SET_GLOBAL);
+                                        emit_op(expression->line, OP_SET_LOCAL);
                                         emit_short(expression->line,
                                                    addConstant(expression->line,
                                                                 String::copy(m_state, e->name, e->length)->asValue()));

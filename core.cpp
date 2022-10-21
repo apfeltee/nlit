@@ -707,7 +707,7 @@ namespace lit
     }
 
     // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2Float
-    int lit_closest_power_of_two(int n)
+    int64_t lit_closest_power_of_two(int64_t n)
     {
         n--;
         n |= n >> 1;
@@ -903,7 +903,7 @@ namespace lit
         COMPARE_inl(state, callee, a, b)
     #endif
 
-    void util_custom_quick_sort(VM* vm, Value* l, int length, Value callee)
+    void util_custom_quick_sort(VM* vm, Value* l, size_t length, Value callee)
     {
         Result rt;
         State* state;
@@ -912,9 +912,9 @@ namespace lit
             return;
         }
         state = vm->m_state;
-        int pivot_index = length / 2;
-        int i;
-        int j;
+        size_t pivot_index = length / 2;
+        size_t i;
+        size_t j;
         Value pivot = l[pivot_index];
         for(i = 0, j = length - 1;; i++, j--)
         {
@@ -964,7 +964,7 @@ namespace lit
     void util_run_fiber(VM* vm, Fiber* fiber, Value* argv, size_t argc, bool catcher)
     {
         bool vararg;
-        int i;
+        size_t i;
         int to;
         int vararg_count;
         int objfn_function_arg_count;

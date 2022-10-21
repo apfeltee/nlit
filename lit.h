@@ -277,7 +277,7 @@ namespace lit
 
     String* lit_vformat_error(State* state, size_t line, Error error, va_list args);
     String* lit_format_error(State* state, size_t line, Error error, ...);
-    int lit_closest_power_of_two(int n);
+    int64_t lit_closest_power_of_two(int64_t n);
     bool lit_handle_runtime_error(VM* vm, String* error_string);
     bool lit_vruntime_error(VM* vm, const char* format, va_list args);
     bool lit_runtime_error(VM* vm, const char* format, ...);
@@ -2717,7 +2717,7 @@ namespace lit
     /**
     * utility functions
     */
-    void util_custom_quick_sort(VM *vm, Value *l, int length, Value callee);
+    void util_custom_quick_sort(VM *vm, Value *l, size_t length, Value callee);
     bool util_is_fiber_done(Fiber *fiber);
     void util_run_fiber(VM *vm, Fiber *fiber, Value *argv, size_t argc, bool catcher);
     void util_basic_quick_sort(State *state, Value *clist, int length);

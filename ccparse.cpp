@@ -1186,7 +1186,7 @@ namespace lit
             function_name = "anonymous";
             function_length = strlen(function_name);
             line = parser->m_prevtoken.line;
-            if(parser->match(LITTOK_IDENTIFIER))
+            if(parser->check(LITTOK_IDENTIFIER))
             {
                 parser->consume(LITTOK_IDENTIFIER, "function name");
                 function_name = parser->m_prevtoken.start;

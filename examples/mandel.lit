@@ -1,4 +1,5 @@
 
+(function(){
 left_edge   = -420;
 right_edge  =  300;
 top_edge    =  300;
@@ -38,4 +39,4 @@ while(y0 > bottom_edge)
     }
     print("\n");
     y0 = y0 - y_step;
-}
+}})();
